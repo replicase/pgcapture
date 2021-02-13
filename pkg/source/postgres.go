@@ -31,6 +31,8 @@ type PGXSource struct {
 	stopped int64
 }
 
+const OutputPlugin = "pglogical_output"
+
 func (p *PGXSource) Setup() (err error) {
 	ctx := context.Background()
 	p.setupConn, err = pgx.Connect(ctx, p.SetupConnStr)
@@ -44,7 +46,13 @@ func (p *PGXSource) Setup() (err error) {
 
 	p.decoder = decode.NewPGLogicalDecoder(p.schema)
 
-	_, err = p.setupConn.Exec(context.Background(), sql.DLLTriggerSQL)
+	if _, err = p.setupConn.Exec(context.Background(), sql.InstallDLLTriggers); err != nil {
+		return nil
+	}
+
+	if p.CreateSlot {
+		_, err = p.setupConn.Exec(ctx, sql.CreateLogicalSlot, p.ReplSlot, OutputPlugin)
+	}
 	return err
 }
 

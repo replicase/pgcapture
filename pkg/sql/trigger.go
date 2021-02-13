@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-var DLLTriggerSQL = fmt.Sprintf(`
+var InstallDLLTriggers = fmt.Sprintf(`
 CREATE SCHEMA IF NOT EXISTS pgcapture;
 CREATE TABLE IF NOT EXISTS pgcapture.ddls (id SERIAL PRIMARY KEY, activity JSONB);
 CREATE OR REPLACE FUNCTION pgcapture_log_ddl() RETURNS event_trigger AS $$

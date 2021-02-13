@@ -19,7 +19,7 @@ type PGXSchemaLoader struct {
 }
 
 func (p *PGXSchemaLoader) Refresh() error {
-	rows, err := p.conn.Query(context.Background(), sql.AttrTypeOIDSQL)
+	rows, err := p.conn.Query(context.Background(), sql.QueryAttrTypeOID)
 	if err != nil {
 		return err
 	}
