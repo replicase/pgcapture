@@ -68,7 +68,7 @@ func (p *PGLogicalDecoder) Decode(in []byte) (m *pb.Message, err error) {
 func (p *PGLogicalDecoder) makePBTuple(rel Relation, src []Field) (fields []*pb.Field, err error) {
 	fields = make([]*pb.Field, 0, len(src))
 	for i, s := range src {
-		oid, err := p.schema.GetFieldOID(rel.NspName, rel.RelName, rel.Fields[i])
+		oid, err := p.schema.GetTypeOID(rel.NspName, rel.RelName, rel.Fields[i])
 		if err != nil {
 			return nil, err
 		}

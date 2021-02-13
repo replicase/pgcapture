@@ -38,10 +38,13 @@ func (p *PGXSource) Setup() (err error) {
 		return err
 	}
 	p.schema = decode.NewPGXSchemaLoader(p.setupConn)
+	if err = p.schema.Refresh(); err != nil {
+		return err
+	}
+
 	p.decoder = decode.NewPGLogicalDecoder(p.schema)
 
-	_, err = p.setupConn.Exec(context.Background(), sql.DLLTriggerSQL())
-
+	_, err = p.setupConn.Exec(context.Background(), sql.DLLTriggerSQL)
 	return err
 }
 
@@ -76,7 +79,7 @@ func (p *PGXSource) Capture(lsn uint64) (changes chan *pb.Message, err error) {
 		defer p.cleanup()
 		defer close(changes)
 		if err = p.fetching(changes); err != nil {
-			log.Fatal("Logical replication failed", err)
+			log.Fatalf("Logical replication failed: %v", err)
 		}
 	}()
 

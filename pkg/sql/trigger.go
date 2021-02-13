@@ -5,8 +5,7 @@ import (
 	"strings"
 )
 
-func DLLTriggerSQL() string {
-	return fmt.Sprintf(`
+var DLLTriggerSQL = fmt.Sprintf(`
 CREATE SCHEMA IF NOT EXISTS pgcapture;
 CREATE TABLE IF NOT EXISTS pgcapture.ddls (id SERIAL PRIMARY KEY, activity JSONB);
 CREATE OR REPLACE FUNCTION pgcapture_log_ddl() RETURNS event_trigger AS $$
@@ -22,7 +21,6 @@ CREATE EVENT TRIGGER pgcapture_log_ddl_start ON ddl_command_start WHEN tag IN ('
 DROP EVENT TRIGGER IF EXISTS pgcapture_log_ddl_end;
 CREATE EVENT TRIGGER pgcapture_log_ddl_end ON ddl_command_end WHEN TAG IN ('%s') EXECUTE PROCEDURE pgcapture_log_ddl();
 `, strings.Join(WhenStart, "','"), strings.Join(WhenEnd, "','"))
-}
 
 var WhenStart = []string{
 	"CREATE TABLE AS",
