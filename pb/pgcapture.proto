@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package pgcapture;
+option go_package = "github.com/rueian/pgcapture/pkg/pb";
+
+message Message {
+  oneof type {
+    Begin begin = 1;
+    Commit commit = 2;
+    Change change = 3;
+  }
+}
+
+message Begin {
+  uint64 final_lsn = 1;
+  uint64 commit_time = 2;
+  uint32 remote_xid = 3;
+}
+
+message Commit {
+  uint64 commit_lsn = 1;
+  uint64 end_lsn = 2;
+  uint64 commit_time = 3;
+}
+
+message Change {
+  enum Operation {
+    INSERT = 0;
+    UPDATE = 1;
+    DELETE = 2;
+  }
+  Operation op = 1;
+  string table = 2;
+  repeated Field new_tuple = 3;
+  repeated Field old_tuple = 4;
+}
+
+message Field {
+  string name = 1;
+  uint32 oid = 2;
+  bytes datum = 3;
+}
