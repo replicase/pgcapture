@@ -45,7 +45,7 @@ func (p *PGLogicalDecoder) Decode(in []byte) (m *pb.Message, err error) {
 			return nil, errors.New("relation not found")
 		}
 
-		c := &pb.Change{Table: rel.RelName, Op: OpMap[in[0]]}
+		c := &pb.Change{Namespace: rel.NspName, Table: rel.RelName, Op: OpMap[in[0]]}
 
 		if r.Old != nil {
 			if c.OldTuple, err = p.makePBTuple(rel, r.Old); err != nil {

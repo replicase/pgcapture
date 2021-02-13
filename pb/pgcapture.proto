@@ -30,9 +30,10 @@ message Change {
     DELETE = 2;
   }
   Operation op = 1;
-  string table = 2;
-  repeated Field new_tuple = 3;
-  repeated Field old_tuple = 4;
+  string namespace = 2;
+  string table = 3;
+  repeated Field new_tuple = 4;
+  repeated Field old_tuple = 5;
 }
 
 message Field {
