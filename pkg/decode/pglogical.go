@@ -12,7 +12,7 @@ var OpMap = map[byte]pb.Change_Operation{
 	'D': pb.Change_DELETE,
 }
 
-func NewPGLogicalDecoder(schema SchemaLoader) *PGLogicalDecoder {
+func NewPGLogicalDecoder(schema *PGXSchemaLoader) *PGLogicalDecoder {
 	return &PGLogicalDecoder{
 		schema:    schema,
 		relations: make(map[uint32]Relation),
@@ -20,7 +20,7 @@ func NewPGLogicalDecoder(schema SchemaLoader) *PGLogicalDecoder {
 }
 
 type PGLogicalDecoder struct {
-	schema    SchemaLoader
+	schema    *PGXSchemaLoader
 	relations map[uint32]Relation
 }
 
