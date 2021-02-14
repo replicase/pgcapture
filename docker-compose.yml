@@ -1,0 +1,14 @@
+version: "3.8"
+services:
+  pg:
+    build: .
+    image: rueian/postgres:9.6-logical
+    ports:
+      - "5432:5432"
+    command: ["postgres", "-c", "config_file=/pgc/postgresql.conf", "-c","hba_file=/pgc/pg_hba.conf"]
+    volumes:
+      - ./hack/postgres:/pgc
+      - ./share:/extension
+      - pgcapture:/var/lib/postgresql/data
+volumes:
+  pgcapture: {}

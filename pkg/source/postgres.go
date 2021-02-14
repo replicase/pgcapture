@@ -31,8 +31,6 @@ type PGXSource struct {
 	stopped int64
 }
 
-const OutputPlugin = "pglogical_output"
-
 func (p *PGXSource) Setup() (err error) {
 	ctx := context.Background()
 	p.setupConn, err = pgx.Connect(ctx, p.SetupConnStr)
@@ -46,7 +44,7 @@ func (p *PGXSource) Setup() (err error) {
 
 	p.decoder = decode.NewPGLogicalDecoder(p.schema)
 
-	if _, err = p.setupConn.Exec(context.Background(), sql.InstallDLLTriggers); err != nil {
+	if _, err = p.setupConn.Exec(context.Background(), sql.InstallExtension); err != nil {
 		return nil
 	}
 
@@ -103,7 +101,7 @@ func (p PGXSource) fetching(changes chan *pb.Message) (err error) {
 			if err = pglogrepl.SendStandbyStatusUpdate(
 				context.Background(),
 				p.replConn,
-				pglogrepl.StandbyStatusUpdate{WALWritePosition: p.LoadAckLSN()},
+				pglogrepl.StandbyStatusUpdate{WALWritePosition: p.committedLSN()},
 			); err != nil {
 				return err
 			}
@@ -158,11 +156,11 @@ func (p PGXSource) fetching(changes chan *pb.Message) (err error) {
 	}
 }
 
-func (p *PGXSource) ScheduleAck(lsn uint64) {
+func (p *PGXSource) Commit(lsn uint64) {
 	atomic.StoreUint64(&p.ackLsn, lsn)
 }
 
-func (p *PGXSource) LoadAckLSN() (lsn pglogrepl.LSN) {
+func (p *PGXSource) committedLSN() (lsn pglogrepl.LSN) {
 	return pglogrepl.LSN(atomic.LoadUint64(&p.ackLsn))
 }
 
@@ -180,6 +178,8 @@ func (p *PGXSource) cleanup() {
 		p.replConn = nil
 	}
 }
+
+const OutputPlugin = "pglogical_output"
 
 var pgLogicalParam = []string{
 	"min_proto_version '1'",

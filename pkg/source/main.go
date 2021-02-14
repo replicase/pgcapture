@@ -7,6 +7,6 @@ import (
 type Source interface {
 	Setup() error
 	Capture(lsn uint64) (changes chan *pb.Message, err error)
-	ScheduleAck(lsn uint64)
+	Commit(lsn uint64)
 	Stop()
 }

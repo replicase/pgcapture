@@ -1,0 +1,4 @@
+# pgcapture extension
+module_pathname = '$libdir/pgcapture'
+default_version = '0.1'
+schema = 'pgcapture'
