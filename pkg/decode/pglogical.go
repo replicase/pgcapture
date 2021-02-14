@@ -46,31 +46,27 @@ func (p *PGLogicalDecoder) Decode(in []byte) (m *pb.Message, err error) {
 		}
 
 		c := &pb.Change{Namespace: rel.NspName, Table: rel.RelName, Op: OpMap[in[0]]}
+		c.OldTuple = p.makePBTuple(rel, r.Old)
+		c.NewTuple = p.makePBTuple(rel, r.New)
 
-		if r.Old != nil {
-			if c.OldTuple, err = p.makePBTuple(rel, r.Old); err != nil {
-				return nil, err
-			}
+		if len(c.OldTuple) != 0 || len(c.NewTuple) != 0 {
+			return &pb.Message{Type: &pb.Message_Change{Change: c}}, nil
 		}
-
-		if r.New != nil {
-			if c.NewTuple, err = p.makePBTuple(rel, r.New); err != nil {
-				return nil, err
-			}
-		}
-		return &pb.Message{Type: &pb.Message_Change{Change: c}}, nil
 	default:
 		// TODO log unmatched message
 	}
 	return nil, err
 }
 
-func (p *PGLogicalDecoder) makePBTuple(rel Relation, src []Field) (fields []*pb.Field, err error) {
+func (p *PGLogicalDecoder) makePBTuple(rel Relation, src []Field) (fields []*pb.Field) {
+	if src == nil {
+		return nil
+	}
 	fields = make([]*pb.Field, 0, len(src))
 	for i, s := range src {
 		oid, err := p.schema.GetTypeOID(rel.NspName, rel.RelName, rel.Fields[i])
 		if err != nil {
-			return nil, err
+			continue // TODO log dropped schema error
 		}
 		switch s.Format {
 		case 'n', 'b':
@@ -79,7 +75,7 @@ func (p *PGLogicalDecoder) makePBTuple(rel Relation, src []Field) (fields []*pb.
 			continue // unchanged toast field should be exclude
 		}
 	}
-	return fields, nil
+	return fields
 }
 
 func ReadBegin(in []byte) (*pb.Message, error) {

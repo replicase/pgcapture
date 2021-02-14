@@ -3,6 +3,7 @@ package decode
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/jackc/pgx/v4"
 	"github.com/rueian/pgcapture/pkg/sql"
 )
@@ -46,13 +47,18 @@ func (p *PGXSchemaLoader) Refresh() error {
 	return nil
 }
 
-func (p *PGXSchemaLoader) GetTypeOID(namespace, table, field string) (uint32, error) {
-	if tbls, ok := p.cache[namespace]; ok {
-		if cols, ok := tbls[table]; ok {
-			if oid, ok := cols[field]; ok {
-				return oid, nil
-			}
-		}
+func (p *PGXSchemaLoader) GetTypeOID(namespace, table, field string) (oid uint32, err error) {
+	if tbls, ok := p.cache[namespace]; !ok {
+		return 0, fmt.Errorf("%s.%s %w", namespace, table, ErrSchemaTableMissing)
+	} else if cols, ok := tbls[table]; !ok {
+		return 0, fmt.Errorf("%s.%s %w", namespace, table, ErrSchemaTableMissing)
+	} else if oid, ok = cols[field]; !ok {
+		return 0, fmt.Errorf("%s.%s.%s %w", namespace, table, field, ErrSchemaColumnMissing)
 	}
-	return 0, errors.New("type oid not found")
+	return oid, nil
 }
+
+var (
+	ErrSchemaTableMissing  = errors.New("table missing")
+	ErrSchemaColumnMissing = errors.New("column missing")
+)
