@@ -29,6 +29,7 @@ type PGXSource struct {
 
 	ackLsn  uint64
 	stopped int64
+	stop    chan struct{}
 }
 
 func (p *PGXSource) Setup() (err error) {
@@ -44,13 +45,14 @@ func (p *PGXSource) Setup() (err error) {
 
 	p.decoder = decode.NewPGLogicalDecoder(p.schema)
 
-	if _, err = p.setupConn.Exec(context.Background(), sql.InstallExtension); err != nil {
+	if _, err = p.setupConn.Exec(ctx, sql.InstallExtension); err != nil {
 		return nil
 	}
 
 	if p.CreateSlot {
 		_, err = p.setupConn.Exec(ctx, sql.CreateLogicalSlot, p.ReplSlot, OutputPlugin)
 	}
+
 	return err
 }
 
@@ -78,11 +80,12 @@ func (p *PGXSource) Capture(lsn uint64) (changes chan *pb.Message, err error) {
 		return nil, err
 	}
 	p.ackLsn = uint64(requestLSN)
+	p.stop = make(chan struct{})
 
 	changes = make(chan *pb.Message, 100)
-
 	go func() {
 		defer p.cleanup()
+		defer close(p.stop)
 		defer close(changes)
 		if err = p.fetching(changes); err != nil {
 			log.Fatalf("Logical replication failed: %v", err)
@@ -92,17 +95,13 @@ func (p *PGXSource) Capture(lsn uint64) (changes chan *pb.Message, err error) {
 	return changes, nil
 }
 
-func (p PGXSource) fetching(changes chan *pb.Message) (err error) {
+func (p *PGXSource) fetching(changes chan *pb.Message) (err error) {
 	reportInterval := time.Second * 5
 	nextReportTime := time.Now().Add(reportInterval)
 
 	for {
 		if time.Now().After(nextReportTime) {
-			if err = pglogrepl.SendStandbyStatusUpdate(
-				context.Background(),
-				p.replConn,
-				pglogrepl.StandbyStatusUpdate{WALWritePosition: p.committedLSN()},
-			); err != nil {
+			if err = pglogrepl.SendStandbyStatusUpdate(context.Background(), p.replConn, pglogrepl.StandbyStatusUpdate{WALWritePosition: p.committedLSN()}); err != nil {
 				return err
 			}
 			nextReportTime = time.Now().Add(reportInterval)
@@ -142,9 +141,14 @@ func (p PGXSource) fetching(changes chan *pb.Message) (err error) {
 					return err
 				}
 				if m != nil {
-					if change := m.GetChange(); change != nil && change.Namespace == "pgcapture" && change.Table == "ddl" {
-						if err = p.schema.Refresh(); err != nil {
-							return err
+					if change := m.GetChange(); change != nil && change.Namespace == "pgcapture" {
+						switch change.Table {
+						case "ddl_logs":
+							if err = p.schema.Refresh(); err != nil {
+								return err
+							}
+						case "sources":
+							continue
 						}
 					}
 					changes <- m
@@ -166,6 +170,9 @@ func (p *PGXSource) committedLSN() (lsn pglogrepl.LSN) {
 
 func (p *PGXSource) Stop() {
 	atomic.StoreInt64(&p.stopped, 1)
+	if p.stop != nil {
+		<-p.stop
+	}
 }
 
 func (p *PGXSource) cleanup() {

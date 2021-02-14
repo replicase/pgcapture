@@ -2,6 +2,7 @@
 \echo Use "CREATE EXTENSION pgcapture" to load this file. \quit
 
 CREATE TABLE pgcapture.ddl_logs (id SERIAL PRIMARY KEY, query TEXT, tags TEXT[], activity JSONB);
+CREATE TABLE pgcapture.sources (id TEXT PRIMARY KEY, commit pg_lsn, commit_ts timestamptz, apply_ts timestamptz DEFAULT CURRENT_TIMESTAMP, message jsonb);
 
 CREATE FUNCTION pgcapture.current_query()
     RETURNS TEXT AS
