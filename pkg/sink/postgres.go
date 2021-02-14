@@ -3,6 +3,7 @@ package sink
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pglogrepl"
@@ -12,6 +13,8 @@ import (
 	"github.com/rueian/pgcapture/pkg/sql"
 	"os"
 	"regexp"
+	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 )
@@ -24,6 +27,8 @@ type PGXSink struct {
 	conn *pgx.Conn
 	raw  *pgconn.PgConn
 	err  error
+
+	inTX bool
 
 	stopped uint64
 }
@@ -88,10 +93,16 @@ func (p *PGXSink) Apply(changes chan *pb.Message) (committed chan uint64) {
 				switch change.Type.(type) {
 				case *pb.Message_Begin:
 					p.err = p.handleBegin(change.GetBegin())
+					p.inTX = true
 				case *pb.Message_Change:
-					p.err = p.handleChange(change.GetChange())
+					if p.inTX {
+						p.err = p.handleChange(change.GetChange())
+					} else {
+						p.err = errors.New("receive incomplete transaction")
+					}
 				case *pb.Message_Commit:
 					p.err = p.handleCommit(change.GetCommit(), committed)
+					p.inTX = false
 				}
 				if p.err != nil {
 					p.Stop() // mark stop, but do not return
@@ -122,10 +133,16 @@ func (p *PGXSink) handleChange(m *pb.Change) (err error) {
 	ctx := context.Background()
 	if m.Namespace == "pgcapture" && m.Table == "ddl_logs" {
 		return p.handleDDL(ctx, m)
-	} else {
-
 	}
-	return err
+	switch m.Op {
+	case pb.Change_INSERT:
+		return p.handleInsert(ctx, m)
+	case pb.Change_UPDATE:
+		return p.handleUpdate(ctx, m)
+	case pb.Change_DELETE:
+		return p.handleDelete(ctx, m)
+	}
+	return nil
 }
 
 func (p *PGXSink) handleDDL(ctx context.Context, m *pb.Change) (err error) {
@@ -138,6 +155,75 @@ func (p *PGXSink) handleDDL(ctx context.Context, m *pb.Change) (err error) {
 	return nil
 }
 
+func (p *PGXSink) handleInsert(ctx context.Context, m *pb.Change) (err error) {
+	fields := len(m.NewTuple)
+	vals := make([][]byte, fields)
+	oids := make([]uint32, fields)
+	fmts := make([]int16, fields)
+	ci := p.conn.ConnInfo()
+
+	var query strings.Builder
+	query.WriteString("insert into \"")
+	query.WriteString(m.Namespace)
+	query.WriteString("\".\"")
+	query.WriteString(m.Table)
+	query.WriteString("\"(\"")
+	for i := 0; i < fields; i++ {
+		field := m.NewTuple[i]
+		vals[i] = field.Datum
+		oids[i] = field.Oid
+		fmts[i] = ci.ParamFormatCodeForOID(field.Oid)
+		query.WriteString(field.Name)
+		if i == fields-1 {
+			query.WriteString("\") values (")
+		} else {
+			query.WriteString("\",\"")
+		}
+	}
+	for i := 1; i <= fields; i++ {
+		query.WriteString("$" + strconv.Itoa(i))
+		if i == fields {
+			query.WriteString(")")
+		} else {
+			query.WriteString(",")
+		}
+	}
+	return p.raw.ExecParams(ctx, query.String(), vals, oids, fmts, fmts).Read().Err
+}
+
+func (p *PGXSink) handleDelete(ctx context.Context, m *pb.Change) (err error) {
+	fields := len(m.OldTuple)
+	vals := make([][]byte, fields)
+	oids := make([]uint32, fields)
+	fmts := make([]int16, fields)
+	ci := p.conn.ConnInfo()
+
+	var query strings.Builder
+	query.WriteString("delete from \"")
+	query.WriteString(m.Namespace)
+	query.WriteString("\".\"")
+	query.WriteString(m.Table)
+	query.WriteString("\" where \"")
+
+	for i := 0; i < fields; i++ {
+		field := m.OldTuple[i]
+		vals[i] = field.Datum
+		oids[i] = field.Oid
+		fmts[i] = ci.ParamFormatCodeForOID(field.Oid)
+
+		query.WriteString(field.Name)
+		query.WriteString("\" = $" + strconv.Itoa(i+1))
+		if i != fields-1 {
+			query.WriteString(" AND \"")
+		}
+	}
+	return p.raw.ExecParams(ctx, query.String(), vals, oids, fmts, fmts).Read().Err
+}
+
+func (p *PGXSink) handleUpdate(ctx context.Context, m *pb.Change) (err error) {
+	return nil
+}
+
 const (
 	UpdateSourceSQL = "insert into pgcapture.sources(id,commit,commit_ts) values ($1,$2,$3) on conflict (id) do update set commit=EXCLUDED.commit,commit_ts=EXCLUDED.commit_ts,apply_ts=now()"
 )
@@ -147,7 +233,7 @@ func (p *PGXSink) handleCommit(m *pb.Commit, committed chan uint64) (err error) 
 	if _, err = p.conn.Prepare(ctx, UpdateSourceSQL, UpdateSourceSQL); err != nil {
 		return err
 	}
-	if _, err = p.conn.Exec(ctx, UpdateSourceSQL, pgText(p.SourceID), pgInt8(int64(m.CommitLsn)), pgTz(m.CommitTime)); err != nil {
+	if _, err = p.conn.Exec(ctx, UpdateSourceSQL, pgText(p.SourceID), pgInt8(int64(m.EndLsn)), pgTz(m.CommitTime)); err != nil {
 		return err
 	}
 	if _, err = p.conn.Exec(ctx, "commit"); err != nil {

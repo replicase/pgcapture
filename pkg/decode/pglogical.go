@@ -46,8 +46,8 @@ func (p *PGLogicalDecoder) Decode(in []byte) (m *pb.Message, err error) {
 		}
 
 		c := &pb.Change{Namespace: rel.NspName, Table: rel.RelName, Op: OpMap[in[0]]}
-		c.OldTuple = p.makePBTuple(rel, r.Old)
-		c.NewTuple = p.makePBTuple(rel, r.New)
+		c.OldTuple = p.makePBTuple(rel, r.Old, true)
+		c.NewTuple = p.makePBTuple(rel, r.New, false)
 
 		if len(c.OldTuple) != 0 || len(c.NewTuple) != 0 {
 			return &pb.Message{Type: &pb.Message_Change{Change: c}}, nil
@@ -58,12 +58,15 @@ func (p *PGLogicalDecoder) Decode(in []byte) (m *pb.Message, err error) {
 	return nil, err
 }
 
-func (p *PGLogicalDecoder) makePBTuple(rel Relation, src []Field) (fields []*pb.Field) {
+func (p *PGLogicalDecoder) makePBTuple(rel Relation, src []Field, noNull bool) (fields []*pb.Field) {
 	if src == nil {
 		return nil
 	}
 	fields = make([]*pb.Field, 0, len(src))
 	for i, s := range src {
+		if noNull && s.Datum == nil {
+			continue
+		}
 		oid, err := p.schema.GetTypeOID(rel.NspName, rel.RelName, rel.Fields[i])
 		if err != nil {
 			continue // TODO log dropped schema error
