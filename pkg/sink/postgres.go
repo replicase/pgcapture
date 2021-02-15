@@ -176,7 +176,6 @@ func (p *PGXSink) handleInsert(ctx context.Context, m *pb.Change) (err error) {
 	vals := make([][]byte, fields)
 	oids := make([]uint32, fields)
 	fmts := make([]int16, fields)
-	ci := p.conn.ConnInfo()
 
 	var query strings.Builder
 	query.WriteString("insert into \"")
@@ -188,7 +187,7 @@ func (p *PGXSink) handleInsert(ctx context.Context, m *pb.Change) (err error) {
 		field := m.NewTuple[i]
 		vals[i] = field.Datum
 		oids[i] = field.Oid
-		fmts[i] = ci.ParamFormatCodeForOID(field.Oid)
+		fmts[i] = 1
 		query.WriteString(field.Name)
 		if i == fields-1 {
 			query.WriteString("\") values (")
@@ -212,7 +211,6 @@ func (p *PGXSink) handleDelete(ctx context.Context, m *pb.Change) (err error) {
 	vals := make([][]byte, fields)
 	oids := make([]uint32, fields)
 	fmts := make([]int16, fields)
-	ci := p.conn.ConnInfo()
 
 	var query strings.Builder
 	query.WriteString("delete from \"")
@@ -225,7 +223,7 @@ func (p *PGXSink) handleDelete(ctx context.Context, m *pb.Change) (err error) {
 		field := m.OldTuple[i]
 		vals[i] = field.Datum
 		oids[i] = field.Oid
-		fmts[i] = ci.ParamFormatCodeForOID(field.Oid)
+		fmts[i] = 1
 
 		query.WriteString(field.Name)
 		query.WriteString("\"=$" + strconv.Itoa(i+1))
@@ -268,7 +266,6 @@ func (p *PGXSink) handleUpdate(ctx context.Context, m *pb.Change) (err error) {
 	vals := make([][]byte, fields)
 	oids := make([]uint32, fields)
 	fmts := make([]int16, fields)
-	ci := p.conn.ConnInfo()
 
 	var query strings.Builder
 	query.WriteString("update \"")
@@ -282,7 +279,7 @@ func (p *PGXSink) handleUpdate(ctx context.Context, m *pb.Change) (err error) {
 		field := sets[j]
 		vals[j] = field.Datum
 		oids[j] = field.Oid
-		fmts[j] = ci.ParamFormatCodeForOID(field.Oid)
+		fmts[j] = 1
 
 		query.WriteString(field.Name)
 		query.WriteString("\"=$" + strconv.Itoa(j+1))
@@ -298,7 +295,7 @@ func (p *PGXSink) handleUpdate(ctx context.Context, m *pb.Change) (err error) {
 		field := keys[i]
 		vals[j] = field.Datum
 		oids[j] = field.Oid
-		fmts[j] = ci.ParamFormatCodeForOID(field.Oid)
+		fmts[j] = 1
 
 		query.WriteString(field.Name)
 		query.WriteString("\"=$" + strconv.Itoa(j+1))
