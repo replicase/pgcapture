@@ -55,7 +55,7 @@ func (p *PGXSource) Setup() (err error) {
 	return err
 }
 
-func (p *PGXSource) Capture(lsn uint64) (changes chan Change, err error) {
+func (p *PGXSource) Capture(cp Checkpoint) (changes chan Change, err error) {
 	p.replConn, err = pgconn.Connect(context.Background(), p.ReplConnStr)
 	if err != nil {
 		return nil, err
@@ -68,8 +68,8 @@ func (p *PGXSource) Capture(lsn uint64) (changes chan Change, err error) {
 	log.Println("SystemID:", ident.SystemID, "Timeline:", ident.Timeline, "XLogPos:", ident.XLogPos, "DBName:", ident.DBName)
 
 	var requestLSN pglogrepl.LSN
-	if lsn != 0 {
-		requestLSN = pglogrepl.LSN(lsn)
+	if cp.LSN != 0 {
+		requestLSN = pglogrepl.LSN(cp.LSN)
 		log.Println("start logical replication on slot with requested position", p.ReplSlot, requestLSN)
 	} else {
 		requestLSN = ident.XLogPos
@@ -158,8 +158,8 @@ func (p *PGXSource) fetching(changes chan Change) (err error) {
 	}
 }
 
-func (p *PGXSource) Commit(lsn uint64) {
-	atomic.StoreUint64(&p.ackLsn, lsn)
+func (p *PGXSource) Commit(cp Checkpoint) {
+	atomic.StoreUint64(&p.ackLsn, cp.LSN)
 }
 
 func (p *PGXSource) committedLSN() (lsn pglogrepl.LSN) {

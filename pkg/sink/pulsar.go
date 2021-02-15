@@ -21,15 +21,15 @@ type PulsarSink struct {
 	commitTime time.Time
 }
 
-func (p *PulsarSink) Setup() (lsn uint64, err error) {
+func (p *PulsarSink) Setup() (cp source.Checkpoint, err error) {
 	p.client, err = pulsar.NewClient(p.PulsarOption)
 	if err != nil {
-		return 0, err
+		return cp, err
 	}
 
 	host, err := os.Hostname()
 	if err != nil {
-		return 0, err
+		return cp, err
 	}
 
 	reader, err := p.client.CreateReader(pulsar.ReaderOptions{
@@ -39,25 +39,21 @@ func (p *PulsarSink) Setup() (lsn uint64, err error) {
 		StartMessageIDInclusive: true,
 	})
 	if err != nil {
-		return 0, err
+		return cp, err
 	}
 	defer reader.Close()
 
-	var str string
 	for reader.HasNext() {
 		msg, err := reader.Next(context.Background())
 		if err != nil {
-			return 0, err
+			return cp, err
 		}
-		str = msg.Properties()["lsn"]
-	}
-
-	var l pglogrepl.LSN
-	if str != "" {
-		l, err = pglogrepl.ParseLSN(str)
+		cp.Time = msg.EventTime()
+		l, err := pglogrepl.ParseLSN(msg.Properties()["lsn"])
 		if err != nil {
-			return 0, err
+			return cp, err
 		}
+		cp.LSN = uint64(l)
 	}
 
 	p.producer, err = p.client.CreateProducer(pulsar.ProducerOptions{
@@ -70,20 +66,23 @@ func (p *PulsarSink) Setup() (lsn uint64, err error) {
 		BatchingMaxSize:     1024 * 1024,
 	})
 	if err != nil {
-		return 0, err
+		return cp, err
 	}
 
-	return uint64(l), nil
+	return cp, nil
 }
 
-func (p *PulsarSink) Apply(changes chan source.Change) chan uint64 {
-	return p.BaseSink.apply(changes, func(change source.Change, committed chan uint64) error {
-		seq := int64(change.LSN)
-		lsn := pglogrepl.LSN(change.LSN)
-
+func (p *PulsarSink) Apply(changes chan source.Change) chan source.Checkpoint {
+	return p.BaseSink.apply(changes, func(change source.Change, committed chan source.Checkpoint) error {
 		if begin := change.Message.GetBegin(); begin != nil {
 			p.commitTime = pgTime2Time(begin.CommitTime)
 		}
+
+		checkpoint := source.Checkpoint{
+			LSN:  change.LSN,
+			Time: p.commitTime,
+		}
+		seq := int64(change.LSN)
 
 		bs, err := proto.Marshal(change.Message)
 		if err != nil {
@@ -92,8 +91,8 @@ func (p *PulsarSink) Apply(changes chan source.Change) chan uint64 {
 
 		p.producer.SendAsync(context.Background(), &pulsar.ProducerMessage{
 			Payload:    bs,
-			Properties: map[string]string{"lsn": lsn.String()},
-			EventTime:  p.commitTime,
+			Properties: map[string]string{"lsn": pglogrepl.LSN(change.LSN).String()},
+			EventTime:  checkpoint.Time,
 			SequenceID: &seq,
 		}, func(id pulsar.MessageID, message *pulsar.ProducerMessage, err error) {
 			if err != nil {
@@ -101,7 +100,7 @@ func (p *PulsarSink) Apply(changes chan source.Change) chan uint64 {
 				p.BaseSink.Stop()
 				return
 			}
-			committed <- change.LSN
+			committed <- checkpoint
 		})
 		return nil
 	}, func() {

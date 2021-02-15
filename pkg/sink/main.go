@@ -7,32 +7,32 @@ import (
 )
 
 type CleanFn func()
-type ApplyFn func(message source.Change, committed chan uint64) error
+type ApplyFn func(message source.Change, committed chan source.Checkpoint) error
 
 type Sink interface {
-	Setup() (lsn uint64, err error)
-	Apply(changes chan source.Change) (committed chan uint64)
+	Setup() (cp source.Checkpoint, err error)
+	Apply(changes chan source.Change) (committed chan source.Checkpoint)
 	Error() error
 	Stop()
 }
 
 type BaseSink struct {
-	committed chan uint64
+	committed chan source.Checkpoint
 
 	stopped uint64
 	err     error
 }
 
-func (b *BaseSink) Setup() (lsn uint64, err error) {
+func (b *BaseSink) Setup() (cp source.Checkpoint, err error) {
 	panic("implement me")
 }
 
-func (b *BaseSink) Apply(changes chan source.Change) (committed chan uint64) {
+func (b *BaseSink) Apply(changes chan source.Change) (committed chan source.Checkpoint) {
 	panic("implement me")
 }
 
-func (b *BaseSink) apply(changes chan source.Change, applyFn ApplyFn, cleanFn CleanFn) (committed chan uint64) {
-	b.committed = make(chan uint64, 100)
+func (b *BaseSink) apply(changes chan source.Change, applyFn ApplyFn, cleanFn CleanFn) (committed chan source.Checkpoint) {
+	b.committed = make(chan source.Checkpoint, 100)
 	go func() {
 		for {
 			select {

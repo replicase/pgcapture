@@ -36,48 +36,51 @@ type PGXSink struct {
 	refresh bool
 }
 
-func (p *PGXSink) Setup() (lsn uint64, err error) {
+func (p *PGXSink) Setup() (cp source.Checkpoint, err error) {
 	ctx := context.Background()
 	p.conn, err = pgx.Connect(ctx, p.ConnStr)
 	if err != nil {
-		return 0, err
+		return cp, err
 	}
 	p.raw = p.conn.PgConn()
 
 	if _, err = p.conn.Exec(ctx, sql.InstallExtension); err != nil {
-		return 0, err
+		return cp, err
 	}
 
 	p.schema = decode.NewPGXSchemaLoader(p.conn)
 	if err = p.schema.RefreshKeys(); err != nil {
-		return 0, err
+		return cp, err
 	}
 
-	return p.findCommittedLSN(ctx)
+	return p.findCheckpoint(ctx)
 }
 
-func (p *PGXSink) findCommittedLSN(ctx context.Context) (lsn uint64, err error) {
-	var str string
-	err = p.conn.QueryRow(ctx, "SELECT commit FROM pgcapture.sources WHERE id = $1 AND message IS NULL", p.SourceID).Scan(&str)
+func (p *PGXSink) findCheckpoint(ctx context.Context) (cp source.Checkpoint, err error) {
+	var str, ts string
+	err = p.conn.QueryRow(ctx, "SELECT commit, commit_ts FROM pgcapture.sources WHERE id = $1 AND message IS NULL", p.SourceID).Scan(&str, &ts)
 	if err == pgx.ErrNoRows && p.LogPath != "" {
 		err = nil
 		if p.LogPath != "" {
-			str, err = ScanLSNFromLog(p.LogPath)
+			str, ts, err = ScanCheckpointFromLog(p.LogPath)
 		}
 	}
 	if str != "" {
 		var l pglogrepl.LSN
 		l, err = pglogrepl.ParseLSN(str)
-		lsn = uint64(l)
+		cp.LSN = uint64(l)
+	}
+	if ts != "" {
+		cp.Time, err = time.Parse(time.RFC3339Nano, ts)
 	}
 	if err != nil {
-		return 0, err
+		return cp, err
 	}
-	return lsn, nil
+	return cp, nil
 }
 
-func (p *PGXSink) Apply(changes chan source.Change) chan uint64 {
-	return p.BaseSink.apply(changes, func(change source.Change, committed chan uint64) (err error) {
+func (p *PGXSink) Apply(changes chan source.Change) chan source.Checkpoint {
+	return p.BaseSink.apply(changes, func(change source.Change, committed chan source.Checkpoint) (err error) {
 		switch change.Message.Type.(type) {
 		case *pb.Message_Begin:
 			if p.inTX {
@@ -105,7 +108,7 @@ func (p *PGXSink) Apply(changes chan source.Change) chan uint64 {
 			if err = p.handleCommit(change.Message.GetCommit()); err != nil {
 				return err
 			}
-			committed <- change.LSN
+			committed <- source.Checkpoint{LSN: change.LSN, Time: pgTime2Time(change.Message.GetCommit().CommitTime)}
 			p.inTX = false
 			p.skip = false
 			if p.refresh {
@@ -303,29 +306,33 @@ func (p *PGXSink) handleCommit(m *pb.Commit) (err error) {
 	return
 }
 
-func ScanLSNFromLog(path string) (lsn string, err error) {
+func ScanCheckpointFromLog(path string) (lsn, ts string, err error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	defer f.Close()
 
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
-		if match := LSNLogRegex.FindStringSubmatch(scanner.Text()); len(match) > 1 {
+		line := scanner.Text()
+		if match := LogLSNRegex.FindStringSubmatch(line); len(match) > 1 {
 			lsn = match[1]
+		} else if match = LogTxTimeRegex.FindStringSubmatch(line); len(match) > 1 {
+			ts = match[1]
 		}
 		f.SetReadDeadline(time.Now().Add(time.Second))
 	}
-	if lsn == "" {
-		return "", fmt.Errorf("lsn not found in log: %w", scanner.Err())
+	if lsn == "" || ts == "" {
+		return "", "", fmt.Errorf("lsn not found in log: %w", scanner.Err())
 	}
-	return lsn, nil
+	return lsn, ts, nil
 }
 
 var (
 	ErrIncompleteTx   = errors.New("receive incomplete transaction")
-	LSNLogRegex       = regexp.MustCompile(`(?:consistent recovery state reached at|redo done at) ([0-9A-F]{2,8}\/[0-9A-F]{2,8})`)
+	LogLSNRegex       = regexp.MustCompile(`(?:consistent recovery state reached at|redo done at) ([0-9A-F]{2,8}\/[0-9A-F]{2,8})`)
+	LogTxTimeRegex    = regexp.MustCompile(`last completed transaction was at log time (.*)\.?$`)
 	TableLoadDDLRegex = regexp.MustCompile(`(CREATE TABLE AS|SELECT)`)
 )
 
