@@ -11,16 +11,18 @@ import (
 	"github.com/jackc/pgx/v4"
 	"github.com/rueian/pgcapture/pkg/decode"
 	"github.com/rueian/pgcapture/pkg/pb"
+	"github.com/rueian/pgcapture/pkg/source"
 	"github.com/rueian/pgcapture/pkg/sql"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 )
 
 type PGXSink struct {
+	BaseSink
+
 	ConnStr  string
 	LogPath  string
 	SourceID string
@@ -29,11 +31,9 @@ type PGXSink struct {
 	raw    *pgconn.PgConn
 	schema *decode.PGXSchemaLoader
 
-	err     error
 	inTX    bool
 	skip    bool
 	refresh bool
-	stopped uint64
 }
 
 func (p *PGXSink) Setup() (lsn uint64, err error) {
@@ -76,83 +76,47 @@ func (p *PGXSink) findCommittedLSN(ctx context.Context) (lsn uint64, err error) 
 	return lsn, nil
 }
 
-func (p *PGXSink) Apply(changes chan *pb.Message) (committed chan uint64) {
-	committed = make(chan uint64, 100)
-	go func() {
-		var cleaned bool
-		check := func() bool {
-			if atomic.LoadUint64(&p.stopped) != 1 {
-				return true
+func (p *PGXSink) Apply(changes chan source.Change) chan uint64 {
+	return p.BaseSink.apply(changes, func(change source.Change, committed chan uint64) (err error) {
+		switch change.Message.Type.(type) {
+		case *pb.Message_Begin:
+			if p.inTX {
+				return ErrIncompleteTx
 			}
-			if !cleaned {
-				close(committed)
-				p.conn.Close(context.Background())
-				cleaned = true
+			err = p.handleBegin(change.Message.GetBegin())
+			p.inTX = true
+		case *pb.Message_Change:
+			if !p.inTX {
+				return ErrIncompleteTx
 			}
-			return false
-		}
-		for {
-			select {
-			case change, more := <-changes:
-				if !more {
-					return
-				}
-				if !check() {
-					continue
-				}
-				switch change.Type.(type) {
-				case *pb.Message_Begin:
-					if p.inTX {
-						p.err = ErrIncompleteTx
-						break
-					}
-					p.err = p.handleBegin(change.GetBegin())
-					p.inTX = true
-				case *pb.Message_Change:
-					if !p.inTX {
-						p.err = ErrIncompleteTx
-						break
-					}
-					if p.skip {
-						continue
-					}
-					if m := change.GetChange(); decode.IsDDL(m) {
-						p.refresh = true
-						p.err = p.handleDDL(m)
-					} else {
-						p.err = p.handleChange(m)
-					}
-				case *pb.Message_Commit:
-					if !p.inTX {
-						p.err = ErrIncompleteTx
-						break
-					}
-					p.err = p.handleCommit(change.GetCommit(), committed)
-					p.inTX = false
-					p.skip = false
-					if p.refresh && p.err == nil {
-						p.err = p.schema.RefreshKeys()
-						p.refresh = false
-					}
-				}
-				if p.err != nil {
-					p.Stop() // mark stop, but do not return
-				}
-			default:
-				check()
-				time.Sleep(time.Millisecond * 100)
+			if p.skip {
+				return nil
+			}
+			if m := change.Message.GetChange(); decode.IsDDL(m) {
+				p.refresh = true
+				err = p.handleDDL(m)
+			} else {
+				err = p.handleChange(m)
+			}
+		case *pb.Message_Commit:
+			if !p.inTX {
+				return ErrIncompleteTx
+			}
+			if err = p.handleCommit(change.Message.GetCommit()); err != nil {
+				return err
+			}
+			committed <- change.LSN
+			p.inTX = false
+			p.skip = false
+			if p.refresh {
+				err = p.schema.RefreshKeys()
+				p.refresh = false
 			}
 		}
-	}()
-	return
-}
-
-func (p *PGXSink) Error() error {
-	return p.err
-}
-
-func (p *PGXSink) Stop() {
-	atomic.StoreUint64(&p.stopped, 1)
+		return err
+	}, func() {
+		p.conn.Close(context.Background())
+	})
 }
 
 func (p *PGXSink) handleBegin(m *pb.Begin) (err error) {
@@ -325,7 +289,7 @@ const (
 	UpdateSourceSQL = "insert into pgcapture.sources(id,commit,commit_ts) values ($1,$2,$3) on conflict (id) do update set commit=EXCLUDED.commit,commit_ts=EXCLUDED.commit_ts,apply_ts=now()"
 )
 
-func (p *PGXSink) handleCommit(m *pb.Commit, committed chan uint64) (err error) {
+func (p *PGXSink) handleCommit(m *pb.Commit) (err error) {
 	ctx := context.Background()
 	if _, err = p.conn.Prepare(ctx, UpdateSourceSQL, UpdateSourceSQL); err != nil {
 		return err
@@ -336,7 +300,6 @@ func (p *PGXSink) handleCommit(m *pb.Commit, committed chan uint64) (err error) 
 	if _, err = p.conn.Exec(ctx, "commit"); err != nil {
 		return err
 	}
-	committed <- m.CommitLsn
 	return
 }
 

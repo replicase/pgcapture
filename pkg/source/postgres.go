@@ -8,7 +8,6 @@ import (
 	"github.com/jackc/pgproto3/v2"
 	"github.com/jackc/pgx/v4"
 	"github.com/rueian/pgcapture/pkg/decode"
-	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/sql"
 	"log"
 	"sync/atomic"
@@ -56,7 +55,7 @@ func (p *PGXSource) Setup() (err error) {
 	return err
 }
 
-func (p *PGXSource) Capture(lsn uint64) (changes chan *pb.Message, err error) {
+func (p *PGXSource) Capture(lsn uint64) (changes chan Change, err error) {
 	p.replConn, err = pgconn.Connect(context.Background(), p.ReplConnStr)
 	if err != nil {
 		return nil, err
@@ -82,7 +81,7 @@ func (p *PGXSource) Capture(lsn uint64) (changes chan *pb.Message, err error) {
 	p.ackLsn = uint64(requestLSN)
 	p.stop = make(chan struct{})
 
-	changes = make(chan *pb.Message, 100)
+	changes = make(chan Change, 100)
 	go func() {
 		defer p.cleanup()
 		defer close(p.stop)
@@ -95,7 +94,7 @@ func (p *PGXSource) Capture(lsn uint64) (changes chan *pb.Message, err error) {
 	return changes, nil
 }
 
-func (p *PGXSource) fetching(changes chan *pb.Message) (err error) {
+func (p *PGXSource) fetching(changes chan Change) (err error) {
 	reportInterval := time.Second * 5
 	nextReportTime := time.Now().Add(reportInterval)
 
@@ -150,7 +149,7 @@ func (p *PGXSource) fetching(changes chan *pb.Message) (err error) {
 							}
 						}
 					}
-					changes <- m
+					changes <- Change{LSN: uint64(xld.WALStart) + uint64(len(xld.WALData)), Message: m}
 				}
 			}
 		default:
