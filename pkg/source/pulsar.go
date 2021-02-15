@@ -7,6 +7,8 @@ import (
 	"github.com/jackc/pglogrepl"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"log"
+	"os"
+	"sync/atomic"
 	"time"
 )
 
@@ -16,7 +18,8 @@ type PulsarSource struct {
 	client       pulsar.Client
 	reader       pulsar.Reader
 
-	commitTime time.Time
+	stopped int64
+	stop    chan struct{}
 }
 
 func (p *PulsarSource) Setup() (err error) {
@@ -25,33 +28,48 @@ func (p *PulsarSource) Setup() (err error) {
 }
 
 func (p *PulsarSource) Capture(cp Checkpoint) (changes chan Change, err error) {
+	host, err := os.Hostname()
+	if err != nil {
+		return nil, err
+	}
 	p.reader, err = p.client.CreateReader(pulsar.ReaderOptions{
+		Name:                    host,
 		Topic:                   p.PulsarTopic,
-		StartMessageID:          pulsar.LatestMessageID(),
+		StartMessageID:          pulsar.EarliestMessageID(),
 		StartMessageIDInclusive: true,
 	})
 	if err != nil {
 		return nil, err
 	}
+	var mid pulsar.MessageID
 	if cp.MID != nil {
-		mid, err := pulsar.DeserializeMessageID(cp.MID)
-		if err != nil {
-			return nil, err
-		}
-		if err = p.reader.Seek(mid); err != nil {
-			return nil, err
+		if mid, err = pulsar.DeserializeMessageID(cp.MID); err == nil {
+			err = p.reader.Seek(mid)
 		}
 	} else if !cp.Time.IsZero() {
-		if err = p.reader.SeekByTime(cp.Time.Add(time.Hour * -1)); err != nil {
-			return nil, err
-		}
+		err = p.reader.SeekByTime(cp.Time.Add(time.Hour * -1))
+	} else {
+		err = p.reader.Seek(pulsar.LatestMessageID())
+	}
+	if err != nil {
+		return nil, err
 	}
 	changes = make(chan Change, 100)
+	p.stop = make(chan struct{})
 	go func(cp Checkpoint) {
 		defer close(changes)
+		defer close(p.stop)
 		var consistent bool
-		for p.reader.HasNext() {
-			msg, err := p.reader.Next(context.Background())
+		for {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			msg, err := p.reader.Next(ctx)
+			cancel()
+			if err == context.DeadlineExceeded {
+				if atomic.LoadInt64(&p.stopped) == 1 {
+					return
+				}
+				continue
+			}
 			if err != nil {
 				log.Fatalf("from pulsar failed: %v", err)
 				return
@@ -61,6 +79,7 @@ func (p *PulsarSource) Capture(cp Checkpoint) (changes chan Change, err error) {
 				log.Fatalf("from pulsar parse lsn failed: %v", err)
 				return
 			}
+
 			if cp.LSN != 0 && !consistent {
 				consistent = cp.LSN == uint64(lsn)
 				continue
@@ -89,5 +108,10 @@ func (p *PulsarSource) Commit(cp Checkpoint) {
 }
 
 func (p *PulsarSource) Stop() {
+	atomic.StoreInt64(&p.stopped, 1)
+	if p.stop != nil {
+		<-p.stop
+	}
 	p.reader.Close()
+	p.client.Close()
 }

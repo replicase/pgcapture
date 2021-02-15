@@ -7,6 +7,7 @@ import (
 	"github.com/jackc/pglogrepl"
 	"github.com/rueian/pgcapture/pkg/source"
 	"os"
+	"time"
 )
 
 type PulsarSink struct {
@@ -40,17 +41,19 @@ func (p *PulsarSink) Setup() (cp source.Checkpoint, err error) {
 	}
 	defer reader.Close()
 
-	for reader.HasNext() {
-		msg, err := reader.Next(context.Background())
-		if err != nil {
-			return cp, err
-		}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	msg, err := reader.Next(ctx)
+	cancel()
+	if msg != nil {
 		cp.Time = msg.EventTime()
 		l, err := pglogrepl.ParseLSN(msg.Properties()["lsn"])
 		if err != nil {
 			return cp, err
 		}
 		cp.LSN = uint64(l)
+	}
+	if err != nil && err != context.DeadlineExceeded {
+		return cp, err
 	}
 
 	p.producer, err = p.client.CreateProducer(pulsar.ProducerOptions{
