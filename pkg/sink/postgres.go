@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4"
+	"github.com/rueian/pgcapture/pkg/decode"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/sql"
 	"os"
@@ -24,12 +25,13 @@ type PGXSink struct {
 	LogPath  string
 	SourceID string
 
-	conn *pgx.Conn
-	raw  *pgconn.PgConn
-	err  error
+	conn   *pgx.Conn
+	raw    *pgconn.PgConn
+	schema *decode.PGXSchemaLoader
 
-	inTX bool
-
+	err     error
+	inTX    bool
+	refresh bool
 	stopped uint64
 }
 
@@ -39,14 +41,23 @@ func (p *PGXSink) Setup() (lsn uint64, err error) {
 	if err != nil {
 		return 0, err
 	}
+	p.raw = p.conn.PgConn()
 
 	if _, err = p.conn.Exec(ctx, sql.InstallExtension); err != nil {
 		return 0, err
 	}
 
+	p.schema = decode.NewPGXSchemaLoader(p.conn)
+	if err = p.schema.RefreshKeys(); err != nil {
+		return 0, err
+	}
+
+	return p.findCommittedLSN(ctx)
+}
+
+func (p *PGXSink) findCommittedLSN(ctx context.Context) (lsn uint64, err error) {
 	var str string
 	err = p.conn.QueryRow(ctx, "SELECT commit FROM pgcapture.sources WHERE id = $1 AND message IS NULL", p.SourceID).Scan(&str)
-	// try to load from log file
 	if err == pgx.ErrNoRows && p.LogPath != "" {
 		err = nil
 		if p.LogPath != "" {
@@ -61,8 +72,6 @@ func (p *PGXSink) Setup() (lsn uint64, err error) {
 	if err != nil {
 		return 0, err
 	}
-
-	p.raw = p.conn.PgConn()
 	return lsn, nil
 }
 
@@ -96,13 +105,23 @@ func (p *PGXSink) Apply(changes chan *pb.Message) (committed chan uint64) {
 					p.inTX = true
 				case *pb.Message_Change:
 					if p.inTX {
-						p.err = p.handleChange(change.GetChange())
+						m := change.GetChange()
+						if decode.IsDDL(m) {
+							p.refresh = true
+							p.err = p.handleDDL(m)
+						} else {
+							p.err = p.handleChange(m)
+						}
 					} else {
 						p.err = errors.New("receive incomplete transaction")
 					}
 				case *pb.Message_Commit:
 					p.err = p.handleCommit(change.GetCommit(), committed)
 					p.inTX = false
+					if p.refresh && p.err == nil {
+						p.err = p.schema.RefreshKeys()
+						p.refresh = false
+					}
 				}
 				if p.err != nil {
 					p.Stop() // mark stop, but do not return
@@ -131,9 +150,6 @@ func (p *PGXSink) handleBegin(m *pb.Begin) (err error) {
 
 func (p *PGXSink) handleChange(m *pb.Change) (err error) {
 	ctx := context.Background()
-	if m.Namespace == "pgcapture" && m.Table == "ddl_logs" {
-		return p.handleDDL(ctx, m)
-	}
 	switch m.Op {
 	case pb.Change_INSERT:
 		return p.handleInsert(ctx, m)
@@ -145,10 +161,10 @@ func (p *PGXSink) handleChange(m *pb.Change) (err error) {
 	return nil
 }
 
-func (p *PGXSink) handleDDL(ctx context.Context, m *pb.Change) (err error) {
+func (p *PGXSink) handleDDL(m *pb.Change) (err error) {
 	for _, field := range m.NewTuple {
 		if field.Name == "query" {
-			_, err = p.conn.Exec(ctx, string(field.Datum))
+			_, err = p.conn.Exec(context.Background(), string(field.Datum))
 			return err
 		}
 	}
@@ -212,7 +228,7 @@ func (p *PGXSink) handleDelete(ctx context.Context, m *pb.Change) (err error) {
 		fmts[i] = ci.ParamFormatCodeForOID(field.Oid)
 
 		query.WriteString(field.Name)
-		query.WriteString("\" = $" + strconv.Itoa(i+1))
+		query.WriteString("\"=$" + strconv.Itoa(i+1))
 		if i != fields-1 {
 			query.WriteString(" AND \"")
 		}
@@ -221,7 +237,77 @@ func (p *PGXSink) handleDelete(ctx context.Context, m *pb.Change) (err error) {
 }
 
 func (p *PGXSink) handleUpdate(ctx context.Context, m *pb.Change) (err error) {
-	return nil
+	var keys []*pb.Field
+	var sets []*pb.Field
+	if m.OldTuple != nil {
+		keys = m.OldTuple
+		sets = m.NewTuple
+	} else {
+		kf, err := p.schema.GetTableKey(m.Namespace, m.Table)
+		if err != nil {
+			return err
+		}
+		keys = make([]*pb.Field, 0, len(kf))
+		sets = make([]*pb.Field, 0, len(m.NewTuple)-len(kf))
+	nextField:
+		for _, f := range m.NewTuple {
+			for _, k := range kf {
+				if k == f.Name {
+					keys = append(keys, f)
+					continue nextField
+				}
+			}
+			sets = append(sets, f)
+		}
+	}
+	if len(sets) == 0 || len(keys) == 0 {
+		return nil
+	}
+
+	fields := len(sets) + len(keys)
+	vals := make([][]byte, fields)
+	oids := make([]uint32, fields)
+	fmts := make([]int16, fields)
+	ci := p.conn.ConnInfo()
+
+	var query strings.Builder
+	query.WriteString("update \"")
+	query.WriteString(m.Namespace)
+	query.WriteString("\".\"")
+	query.WriteString(m.Table)
+	query.WriteString("\" set \"")
+
+	var j int
+	for ; j < len(sets); j++ {
+		field := sets[j]
+		vals[j] = field.Datum
+		oids[j] = field.Oid
+		fmts[j] = ci.ParamFormatCodeForOID(field.Oid)
+
+		query.WriteString(field.Name)
+		query.WriteString("\"=$" + strconv.Itoa(j+1))
+		if j != len(sets)-1 {
+			query.WriteString(",\"")
+		}
+	}
+
+	query.WriteString("where \"")
+
+	for i := 0; i < len(keys); i++ {
+		j = i + j
+		field := keys[i]
+		vals[j] = field.Datum
+		oids[j] = field.Oid
+		fmts[j] = ci.ParamFormatCodeForOID(field.Oid)
+
+		query.WriteString(field.Name)
+		query.WriteString("\"=$" + strconv.Itoa(j+1))
+		if i != len(keys)-1 {
+			query.WriteString(" AND \"")
+		}
+	}
+
+	return p.raw.ExecParams(ctx, query.String(), vals, oids, fmts, fmts).Read().Err
 }
 
 const (

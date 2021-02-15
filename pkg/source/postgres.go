@@ -39,7 +39,7 @@ func (p *PGXSource) Setup() (err error) {
 		return err
 	}
 	p.schema = decode.NewPGXSchemaLoader(p.setupConn)
-	if err = p.schema.Refresh(); err != nil {
+	if err = p.schema.RefreshType(); err != nil {
 		return err
 	}
 
@@ -141,14 +141,13 @@ func (p *PGXSource) fetching(changes chan *pb.Message) (err error) {
 					return err
 				}
 				if m != nil {
-					if change := m.GetChange(); change != nil && change.Namespace == "pgcapture" {
-						switch change.Table {
-						case "ddl_logs":
-							if err = p.schema.Refresh(); err != nil {
+					if change := m.GetChange(); change != nil {
+						if decode.Ignore(change) {
+							continue
+						} else if decode.IsDDL(change) {
+							if err = p.schema.RefreshType(); err != nil {
 								return err
 							}
-						case "sources":
-							continue
 						}
 					}
 					changes <- m
