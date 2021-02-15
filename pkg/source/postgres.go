@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgproto3/v2"
 	"github.com/jackc/pgx/v4"
 	"github.com/rueian/pgcapture/pkg/decode"
+	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/sql"
 	"log"
 	"sync/atomic"
@@ -25,6 +26,8 @@ type PGXSource struct {
 
 	schema  *decode.PGXSchemaLoader
 	decoder *decode.PGLogicalDecoder
+
+	commitTime time.Time
 
 	ackLsn  uint64
 	stopped int64
@@ -140,16 +143,26 @@ func (p *PGXSource) fetching(changes chan Change) (err error) {
 					return err
 				}
 				if m != nil {
-					if change := m.GetChange(); change != nil {
-						if decode.Ignore(change) {
+					switch msg := m.Type.(type) {
+					case *pb.Message_Begin:
+						p.commitTime = PGTime2Time(msg.Begin.CommitTime)
+					case *pb.Message_Change:
+						if decode.Ignore(msg.Change) {
 							continue
-						} else if decode.IsDDL(change) {
+						} else if decode.IsDDL(msg.Change) {
 							if err = p.schema.RefreshType(); err != nil {
 								return err
 							}
 						}
 					}
-					changes <- Change{LSN: uint64(xld.WALStart) + uint64(len(xld.WALData)), Message: m}
+
+					changes <- Change{
+						Checkpoint: Checkpoint{
+							LSN:  uint64(xld.WALStart) + uint64(len(xld.WALData)),
+							Time: p.commitTime,
+						},
+						Message: m,
+					}
 				}
 			}
 		default:
@@ -194,3 +207,12 @@ var pgLogicalParam = []string{
 	"\"binary.basetypes_major_version\" '906'",
 	"\"binary.bigendian\" '1'",
 }
+
+func PGTime2Time(ts uint64) time.Time {
+	micro := microsecFromUnixEpochToY2K + int64(ts)
+	return time.Unix(micro/microInSecond, (micro%microInSecond)*nsInSecond)
+}
+
+const microInSecond = int64(1e6)
+const nsInSecond = int64(1e3)
+const microsecFromUnixEpochToY2K = int64(946684800 * 1000000)

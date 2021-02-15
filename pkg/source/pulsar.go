@@ -27,20 +27,29 @@ func (p *PulsarSource) Setup() (err error) {
 func (p *PulsarSource) Capture(cp Checkpoint) (changes chan Change, err error) {
 	p.reader, err = p.client.CreateReader(pulsar.ReaderOptions{
 		Topic:                   p.PulsarTopic,
-		StartMessageID:          pulsar.EarliestMessageID(),
+		StartMessageID:          pulsar.LatestMessageID(),
 		StartMessageIDInclusive: true,
 	})
 	if err != nil {
 		return nil, err
 	}
-	if !cp.Time.IsZero() {
-		if err = p.reader.SeekByTime(cp.Time); err != nil {
+	if cp.MID != nil {
+		mid, err := pulsar.DeserializeMessageID(cp.MID)
+		if err != nil {
+			return nil, err
+		}
+		if err = p.reader.Seek(mid); err != nil {
+			return nil, err
+		}
+	} else if !cp.Time.IsZero() {
+		if err = p.reader.SeekByTime(cp.Time.Add(time.Hour * -1)); err != nil {
 			return nil, err
 		}
 	}
 	changes = make(chan Change, 100)
 	go func(cp Checkpoint) {
 		defer close(changes)
+		var consistent bool
 		for p.reader.HasNext() {
 			msg, err := p.reader.Next(context.Background())
 			if err != nil {
@@ -52,15 +61,24 @@ func (p *PulsarSource) Capture(cp Checkpoint) (changes chan Change, err error) {
 				log.Fatalf("from pulsar parse lsn failed: %v", err)
 				return
 			}
-			if cp.LSN > uint64(lsn) {
+			if cp.LSN != 0 && !consistent {
+				consistent = cp.LSN == uint64(lsn)
 				continue
 			}
+
 			m := &pb.Message{}
 			if err = proto.Unmarshal(msg.Payload(), m); err != nil {
 				log.Fatalf("from pulsar parse proto failed: %v", err)
 				return
 			}
-			changes <- Change{LSN: uint64(lsn), Message: m}
+			changes <- Change{
+				Checkpoint: Checkpoint{
+					LSN:  uint64(lsn),
+					MID:  msg.ID().Serialize(),
+					Time: msg.EventTime(),
+				},
+				Message: m,
+			}
 		}
 	}(cp)
 	return changes, nil

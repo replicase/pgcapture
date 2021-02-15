@@ -7,7 +7,6 @@ import (
 	"github.com/jackc/pglogrepl"
 	"github.com/rueian/pgcapture/pkg/source"
 	"os"
-	"time"
 )
 
 type PulsarSink struct {
@@ -17,8 +16,6 @@ type PulsarSink struct {
 	PulsarTopic  string
 	client       pulsar.Client
 	producer     pulsar.Producer
-
-	commitTime time.Time
 }
 
 func (p *PulsarSink) Setup() (cp source.Checkpoint, err error) {
@@ -74,15 +71,7 @@ func (p *PulsarSink) Setup() (cp source.Checkpoint, err error) {
 
 func (p *PulsarSink) Apply(changes chan source.Change) chan source.Checkpoint {
 	return p.BaseSink.apply(changes, func(change source.Change, committed chan source.Checkpoint) error {
-		if begin := change.Message.GetBegin(); begin != nil {
-			p.commitTime = pgTime2Time(begin.CommitTime)
-		}
-
-		checkpoint := source.Checkpoint{
-			LSN:  change.LSN,
-			Time: p.commitTime,
-		}
-		seq := int64(change.LSN)
+		seq := int64(change.Checkpoint.LSN)
 
 		bs, err := proto.Marshal(change.Message)
 		if err != nil {
@@ -91,8 +80,8 @@ func (p *PulsarSink) Apply(changes chan source.Change) chan source.Checkpoint {
 
 		p.producer.SendAsync(context.Background(), &pulsar.ProducerMessage{
 			Payload:    bs,
-			Properties: map[string]string{"lsn": pglogrepl.LSN(change.LSN).String()},
-			EventTime:  checkpoint.Time,
+			Properties: map[string]string{"lsn": pglogrepl.LSN(change.Checkpoint.LSN).String()},
+			EventTime:  change.Checkpoint.Time,
 			SequenceID: &seq,
 		}, func(id pulsar.MessageID, message *pulsar.ProducerMessage, err error) {
 			if err != nil {
@@ -100,7 +89,7 @@ func (p *PulsarSink) Apply(changes chan source.Change) chan source.Checkpoint {
 				p.BaseSink.Stop()
 				return
 			}
-			committed <- checkpoint
+			committed <- change.Checkpoint
 		})
 		return nil
 	}, func() {

@@ -58,8 +58,10 @@ func (p *PGXSink) Setup() (cp source.Checkpoint, err error) {
 
 func (p *PGXSink) findCheckpoint(ctx context.Context) (cp source.Checkpoint, err error) {
 	var str, ts string
-	err = p.conn.QueryRow(ctx, "SELECT commit, commit_ts FROM pgcapture.sources WHERE id = $1 AND message IS NULL", p.SourceID).Scan(&str, &ts)
-	if err == pgx.ErrNoRows && p.LogPath != "" {
+	var pts pgtype.Timestamptz
+	var msgID []byte
+	err = p.conn.QueryRow(ctx, "SELECT commit, commit_ts, msg_id FROM pgcapture.sources WHERE id = $1 AND status IS NULL", p.SourceID).Scan(&str, &pts, &msgID)
+	if err == pgx.ErrNoRows {
 		err = nil
 		if p.LogPath != "" {
 			str, ts, err = ScanCheckpointFromLog(p.LogPath)
@@ -72,21 +74,24 @@ func (p *PGXSink) findCheckpoint(ctx context.Context) (cp source.Checkpoint, err
 	}
 	if ts != "" {
 		cp.Time, err = time.Parse(time.RFC3339Nano, ts)
+	} else {
+		cp.Time = pts.Time
 	}
 	if err != nil {
 		return cp, err
 	}
+	cp.MID = msgID
 	return cp, nil
 }
 
 func (p *PGXSink) Apply(changes chan source.Change) chan source.Checkpoint {
 	return p.BaseSink.apply(changes, func(change source.Change, committed chan source.Checkpoint) (err error) {
-		switch change.Message.Type.(type) {
+		switch msg := change.Message.Type.(type) {
 		case *pb.Message_Begin:
 			if p.inTX {
 				return ErrIncompleteTx
 			}
-			err = p.handleBegin(change.Message.GetBegin())
+			err = p.handleBegin(msg.Begin)
 			p.inTX = true
 		case *pb.Message_Change:
 			if !p.inTX {
@@ -95,20 +100,20 @@ func (p *PGXSink) Apply(changes chan source.Change) chan source.Checkpoint {
 			if p.skip {
 				return nil
 			}
-			if m := change.Message.GetChange(); decode.IsDDL(m) {
+			if decode.IsDDL(msg.Change) {
 				p.refresh = true
-				err = p.handleDDL(m)
+				err = p.handleDDL(msg.Change)
 			} else {
-				err = p.handleChange(m)
+				err = p.handleChange(msg.Change)
 			}
 		case *pb.Message_Commit:
 			if !p.inTX {
 				return ErrIncompleteTx
 			}
-			if err = p.handleCommit(change.Message.GetCommit()); err != nil {
+			if err = p.handleCommit(change.Checkpoint); err != nil {
 				return err
 			}
-			committed <- source.Checkpoint{LSN: change.LSN, Time: pgTime2Time(change.Message.GetCommit().CommitTime)}
+			committed <- change.Checkpoint
 			p.inTX = false
 			p.skip = false
 			if p.refresh {
@@ -289,15 +294,15 @@ func (p *PGXSink) handleUpdate(ctx context.Context, m *pb.Change) (err error) {
 }
 
 const (
-	UpdateSourceSQL = "insert into pgcapture.sources(id,commit,commit_ts) values ($1,$2,$3) on conflict (id) do update set commit=EXCLUDED.commit,commit_ts=EXCLUDED.commit_ts,apply_ts=now()"
+	UpdateSourceSQL = "insert into pgcapture.sources(id,commit,commit_ts,msg_id) values ($1,$2,$3,$4) on conflict (id) do update set commit=EXCLUDED.commit,commit_ts=EXCLUDED.commit_ts,msg_id=EXCLUDED.msg_id,apply_ts=now()"
 )
 
-func (p *PGXSink) handleCommit(m *pb.Commit) (err error) {
+func (p *PGXSink) handleCommit(cp source.Checkpoint) (err error) {
 	ctx := context.Background()
 	if _, err = p.conn.Prepare(ctx, UpdateSourceSQL, UpdateSourceSQL); err != nil {
 		return err
 	}
-	if _, err = p.conn.Exec(ctx, UpdateSourceSQL, pgText(p.SourceID), pgInt8(int64(m.EndLsn)), pgTz(m.CommitTime)); err != nil {
+	if _, err = p.conn.Exec(ctx, UpdateSourceSQL, pgText(p.SourceID), pgInt8(int64(cp.LSN)), pgTz(cp.Time), pgBytea(cp.MID)); err != nil {
 		return err
 	}
 	if _, err = p.conn.Exec(ctx, "commit"); err != nil {
@@ -344,15 +349,13 @@ func pgInt8(i int64) pgtype.Int8 {
 	return pgtype.Int8{Int: i, Status: pgtype.Present}
 }
 
-func pgTz(ts uint64) pgtype.Timestamptz {
-	return pgtype.Timestamptz{Time: pgTime2Time(ts), Status: pgtype.Present}
+func pgTz(ts time.Time) pgtype.Timestamptz {
+	return pgtype.Timestamptz{Time: ts, Status: pgtype.Present}
 }
 
-func pgTime2Time(ts uint64) time.Time {
-	micro := microsecFromUnixEpochToY2K + int64(ts)
-	return time.Unix(micro/microInSecond, (micro%microInSecond)*nsInSecond)
+func pgBytea(bs []byte) pgtype.Bytea {
+	if bs == nil {
+		return pgtype.Bytea{Status: pgtype.Null}
+	}
+	return pgtype.Bytea{Bytes: bs, Status: pgtype.Present}
 }
-
-const microInSecond = int64(1e6)
-const nsInSecond = int64(1e3)
-const microsecFromUnixEpochToY2K = int64(946684800 * 1000000)

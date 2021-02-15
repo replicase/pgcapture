@@ -8,11 +8,12 @@ import (
 type Checkpoint struct {
 	LSN  uint64
 	Time time.Time
+	MID  []byte
 }
 
 type Change struct {
-	LSN     uint64
-	Message *pb.Message
+	Checkpoint Checkpoint
+	Message    *pb.Message
 }
 
 type Source interface {
