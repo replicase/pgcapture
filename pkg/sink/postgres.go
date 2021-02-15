@@ -31,6 +31,7 @@ type PGXSink struct {
 
 	err     error
 	inTX    bool
+	skip    bool
 	refresh bool
 	stopped uint64
 }
@@ -101,23 +102,34 @@ func (p *PGXSink) Apply(changes chan *pb.Message) (committed chan uint64) {
 				}
 				switch change.Type.(type) {
 				case *pb.Message_Begin:
+					if p.inTX {
+						p.err = ErrIncompleteTx
+						break
+					}
 					p.err = p.handleBegin(change.GetBegin())
 					p.inTX = true
 				case *pb.Message_Change:
-					if p.inTX {
-						m := change.GetChange()
-						if decode.IsDDL(m) {
-							p.refresh = true
-							p.err = p.handleDDL(m)
-						} else {
-							p.err = p.handleChange(m)
-						}
+					if !p.inTX {
+						p.err = ErrIncompleteTx
+						break
+					}
+					if p.skip {
+						continue
+					}
+					if m := change.GetChange(); decode.IsDDL(m) {
+						p.refresh = true
+						p.err = p.handleDDL(m)
 					} else {
-						p.err = errors.New("receive incomplete transaction")
+						p.err = p.handleChange(m)
 					}
 				case *pb.Message_Commit:
+					if !p.inTX {
+						p.err = ErrIncompleteTx
+						break
+					}
 					p.err = p.handleCommit(change.GetCommit(), committed)
 					p.inTX = false
+					p.skip = false
 					if p.refresh && p.err == nil {
 						p.err = p.schema.RefreshKeys()
 						p.refresh = false
@@ -163,9 +175,11 @@ func (p *PGXSink) handleChange(m *pb.Change) (err error) {
 
 func (p *PGXSink) handleDDL(m *pb.Change) (err error) {
 	for _, field := range m.NewTuple {
-		if field.Name == "query" {
+		switch field.Name {
+		case "query":
 			_, err = p.conn.Exec(context.Background(), string(field.Datum))
-			return err
+		case "tags":
+			p.skip = TableLoadDDLRegex.Match(field.Datum)
 		}
 	}
 	return nil
@@ -346,7 +360,11 @@ func ScanLSNFromLog(path string) (lsn string, err error) {
 	return lsn, nil
 }
 
-var LSNLogRegex = regexp.MustCompile(`(?:consistent recovery state reached at|redo done at) ([0-9A-F]{2,8}\/[0-9A-F]{2,8})`)
+var (
+	ErrIncompleteTx   = errors.New("receive incomplete transaction")
+	LSNLogRegex       = regexp.MustCompile(`(?:consistent recovery state reached at|redo done at) ([0-9A-F]{2,8}\/[0-9A-F]{2,8})`)
+	TableLoadDDLRegex = regexp.MustCompile(`(CREATE TABLE AS|SELECT)`)
+)
 
 func pgText(t string) pgtype.Text {
 	return pgtype.Text{String: t, Status: pgtype.Present}
