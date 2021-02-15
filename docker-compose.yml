@@ -10,5 +10,10 @@ services:
       - ./hack/postgres:/pgc
       - ./share:/extension
       - pgcapture:/var/lib/postgresql/data
+  pulsar:
+    image: apachepulsar/pulsar:2.6.1
+    command: ["bin/pulsar", "standalone"]
+    ports:
+      - 6650:6650
 volumes:
   pgcapture: {}
