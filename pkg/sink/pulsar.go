@@ -45,7 +45,6 @@ func (p *PulsarSink) Setup() (cp source.Checkpoint, err error) {
 	msg, err := reader.Next(ctx)
 	cancel()
 	if msg != nil {
-		cp.Time = msg.EventTime()
 		l, err := pglogrepl.ParseLSN(msg.Properties()["lsn"])
 		if err != nil {
 			return cp, err
@@ -84,7 +83,6 @@ func (p *PulsarSink) Apply(changes chan source.Change) chan source.Checkpoint {
 		p.producer.SendAsync(context.Background(), &pulsar.ProducerMessage{
 			Payload:    bs,
 			Properties: map[string]string{"lsn": pglogrepl.LSN(change.Checkpoint.LSN).String()},
-			EventTime:  change.Checkpoint.Time,
 			SequenceID: &seq,
 		}, func(id pulsar.MessageID, message *pulsar.ProducerMessage, err error) {
 			if err != nil {

@@ -27,14 +27,11 @@ func (p *PulsarSource) Setup() (err error) {
 }
 
 func (p *PulsarSource) Capture(cp Checkpoint) (changes chan Change, err error) {
-	var mid pulsar.MessageID
-
-	if cp.LSN == 0 {
-		mid = pulsar.LatestMessageID()
-	} else if cp.MID != nil {
-		if mid, err = pulsar.DeserializeMessageID(cp.MID); err != nil {
-			return nil, err
-		}
+	var sid pulsar.MessageID
+	if cp.Time.IsZero() {
+		sid = pulsar.LatestMessageID()
+	} else {
+		sid = pulsar.EarliestMessageID()
 	}
 
 	host, err := os.Hostname()
@@ -45,14 +42,14 @@ func (p *PulsarSource) Capture(cp Checkpoint) (changes chan Change, err error) {
 	p.reader, err = p.client.CreateReader(pulsar.ReaderOptions{
 		Name:                    host,
 		Topic:                   p.PulsarTopic,
-		StartMessageID:          mid,
+		StartMessageID:          sid,
 		StartMessageIDInclusive: true,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	if cp.MID == nil && !cp.Time.IsZero() {
+	if !cp.Time.IsZero() {
 		if err = p.reader.SeekByTime(cp.Time.Add(-1 * time.Second)); err != nil {
 			return nil, err
 		}
@@ -87,14 +84,7 @@ func (p *PulsarSource) Capture(cp Checkpoint) (changes chan Change, err error) {
 			}
 		}
 
-		change = Change{
-			Checkpoint: Checkpoint{
-				LSN:  uint64(lsn),
-				MID:  msg.ID().Serialize(),
-				Time: msg.EventTime(),
-			},
-			Message: m,
-		}
+		change = Change{Checkpoint: Checkpoint{LSN: uint64(lsn)}, Message: m}
 		return
 	}, func() {
 		p.reader.Close()

@@ -12,7 +12,6 @@ import (
 type Checkpoint struct {
 	LSN  uint64
 	Time time.Time
-	MID  []byte
 }
 
 type Change struct {

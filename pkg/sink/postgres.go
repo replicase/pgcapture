@@ -59,8 +59,7 @@ func (p *PGXSink) Setup() (cp source.Checkpoint, err error) {
 func (p *PGXSink) findCheckpoint(ctx context.Context) (cp source.Checkpoint, err error) {
 	var str, ts string
 	var pts pgtype.Timestamptz
-	var msgID []byte
-	err = p.conn.QueryRow(ctx, "SELECT commit, commit_ts, msg_id FROM pgcapture.sources WHERE id = $1 AND status IS NULL", p.SourceID).Scan(&str, &pts, &msgID)
+	err = p.conn.QueryRow(ctx, "SELECT commit, commit_ts FROM pgcapture.sources WHERE id = $1 AND status IS NULL", p.SourceID).Scan(&str, &pts)
 	if err == pgx.ErrNoRows {
 		err = nil
 		if p.LogPath != "" {
@@ -80,7 +79,6 @@ func (p *PGXSink) findCheckpoint(ctx context.Context) (cp source.Checkpoint, err
 	if err != nil {
 		return cp, err
 	}
-	cp.MID = msgID
 	return cp, nil
 }
 
@@ -110,7 +108,7 @@ func (p *PGXSink) Apply(changes chan source.Change) chan source.Checkpoint {
 			if !p.inTX {
 				return ErrIncompleteTx
 			}
-			if err = p.handleCommit(change.Checkpoint); err != nil {
+			if err = p.handleCommit(change.Checkpoint, msg.Commit); err != nil {
 				return err
 			}
 			committed <- change.Checkpoint
@@ -294,15 +292,15 @@ func (p *PGXSink) handleUpdate(ctx context.Context, m *pb.Change) (err error) {
 }
 
 const (
-	UpdateSourceSQL = "insert into pgcapture.sources(id,commit,commit_ts,msg_id) values ($1,$2,$3,$4) on conflict (id) do update set commit=EXCLUDED.commit,commit_ts=EXCLUDED.commit_ts,msg_id=EXCLUDED.msg_id,apply_ts=now()"
+	UpdateSourceSQL = "insert into pgcapture.sources(id,commit,commit_ts) values ($1,$2,$3) on conflict (id) do update set commit=EXCLUDED.commit,commit_ts=EXCLUDED.commit_ts,apply_ts=now()"
 )
 
-func (p *PGXSink) handleCommit(cp source.Checkpoint) (err error) {
+func (p *PGXSink) handleCommit(cp source.Checkpoint, commit *pb.Commit) (err error) {
 	ctx := context.Background()
 	if _, err = p.conn.Prepare(ctx, UpdateSourceSQL, UpdateSourceSQL); err != nil {
 		return err
 	}
-	if _, err = p.conn.Exec(ctx, UpdateSourceSQL, pgText(p.SourceID), pgInt8(int64(cp.LSN)), pgTz(cp.Time), pgBytea(cp.MID)); err != nil {
+	if _, err = p.conn.Exec(ctx, UpdateSourceSQL, pgText(p.SourceID), pgInt8(int64(cp.LSN)), pgTz(commit.CommitTime)); err != nil {
 		return err
 	}
 	if _, err = p.conn.Exec(ctx, "commit"); err != nil {
@@ -349,13 +347,6 @@ func pgInt8(i int64) pgtype.Int8 {
 	return pgtype.Int8{Int: i, Status: pgtype.Present}
 }
 
-func pgTz(ts time.Time) pgtype.Timestamptz {
-	return pgtype.Timestamptz{Time: ts, Status: pgtype.Present}
-}
-
-func pgBytea(bs []byte) pgtype.Bytea {
-	if bs == nil {
-		return pgtype.Bytea{Status: pgtype.Null}
-	}
-	return pgtype.Bytea{Bytes: bs, Status: pgtype.Present}
+func pgTz(ts uint64) pgtype.Timestamptz {
+	return pgtype.Timestamptz{Time: source.PGTime2Time(ts), Status: pgtype.Present}
 }
