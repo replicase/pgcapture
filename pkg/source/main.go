@@ -23,6 +23,7 @@ type Source interface {
 	Setup() error
 	Capture(cp Checkpoint) (changes chan Change, err error)
 	Commit(cp Checkpoint)
+	Error() error
 	Stop()
 }
 

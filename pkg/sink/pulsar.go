@@ -2,11 +2,13 @@ package sink
 
 import (
 	"context"
+	"errors"
 	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/golang/protobuf/proto"
 	"github.com/jackc/pglogrepl"
 	"github.com/rueian/pgcapture/pkg/source"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -15,8 +17,10 @@ type PulsarSink struct {
 
 	PulsarOption pulsar.ClientOptions
 	PulsarTopic  string
-	client       pulsar.Client
-	producer     pulsar.Producer
+
+	client   pulsar.Client
+	producer pulsar.Producer
+	xid      string
 }
 
 func (p *PulsarSink) Setup() (cp source.Checkpoint, err error) {
@@ -41,18 +45,20 @@ func (p *PulsarSink) Setup() (cp source.Checkpoint, err error) {
 	}
 	defer reader.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	msg, err := reader.Next(ctx)
-	cancel()
-	if msg != nil {
-		l, err := pglogrepl.ParseLSN(msg.Properties()["lsn"])
-		if err != nil {
+	for reader.HasNext() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		msg, err := reader.Next(ctx)
+		cancel()
+		if msg != nil {
+			l, err := pglogrepl.ParseLSN(msg.Properties()["lsn"])
+			if err != nil {
+				return cp, err
+			}
+			cp.LSN = uint64(l)
+		}
+		if err != nil && err != context.DeadlineExceeded {
 			return cp, err
 		}
-		cp.LSN = uint64(l)
-	}
-	if err != nil && err != context.DeadlineExceeded {
-		return cp, err
 	}
 
 	p.producer, err = p.client.CreateProducer(pulsar.ProducerOptions{
@@ -73,6 +79,12 @@ func (p *PulsarSink) Setup() (cp source.Checkpoint, err error) {
 
 func (p *PulsarSink) Apply(changes chan source.Change) chan source.Checkpoint {
 	return p.BaseSink.apply(changes, func(change source.Change, committed chan source.Checkpoint) error {
+		if begin := change.Message.GetBegin(); begin != nil {
+			p.xid = strconv.FormatUint(uint64(begin.RemoteXid), 16)
+		} else if p.xid == "" {
+			return errors.New("receive incomplete transaction")
+		}
+
 		seq := int64(change.Checkpoint.LSN)
 
 		bs, err := proto.Marshal(change.Message)
@@ -81,6 +93,7 @@ func (p *PulsarSink) Apply(changes chan source.Change) chan source.Checkpoint {
 		}
 
 		p.producer.SendAsync(context.Background(), &pulsar.ProducerMessage{
+			Key:        p.xid,
 			Payload:    bs,
 			Properties: map[string]string{"lsn": pglogrepl.LSN(change.Checkpoint.LSN).String()},
 			SequenceID: &seq,
