@@ -19,8 +19,8 @@ type Sink interface {
 type BaseSink struct {
 	committed chan source.Checkpoint
 
-	stopped uint64
-	err     error
+	stop int64
+	err  error
 }
 
 func (b *BaseSink) Setup() (cp source.Checkpoint, err error) {
@@ -34,21 +34,18 @@ func (b *BaseSink) Apply(changes chan source.Change) (committed chan source.Chec
 func (b *BaseSink) apply(changes chan source.Change, applyFn ApplyFn, cleanFn CleanFn) (committed chan source.Checkpoint) {
 	b.committed = make(chan source.Checkpoint, 100)
 	go func() {
-		for {
-			select {
-			case change, more := <-changes:
-				if !more {
-					return
-				}
-				if b.check(cleanFn) {
-					continue // skip message, but do not return
-				}
+		for !b.clean(cleanFn) {
+			time.Sleep(time.Second)
+		}
+	}()
+	go func() {
+		defer b.Stop()
+		// this loop should be exit only if the input channel is closed
+		for change := range changes {
+			if !b.stopped() {
 				if b.err = applyFn(change, b.committed); b.err != nil {
-					b.Stop() // mark stop, but do not return
+					b.Stop()
 				}
-			default:
-				b.check(cleanFn)
-				time.Sleep(time.Millisecond * 100)
 			}
 		}
 	}()
@@ -60,17 +57,17 @@ func (b *BaseSink) Error() error {
 }
 
 func (b *BaseSink) Stop() {
-	atomic.StoreUint64(&b.stopped, 1)
+	atomic.CompareAndSwapInt64(&b.stop, 0, 1)
 }
 
-func (b *BaseSink) check(cleanFn CleanFn) (stopped bool) {
-	switch atomic.LoadUint64(&b.stopped) {
-	case 0:
-		return false
-	case 1:
+func (b *BaseSink) stopped() (stopped bool) {
+	return atomic.LoadInt64(&b.stop) != 0
+}
+
+func (b *BaseSink) clean(cleanFn CleanFn) (cleaned bool) {
+	if cleaned = atomic.CompareAndSwapInt64(&b.stop, 1, 2); cleaned {
 		cleanFn()
 		close(b.committed)
-		atomic.StoreUint64(&b.stopped, 2)
 	}
-	return true
+	return
 }
