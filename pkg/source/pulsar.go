@@ -6,20 +6,19 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/jackc/pglogrepl"
 	"github.com/rueian/pgcapture/pkg/pb"
-	"log"
 	"os"
-	"sync/atomic"
 	"time"
 )
 
 type PulsarSource struct {
+	BaseSource
+
 	PulsarOption pulsar.ClientOptions
 	PulsarTopic  string
 	client       pulsar.Client
 	reader       pulsar.Reader
 
-	stopped int64
-	stop    chan struct{}
+	consistent bool
 }
 
 func (p *PulsarSource) Setup() (err error) {
@@ -59,71 +58,50 @@ func (p *PulsarSource) Capture(cp Checkpoint) (changes chan Change, err error) {
 		}
 	}
 
-	changes = make(chan Change, 100)
-	p.stop = make(chan struct{})
-	go func(cp Checkpoint) {
-		defer close(changes)
-		defer close(p.stop)
-		var consistent bool
-		for {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			msg, err := p.reader.Next(ctx)
-			cancel()
-			if err == context.DeadlineExceeded {
-				if atomic.LoadInt64(&p.stopped) == 1 {
-					return
-				}
-				continue
-			}
-			if err != nil {
-				log.Fatalf("from pulsar failed: %v", err)
+	return p.BaseSource.capture(func(ctx context.Context) (change Change, err error) {
+		var msg pulsar.Message
+		var lsn pglogrepl.LSN
+
+		msg, err = p.reader.Next(ctx)
+		if err != nil {
+			return
+		}
+		lsn, err = pglogrepl.ParseLSN(msg.Properties()["lsn"])
+		if err != nil {
+			return
+		}
+
+		if !p.consistent && cp.LSN != 0 {
+			p.consistent = cp.LSN == uint64(lsn)
+			return
+		}
+
+		m := &pb.Message{}
+		if err = proto.Unmarshal(msg.Payload(), m); err != nil {
+			return
+		}
+
+		if !p.consistent && cp.LSN == 0 {
+			if p.consistent = m.GetBegin() != nil; !p.consistent {
 				return
-			}
-			lsn, err := pglogrepl.ParseLSN(msg.Properties()["lsn"])
-			if err != nil {
-				log.Fatalf("from pulsar parse lsn failed: %v", err)
-				return
-			}
-
-			if !consistent && cp.LSN != 0 {
-				consistent = cp.LSN == uint64(lsn)
-				continue
-			}
-
-			m := &pb.Message{}
-			if err = proto.Unmarshal(msg.Payload(), m); err != nil {
-				log.Fatalf("from pulsar parse proto failed: %v", err)
-				return
-			}
-
-			if !consistent && cp.LSN == 0 {
-				if consistent = m.GetBegin() != nil; !consistent {
-					continue
-				}
-			}
-
-			changes <- Change{
-				Checkpoint: Checkpoint{
-					LSN:  uint64(lsn),
-					MID:  msg.ID().Serialize(),
-					Time: msg.EventTime(),
-				},
-				Message: m,
 			}
 		}
-	}(cp)
-	return changes, nil
+
+		change = Change{
+			Checkpoint: Checkpoint{
+				LSN:  uint64(lsn),
+				MID:  msg.ID().Serialize(),
+				Time: msg.EventTime(),
+			},
+			Message: m,
+		}
+		return
+	}, func() {
+		p.reader.Close()
+		p.client.Close()
+	})
 }
 
 func (p *PulsarSource) Commit(cp Checkpoint) {
 	return
-}
-
-func (p *PulsarSource) Stop() {
-	atomic.StoreInt64(&p.stopped, 1)
-	if p.stop != nil {
-		<-p.stop
-	}
-	p.reader.Close()
-	p.client.Close()
 }

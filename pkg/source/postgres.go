@@ -8,7 +8,6 @@ import (
 	"github.com/jackc/pgproto3/v2"
 	"github.com/jackc/pgx/v4"
 	"github.com/rueian/pgcapture/pkg/decode"
-	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/sql"
 	"log"
 	"sync/atomic"
@@ -16,6 +15,8 @@ import (
 )
 
 type PGXSource struct {
+	BaseSource
+
 	SetupConnStr string
 	ReplConnStr  string
 	ReplSlot     string
@@ -27,11 +28,9 @@ type PGXSource struct {
 	schema  *decode.PGXSchemaLoader
 	decoder *decode.PGLogicalDecoder
 
-	commitTime time.Time
+	nextReportTime time.Time
 
-	ackLsn  uint64
-	stopped int64
-	stop    chan struct{}
+	ackLsn uint64
 }
 
 func (p *PGXSource) Setup() (err error) {
@@ -59,6 +58,12 @@ func (p *PGXSource) Setup() (err error) {
 }
 
 func (p *PGXSource) Capture(cp Checkpoint) (changes chan Change, err error) {
+	defer func() {
+		if err != nil {
+			p.cleanup()
+		}
+	}()
+
 	p.replConn, err = pgconn.Connect(context.Background(), p.ReplConnStr)
 	if err != nil {
 		return nil, err
@@ -82,93 +87,56 @@ func (p *PGXSource) Capture(cp Checkpoint) (changes chan Change, err error) {
 		return nil, err
 	}
 	p.ackLsn = uint64(requestLSN)
-	p.stop = make(chan struct{})
 
-	changes = make(chan Change, 100)
-	go func() {
-		defer p.cleanup()
-		defer close(p.stop)
-		defer close(changes)
-		if err = p.fetching(changes); err != nil {
-			log.Fatalf("Logical replication failed: %v", err)
-		}
-	}()
-
-	return changes, nil
+	return p.BaseSource.capture(p.fetching, p.cleanup)
 }
 
-func (p *PGXSource) fetching(changes chan Change) (err error) {
-	reportInterval := time.Second * 5
-	nextReportTime := time.Now().Add(reportInterval)
-
-	for {
-		if time.Now().After(nextReportTime) {
-			if err = pglogrepl.SendStandbyStatusUpdate(context.Background(), p.replConn, pglogrepl.StandbyStatusUpdate{WALWritePosition: p.committedLSN()}); err != nil {
-				return err
-			}
-			nextReportTime = time.Now().Add(reportInterval)
-			if atomic.LoadInt64(&p.stopped) == 1 {
-				return nil
-			}
+func (p *PGXSource) fetching(ctx context.Context) (change Change, err error) {
+	if time.Now().After(p.nextReportTime) {
+		if err = pglogrepl.SendStandbyStatusUpdate(ctx, p.replConn, pglogrepl.StandbyStatusUpdate{WALWritePosition: p.committedLSN()}); err != nil {
+			return change, err
 		}
-
-		ctx, cancel := context.WithDeadline(context.Background(), nextReportTime)
-		msg, err := p.replConn.ReceiveMessage(ctx)
-		cancel()
-		if err != nil {
-			if pgconn.Timeout(err) {
-				continue
-			}
-			return err
-		}
-
-		switch msg := msg.(type) {
-		case *pgproto3.CopyData:
-			switch msg.Data[0] {
-			case pglogrepl.PrimaryKeepaliveMessageByteID:
-				pkm, err := pglogrepl.ParsePrimaryKeepaliveMessage(msg.Data[1:])
-				if err != nil {
-					return err
-				}
-				if pkm.ReplyRequested {
-					nextReportTime = time.Time{}
-				}
-			case pglogrepl.XLogDataByteID:
-				xld, err := pglogrepl.ParseXLogData(msg.Data[1:])
-				if err != nil {
-					return err
-				}
-				m, err := p.decoder.Decode(xld.WALData)
-				if err != nil {
-					return err
-				}
-				if m != nil {
-					switch msg := m.Type.(type) {
-					case *pb.Message_Begin:
-						p.commitTime = PGTime2Time(msg.Begin.CommitTime)
-					case *pb.Message_Change:
-						if decode.Ignore(msg.Change) {
-							continue
-						} else if decode.IsDDL(msg.Change) {
-							if err = p.schema.RefreshType(); err != nil {
-								return err
-							}
-						}
-					}
-
-					changes <- Change{
-						Checkpoint: Checkpoint{
-							LSN:  uint64(xld.WALStart) + uint64(len(xld.WALData)),
-							Time: p.commitTime,
-						},
-						Message: m,
-					}
-				}
-			}
-		default:
-			return errors.New("unexpected message")
-		}
+		p.nextReportTime = time.Now().Add(5 * time.Second)
 	}
+	msg, err := p.replConn.ReceiveMessage(ctx)
+	if err != nil {
+		return change, err
+	}
+	switch msg := msg.(type) {
+	case *pgproto3.CopyData:
+		switch msg.Data[0] {
+		case pglogrepl.PrimaryKeepaliveMessageByteID:
+			var pkm pglogrepl.PrimaryKeepaliveMessage
+			if pkm, err = pglogrepl.ParsePrimaryKeepaliveMessage(msg.Data[1:]); err == nil && pkm.ReplyRequested {
+				p.nextReportTime = time.Time{}
+			}
+		case pglogrepl.XLogDataByteID:
+			xld, err := pglogrepl.ParseXLogData(msg.Data[1:])
+			if err != nil {
+				return change, err
+			}
+			m, err := p.decoder.Decode(xld.WALData)
+			if m == nil || err != nil {
+				return change, err
+			}
+			if msg := m.GetChange(); msg != nil {
+				if decode.Ignore(msg) {
+					return change, nil
+				} else if decode.IsDDL(msg) {
+					if err = p.schema.RefreshType(); err != nil {
+						return change, err
+					}
+				}
+			}
+			change = Change{
+				Checkpoint: Checkpoint{LSN: uint64(xld.WALStart) + uint64(len(xld.WALData))},
+				Message:    m,
+			}
+		}
+	default:
+		err = errors.New("unexpected message")
+	}
+	return change, err
 }
 
 func (p *PGXSource) Commit(cp Checkpoint) {
@@ -179,21 +147,12 @@ func (p *PGXSource) committedLSN() (lsn pglogrepl.LSN) {
 	return pglogrepl.LSN(atomic.LoadUint64(&p.ackLsn))
 }
 
-func (p *PGXSource) Stop() {
-	atomic.StoreInt64(&p.stopped, 1)
-	if p.stop != nil {
-		<-p.stop
-	}
-}
-
 func (p *PGXSource) cleanup() {
 	if p.setupConn != nil {
 		p.setupConn.Close(context.Background())
-		p.setupConn = nil
 	}
 	if p.replConn != nil {
 		p.replConn.Close(context.Background())
-		p.replConn = nil
 	}
 }
 
