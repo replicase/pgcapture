@@ -27,6 +27,11 @@ type Source interface {
 	Stop()
 }
 
+type TxSource interface {
+	Source
+	txCommit(checkpoint Checkpoint)
+}
+
 type BaseSource struct {
 	stop    int64
 	stopped chan struct{}

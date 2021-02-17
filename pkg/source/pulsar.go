@@ -175,6 +175,10 @@ func (p *PulsarConsumerSource) Capture(cp Checkpoint) (changes chan Change, err 
 }
 
 func (p *PulsarConsumerSource) Commit(cp Checkpoint) {
+	p.txCommit(cp)
+}
+
+func (p *PulsarConsumerSource) txCommit(cp Checkpoint) {
 	var ok bool
 	var ids []pulsar.MessageID
 	p.mu.Lock()
