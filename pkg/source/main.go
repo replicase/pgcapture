@@ -20,7 +20,6 @@ type Change struct {
 }
 
 type Source interface {
-	Setup() error
 	Capture(cp Checkpoint) (changes chan Change, err error)
 	Commit(cp Checkpoint)
 	Error() error
@@ -37,10 +36,6 @@ type BaseSource struct {
 	stopped chan struct{}
 
 	err error
-}
-
-func (b *BaseSource) Setup() error {
-	panic("implement me")
 }
 
 func (b *BaseSource) Capture(cp Checkpoint) (changes chan Change, err error) {

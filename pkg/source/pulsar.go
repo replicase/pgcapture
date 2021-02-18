@@ -23,10 +23,6 @@ type PulsarReaderSource struct {
 	consistent bool
 }
 
-func (p *PulsarReaderSource) Setup() (err error) {
-	return nil
-}
-
 func (p *PulsarReaderSource) Capture(cp Checkpoint) (changes chan Change, err error) {
 	host, err := os.Hostname()
 	if err != nil {
@@ -110,10 +106,6 @@ type PulsarConsumerSource struct {
 	mu       sync.Mutex
 	unAcks   map[string][]pulsar.MessageID
 	xidMap   map[uint64]string
-}
-
-func (p *PulsarConsumerSource) Setup() (err error) {
-	return nil
 }
 
 func (p *PulsarConsumerSource) Capture(cp Checkpoint) (changes chan Change, err error) {

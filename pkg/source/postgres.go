@@ -33,36 +33,34 @@ type PGXSource struct {
 	ackLsn uint64
 }
 
-func (p *PGXSource) Setup() (err error) {
-	ctx := context.Background()
-	p.setupConn, err = pgx.Connect(ctx, p.SetupConnStr)
-	if err != nil {
-		return err
-	}
-	p.schema = decode.NewPGXSchemaLoader(p.setupConn)
-	if err = p.schema.RefreshType(); err != nil {
-		return err
-	}
-
-	p.decoder = decode.NewPGLogicalDecoder(p.schema)
-
-	if _, err = p.setupConn.Exec(ctx, sql.InstallExtension); err != nil {
-		return nil
-	}
-
-	if p.CreateSlot {
-		_, err = p.setupConn.Exec(ctx, sql.CreateLogicalSlot, p.ReplSlot, OutputPlugin)
-	}
-
-	return err
-}
-
 func (p *PGXSource) Capture(cp Checkpoint) (changes chan Change, err error) {
 	defer func() {
 		if err != nil {
 			p.cleanup()
 		}
 	}()
+
+	ctx := context.Background()
+	p.setupConn, err = pgx.Connect(ctx, p.SetupConnStr)
+	if err != nil {
+		return nil, err
+	}
+	p.schema = decode.NewPGXSchemaLoader(p.setupConn)
+	if err = p.schema.RefreshType(); err != nil {
+		return nil, err
+	}
+
+	p.decoder = decode.NewPGLogicalDecoder(p.schema)
+
+	if _, err = p.setupConn.Exec(ctx, sql.InstallExtension); err != nil {
+		return nil, err
+	}
+
+	if p.CreateSlot {
+		if _, err = p.setupConn.Exec(ctx, sql.CreateLogicalSlot, p.ReplSlot, OutputPlugin); err != nil {
+			return nil, err
+		}
+	}
 
 	p.replConn, err = pgconn.Connect(context.Background(), p.ReplConnStr)
 	if err != nil {

@@ -17,10 +17,6 @@ func (c *Consumer) Error() error {
 }
 
 func (c *Consumer) Consume() (chan *TxEvent, error) {
-	if err := c.source.Setup(); err != nil {
-		return nil, err
-	}
-
 	changes, err := c.source.Capture(source.Checkpoint{})
 	if err != nil {
 		return nil, err
