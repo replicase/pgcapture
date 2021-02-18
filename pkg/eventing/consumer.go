@@ -2,10 +2,16 @@ package eventing
 
 import (
 	"errors"
+	"github.com/jackc/pgtype"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/source"
+	"reflect"
 	"sync/atomic"
 )
+
+func NewConsumer(s source.TxSource) *Consumer {
+	return &Consumer{source: s}
+}
 
 type Consumer struct {
 	source source.TxSource
@@ -74,3 +80,36 @@ func (e *TxEvent) Ack() {
 	}
 	e.c.source.Commit(source.Checkpoint{LSN: atomic.LoadUint64(&e.commit)})
 }
+
+func (e *TxEvent) Switch(st *SwitchTable) error {
+	var fields []*pb.Field
+	for c := range e.changes {
+		if st.namespace != c.Namespace {
+			continue
+		}
+		sh, ok := st.fieldIdx[c.Table]
+		if !ok {
+			continue
+		}
+		deleted := c.Op == pb.Change_DELETE
+		if deleted {
+			fields = c.OldTuple
+		} else {
+			fields = c.NewTuple
+		}
+		v := reflect.New(sh.typ)
+		for _, f := range fields {
+			i, ok := sh.idx[f.Name]
+			if !ok {
+				continue
+			}
+			if err := v.Elem().Field(i).Addr().Interface().(pgtype.BinaryDecoder).DecodeBinary(ci, f.Datum); err != nil {
+				return err
+			}
+		}
+		sh.hdl(v.Interface(), deleted)
+	}
+	return nil
+}
+
+var ci = pgtype.NewConnInfo()
