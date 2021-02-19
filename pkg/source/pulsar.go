@@ -168,12 +168,19 @@ func (p *PulsarConsumerSource) Capture(cp Checkpoint) (changes chan Change, err 
 }
 
 func (p *PulsarConsumerSource) Commit(cp Checkpoint) {
-	p.txCommit(cp)
+	for _, id := range p.unAckIDs(cp) {
+		p.consumer.AckID(id)
+	}
 }
 
-func (p *PulsarConsumerSource) txCommit(cp Checkpoint) {
+func (p *PulsarConsumerSource) Abort(cp Checkpoint) {
+	for _, id := range p.unAckIDs(cp) {
+		p.consumer.NackID(id)
+	}
+}
+
+func (p *PulsarConsumerSource) unAckIDs(cp Checkpoint) (ids []pulsar.MessageID) {
 	var ok bool
-	var ids []pulsar.MessageID
 	p.mu.Lock()
 	xid := p.xidMap[cp.LSN]
 	if ids, ok = p.unAcks[xid]; ok {
@@ -181,9 +188,7 @@ func (p *PulsarConsumerSource) txCommit(cp Checkpoint) {
 		delete(p.unAcks, xid)
 	}
 	p.mu.Unlock()
-	for _, id := range ids {
-		p.consumer.AckID(id)
-	}
+	return ids
 }
 
 func startMessageID(cp Checkpoint) (sid pulsar.MessageID) {

@@ -29,7 +29,7 @@ type Source interface {
 
 type TxSource interface {
 	Source
-	txCommit(checkpoint Checkpoint)
+	Abort(checkpoint Checkpoint)
 }
 
 type BaseSource struct {

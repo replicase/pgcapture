@@ -82,6 +82,12 @@ func (e *TxEvent) Ack() {
 	e.c.source.Commit(source.Checkpoint{LSN: atomic.LoadUint64(&e.commit)})
 }
 
+func (e *TxEvent) Nack() {
+	for range e.changes {
+	}
+	e.c.source.Abort(source.Checkpoint{LSN: atomic.LoadUint64(&e.commit)})
+}
+
 func (e *TxEvent) Switch(st *SwitchTable) error {
 	var fields []*pb.Field
 	for c := range e.changes {
