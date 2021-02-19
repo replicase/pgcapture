@@ -88,13 +88,10 @@ func (e *TxEvent) Nack() {
 	e.c.source.Abort(source.Checkpoint{LSN: atomic.LoadUint64(&e.commit)})
 }
 
-func (e *TxEvent) Switch(st *SwitchTable) error {
+func (e *TxEvent) Switch(st ModelSwitch) error {
 	var fields []*pb.Field
 	for c := range e.changes {
-		if st.namespace != c.Namespace {
-			continue
-		}
-		sh, ok := st.fieldIdx[c.Table]
+		ms, ok := st[modelKey(c.Namespace, c.Table)]
 		if !ok {
 			continue
 		}
@@ -104,9 +101,9 @@ func (e *TxEvent) Switch(st *SwitchTable) error {
 		} else {
 			fields = c.NewTuple
 		}
-		v := reflect.New(sh.typ)
+		v := reflect.New(ms.typ)
 		for _, f := range fields {
-			i, ok := sh.idx[f.Name]
+			i, ok := ms.idx[f.Name]
 			if !ok {
 				continue
 			}
@@ -114,7 +111,7 @@ func (e *TxEvent) Switch(st *SwitchTable) error {
 				return err
 			}
 		}
-		sh.hdl(v.Interface(), deleted)
+		ms.hdl(v.Interface(), deleted)
 	}
 	return nil
 }

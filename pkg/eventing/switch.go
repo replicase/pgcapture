@@ -9,33 +9,24 @@ import (
 	"github.com/jackc/pgtype"
 )
 
-type SwitchHandler struct {
-	Model   interface{}
-	Handler func(model interface{}, deleted bool)
+type Model interface {
+	TableName() (namespace, table string)
 }
 
-type SwitchTable struct {
-	namespace string
-	fieldIdx  map[string]fieldIdx
-}
+type switchHandler func(model interface{}, deleted bool)
+type ModelHandlers map[Model]switchHandler
+type ModelSwitch map[string]register
 
-type fieldIdx struct {
-	idx map[string]int
-	typ reflect.Type
-	hdl func(model interface{}, deleted bool)
-}
-
-var decoderType = reflect.TypeOf((*pgtype.BinaryDecoder)(nil)).Elem()
-
-func MakeSwitchTable(namespace string, handlers map[string]SwitchHandler) (*SwitchTable, error) {
-	fdx := make(map[string]fieldIdx, len(handlers))
-	for table, h := range handlers {
-		typ := reflect.TypeOf(h.Model)
+func NewModelSwitch(handlers ModelHandlers) (ModelSwitch, error) {
+	ms := make(map[string]register, len(handlers))
+	for model, h := range handlers {
+		typ := reflect.TypeOf(model)
 		if typ.Kind() != reflect.Ptr || typ.Elem().Kind() != reflect.Struct {
 			return nil, errors.New("the field Model of SwitchHandler should be a pointer of struct")
 		}
 		typ = typ.Elem()
-		fdx[table] = fieldIdx{idx: make(map[string]int, typ.NumField()), typ: typ, hdl: h.Handler}
+		key := modelKey(model.TableName())
+		ms[key] = register{idx: make(map[string]int, typ.NumField()), typ: typ, hdl: h}
 		for i := 0; i < typ.NumField(); i++ {
 			f := typ.Field(i)
 			if !reflect.PtrTo(f.Type).Implements(decoderType) {
@@ -46,9 +37,24 @@ func MakeSwitchTable(namespace string, handlers map[string]SwitchHandler) (*Swit
 				return nil, fmt.Errorf("the field %s of %s should should have a pg tag", f.Name, typ.Elem())
 			}
 			if n := strings.Split(tag, ","); len(n) > 0 && n[0] != "" {
-				fdx[table].idx[n[0]] = i
+				ms[key].idx[n[0]] = i
 			}
 		}
 	}
-	return &SwitchTable{namespace: namespace, fieldIdx: fdx}, nil
+	return ms, nil
 }
+
+func modelKey(namespace, table string) string {
+	if namespace == "" {
+		return "public." + table
+	}
+	return namespace + "." + table
+}
+
+type register struct {
+	idx map[string]int
+	typ reflect.Type
+	hdl switchHandler
+}
+
+var decoderType = reflect.TypeOf((*pgtype.BinaryDecoder)(nil)).Elem()
