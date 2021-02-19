@@ -5,6 +5,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgtype"
@@ -13,11 +19,6 @@ import (
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/source"
 	"github.com/rueian/pgcapture/pkg/sql"
-	"os"
-	"regexp"
-	"strconv"
-	"strings"
-	"time"
 )
 
 type PGXSink struct {

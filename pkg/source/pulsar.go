@@ -2,14 +2,15 @@ package source
 
 import (
 	"context"
-	"github.com/apache/pulsar-client-go/pulsar"
-	"github.com/golang/protobuf/proto"
-	"github.com/jackc/pglogrepl"
-	"github.com/rueian/pgcapture/pkg/pb"
 	"log"
 	"os"
 	"sync"
 	"time"
+
+	"github.com/apache/pulsar-client-go/pulsar"
+	"github.com/golang/protobuf/proto"
+	"github.com/jackc/pglogrepl"
+	"github.com/rueian/pgcapture/pkg/pb"
 )
 
 type PulsarReaderSource struct {

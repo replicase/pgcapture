@@ -2,11 +2,12 @@ package eventing
 
 import (
 	"errors"
+	"reflect"
+	"sync/atomic"
+
 	"github.com/jackc/pgtype"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/source"
-	"reflect"
-	"sync/atomic"
 )
 
 func NewConsumer(s source.TxSource) *Consumer {

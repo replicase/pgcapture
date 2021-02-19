@@ -3,10 +3,11 @@ package source
 import (
 	"context"
 	"errors"
-	"github.com/rueian/pgcapture/pkg/pb"
 	"net"
 	"sync/atomic"
 	"time"
+
+	"github.com/rueian/pgcapture/pkg/pb"
 )
 
 type Checkpoint struct {

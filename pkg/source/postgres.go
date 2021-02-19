@@ -3,15 +3,16 @@ package source
 import (
 	"context"
 	"errors"
+	"log"
+	"sync/atomic"
+	"time"
+
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgproto3/v2"
 	"github.com/jackc/pgx/v4"
 	"github.com/rueian/pgcapture/pkg/decode"
 	"github.com/rueian/pgcapture/pkg/sql"
-	"log"
-	"sync/atomic"
-	"time"
 )
 
 type PGXSource struct {

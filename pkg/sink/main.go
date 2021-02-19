@@ -1,9 +1,10 @@
 package sink
 
 import (
-	"github.com/rueian/pgcapture/pkg/source"
 	"sync/atomic"
 	"time"
+
+	"github.com/rueian/pgcapture/pkg/source"
 )
 
 type CleanFn func()

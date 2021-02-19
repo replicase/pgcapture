@@ -3,13 +3,14 @@ package sink
 import (
 	"context"
 	"errors"
+	"os"
+	"strconv"
+	"time"
+
 	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/golang/protobuf/proto"
 	"github.com/jackc/pglogrepl"
 	"github.com/rueian/pgcapture/pkg/source"
-	"os"
-	"strconv"
-	"time"
 )
 
 type PulsarSink struct {

@@ -3,9 +3,10 @@ package eventing
 import (
 	"errors"
 	"fmt"
-	"github.com/jackc/pgtype"
 	"reflect"
 	"strings"
+
+	"github.com/jackc/pgtype"
 )
 
 type SwitchHandler struct {

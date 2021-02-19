@@ -3,6 +3,7 @@ package decode
 import (
 	"encoding/binary"
 	"errors"
+
 	"github.com/rueian/pgcapture/pkg/pb"
 )
 
