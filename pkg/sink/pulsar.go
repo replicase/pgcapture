@@ -70,6 +70,7 @@ func (p *PulsarSink) Setup() (cp source.Checkpoint, err error) {
 		CompressionType:     pulsar.ZSTD,
 		BatchingMaxMessages: 1000,
 		BatchingMaxSize:     1024 * 1024,
+		BatcherBuilderType:  pulsar.KeyBasedBatchBuilder,
 	})
 	if err != nil {
 		return cp, err
