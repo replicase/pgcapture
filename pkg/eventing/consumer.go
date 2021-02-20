@@ -88,10 +88,20 @@ func (e *TxEvent) Nack() {
 	e.c.source.Abort(source.Checkpoint{LSN: atomic.LoadUint64(&e.commit)})
 }
 
-func (e *TxEvent) Switch(st ModelSwitch) error {
+func (e *TxEvent) Switch(mh ModelHandlers) (err error) {
+	refs := make(map[string]reflection, len(mh))
+	for m, h := range mh {
+		ref, err := reflectModel(m)
+		if err != nil {
+			return err
+		}
+		ref.hdl = h
+		refs[ModelName(m.Name())] = ref
+	}
+
 	var fields []*pb.Field
 	for c := range e.changes {
-		ms, ok := st[modelKey(c.Namespace, c.Table)]
+		ref, ok := refs[ModelName(c.Namespace, c.Table)]
 		if !ok {
 			continue
 		}
@@ -101,17 +111,20 @@ func (e *TxEvent) Switch(st ModelSwitch) error {
 		} else {
 			fields = c.NewTuple
 		}
-		v := reflect.New(ms.typ)
+		ptr := reflect.New(ref.typ)
+		val := ptr.Elem()
 		for _, f := range fields {
-			i, ok := ms.idx[f.Name]
+			i, ok := ref.idx[f.Name]
 			if !ok {
 				continue
 			}
-			if err := v.Elem().Field(i).Addr().Interface().(pgtype.BinaryDecoder).DecodeBinary(ci, f.Datum); err != nil {
+			if err := val.Field(i).Addr().Interface().(pgtype.BinaryDecoder).DecodeBinary(ci, f.Datum); err != nil {
 				return err
 			}
 		}
-		ms.hdl(v.Interface(), deleted)
+		if err := ref.hdl(ptr.Interface(), deleted); err != nil {
+			return err
+		}
 	}
 	return nil
 }
