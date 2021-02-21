@@ -27,7 +27,7 @@ type Source interface {
 	Stop()
 }
 
-type TxSource interface {
+type RequeueSource interface {
 	Source
 	Abort(checkpoint Checkpoint)
 }

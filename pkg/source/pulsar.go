@@ -105,9 +105,10 @@ type PulsarConsumerSource struct {
 	client   pulsar.Client
 	consumer pulsar.Consumer
 	mu       sync.Mutex
-	unAcks   map[string][]pulsar.MessageID
-	xidMap   map[uint64]string
+	pending  map[uint64]pulsar.MessageID
 }
+
+var ReceiverQueueSize = 1000
 
 func (p *PulsarConsumerSource) Capture(cp Checkpoint) (changes chan Change, err error) {
 	host, err := os.Hostname()
@@ -121,17 +122,17 @@ func (p *PulsarConsumerSource) Capture(cp Checkpoint) (changes chan Change, err 
 	}
 
 	p.consumer, err = p.client.Subscribe(pulsar.ConsumerOptions{
-		Name:             host,
-		Topic:            p.PulsarTopic,
-		SubscriptionName: p.PulsarSubscription,
-		Type:             pulsar.KeyShared,
+		Name:              host,
+		Topic:             p.PulsarTopic,
+		SubscriptionName:  p.PulsarSubscription,
+		ReceiverQueueSize: ReceiverQueueSize,
+		Type:              pulsar.KeyShared,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	p.unAcks = make(map[string][]pulsar.MessageID, 100)
-	p.xidMap = make(map[uint64]string, 100)
+	p.pending = make(map[uint64]pulsar.MessageID, ReceiverQueueSize)
 
 	return p.BaseSource.capture(func(ctx context.Context) (change Change, err error) {
 		var msg pulsar.Message
@@ -152,11 +153,7 @@ func (p *PulsarConsumerSource) Capture(cp Checkpoint) (changes chan Change, err 
 		}
 
 		p.mu.Lock()
-		xid := msg.Key()
-		p.unAcks[xid] = append(p.unAcks[xid], msg.ID())
-		if commit := m.GetCommit(); commit != nil {
-			p.xidMap[uint64(lsn)] = xid
-		}
+		p.pending[uint64(lsn)] = msg.ID()
 		p.mu.Unlock()
 
 		change = Change{Checkpoint: Checkpoint{LSN: uint64(lsn)}, Message: m}
@@ -168,27 +165,25 @@ func (p *PulsarConsumerSource) Capture(cp Checkpoint) (changes chan Change, err 
 }
 
 func (p *PulsarConsumerSource) Commit(cp Checkpoint) {
-	for _, id := range p.unAckIDs(cp) {
+	if id := p.unAckID(cp); id != nil {
 		p.consumer.AckID(id)
 	}
 }
 
 func (p *PulsarConsumerSource) Abort(cp Checkpoint) {
-	for _, id := range p.unAckIDs(cp) {
+	if id := p.unAckID(cp); id != nil {
 		p.consumer.NackID(id)
 	}
 }
 
-func (p *PulsarConsumerSource) unAckIDs(cp Checkpoint) (ids []pulsar.MessageID) {
+func (p *PulsarConsumerSource) unAckID(cp Checkpoint) (id pulsar.MessageID) {
 	var ok bool
 	p.mu.Lock()
-	xid := p.xidMap[cp.LSN]
-	if ids, ok = p.unAcks[xid]; ok {
-		delete(p.xidMap, cp.LSN)
-		delete(p.unAcks, xid)
+	if id, ok = p.pending[cp.LSN]; ok {
+		delete(p.pending, cp.LSN)
 	}
 	p.mu.Unlock()
-	return ids
+	return
 }
 
 func startMessageID(cp Checkpoint) (sid pulsar.MessageID) {
