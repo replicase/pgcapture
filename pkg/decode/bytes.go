@@ -63,7 +63,7 @@ func (b *BytesReader) Int8() (v int, err error) {
 	return int(uv), err
 }
 
-func (b *BytesReader) StringN(n int) (v string, err error) {
+func (b *BytesReader) stringN(n int) (v string, err error) {
 	end := b.off + n
 	if end > len(b.data) {
 		return "", io.EOF
@@ -78,7 +78,7 @@ func (b *BytesReader) String8() (v string, err error) {
 	if err != nil {
 		return "", err
 	}
-	return b.StringN(n)
+	return b.stringN(n)
 }
 
 func (b *BytesReader) String16() (v string, err error) {
@@ -86,7 +86,7 @@ func (b *BytesReader) String16() (v string, err error) {
 	if err != nil {
 		return "", err
 	}
-	return b.StringN(n)
+	return b.stringN(n)
 }
 
 func (b *BytesReader) Bytes32() (v []byte, err error) {
