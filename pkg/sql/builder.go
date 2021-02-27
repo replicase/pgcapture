@@ -18,7 +18,7 @@ func DeleteQuery(namespace, table string, fields []*pb.Field) string {
 		query.WriteString(field.Name)
 		query.WriteString("\"=$" + strconv.Itoa(i+1))
 		if i != len(fields)-1 {
-			query.WriteString(" AND \"")
+			query.WriteString(" and \"")
 		}
 	}
 	return query.String()
@@ -42,7 +42,7 @@ func UpdateQuery(namespace, table string, sets, keys []*pb.Field) string {
 		}
 	}
 
-	query.WriteString("where \"")
+	query.WriteString(" where \"")
 
 	for i := 0; i < len(keys); i++ {
 		j = i + j
@@ -51,7 +51,7 @@ func UpdateQuery(namespace, table string, sets, keys []*pb.Field) string {
 		query.WriteString(field.Name)
 		query.WriteString("\"=$" + strconv.Itoa(j+1))
 		if i != len(keys)-1 {
-			query.WriteString(" AND \"")
+			query.WriteString(" and \"")
 		}
 	}
 
