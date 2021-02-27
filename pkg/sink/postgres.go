@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"os"
 	"regexp"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgconn"
@@ -161,34 +159,13 @@ func (p *PGXSink) handleInsert(ctx context.Context, m *pb.Change) (err error) {
 	vals := make([][]byte, fields)
 	oids := make([]uint32, fields)
 	fmts := make([]int16, fields)
-
-	var query strings.Builder
-	query.WriteString("insert into \"")
-	query.WriteString(m.Namespace)
-	query.WriteString("\".\"")
-	query.WriteString(m.Table)
-	query.WriteString("\"(\"")
 	for i := 0; i < fields; i++ {
 		field := m.NewTuple[i]
 		vals[i] = field.Datum
 		oids[i] = field.Oid
 		fmts[i] = 1
-		query.WriteString(field.Name)
-		if i == fields-1 {
-			query.WriteString("\") values (")
-		} else {
-			query.WriteString("\",\"")
-		}
 	}
-	for i := 1; i <= fields; i++ {
-		query.WriteString("$" + strconv.Itoa(i))
-		if i == fields {
-			query.WriteString(")")
-		} else {
-			query.WriteString(",")
-		}
-	}
-	return p.raw.ExecParams(ctx, query.String(), vals, oids, fmts, fmts).Read().Err
+	return p.raw.ExecParams(ctx, sql.InsertQuery(m.Namespace, m.Table, m.NewTuple), vals, oids, fmts, fmts).Read().Err
 }
 
 func (p *PGXSink) handleDelete(ctx context.Context, m *pb.Change) (err error) {
@@ -196,27 +173,13 @@ func (p *PGXSink) handleDelete(ctx context.Context, m *pb.Change) (err error) {
 	vals := make([][]byte, fields)
 	oids := make([]uint32, fields)
 	fmts := make([]int16, fields)
-
-	var query strings.Builder
-	query.WriteString("delete from \"")
-	query.WriteString(m.Namespace)
-	query.WriteString("\".\"")
-	query.WriteString(m.Table)
-	query.WriteString("\" where \"")
-
 	for i := 0; i < fields; i++ {
 		field := m.OldTuple[i]
 		vals[i] = field.Datum
 		oids[i] = field.Oid
 		fmts[i] = 1
-
-		query.WriteString(field.Name)
-		query.WriteString("\"=$" + strconv.Itoa(i+1))
-		if i != fields-1 {
-			query.WriteString(" AND \"")
-		}
 	}
-	return p.raw.ExecParams(ctx, query.String(), vals, oids, fmts, fmts).Read().Err
+	return p.raw.ExecParams(ctx, sql.DeleteQuery(m.Namespace, m.Table, m.OldTuple), vals, oids, fmts, fmts).Read().Err
 }
 
 func (p *PGXSink) handleUpdate(ctx context.Context, m *pb.Change) (err error) {
@@ -252,28 +215,13 @@ func (p *PGXSink) handleUpdate(ctx context.Context, m *pb.Change) (err error) {
 	oids := make([]uint32, fields)
 	fmts := make([]int16, fields)
 
-	var query strings.Builder
-	query.WriteString("update \"")
-	query.WriteString(m.Namespace)
-	query.WriteString("\".\"")
-	query.WriteString(m.Table)
-	query.WriteString("\" set \"")
-
 	var j int
 	for ; j < len(sets); j++ {
 		field := sets[j]
 		vals[j] = field.Datum
 		oids[j] = field.Oid
 		fmts[j] = 1
-
-		query.WriteString(field.Name)
-		query.WriteString("\"=$" + strconv.Itoa(j+1))
-		if j != len(sets)-1 {
-			query.WriteString(",\"")
-		}
 	}
-
-	query.WriteString("where \"")
 
 	for i := 0; i < len(keys); i++ {
 		j = i + j
@@ -281,15 +229,9 @@ func (p *PGXSink) handleUpdate(ctx context.Context, m *pb.Change) (err error) {
 		vals[j] = field.Datum
 		oids[j] = field.Oid
 		fmts[j] = 1
-
-		query.WriteString(field.Name)
-		query.WriteString("\"=$" + strconv.Itoa(j+1))
-		if i != len(keys)-1 {
-			query.WriteString(" AND \"")
-		}
 	}
 
-	return p.raw.ExecParams(ctx, query.String(), vals, oids, fmts, fmts).Read().Err
+	return p.raw.ExecParams(ctx, sql.UpdateQuery(m.Namespace, m.Table, sets, keys), vals, oids, fmts, fmts).Read().Err
 }
 
 const (
