@@ -1,19 +1,18 @@
 version: "3.8"
 services:
   pg:
-    build: .
+    build: hack/postgres
     image: rueian/postgres:9.6-logical
     ports:
       - "5432:5432"
     command: ["postgres", "-c", "config_file=/pgc/postgresql.conf", "-c","hba_file=/pgc/pg_hba.conf"]
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
     volumes:
       - ./hack/postgres:/pgc
-      - ./share:/extension
-      - pgcapture:/var/lib/postgresql/data
+      - ./share:/docker-entrypoint-initdb.d
   pulsar:
     image: apachepulsar/pulsar:2.6.1
     command: ["bin/pulsar", "standalone"]
     ports:
       - 6650:6650
-volumes:
-  pgcapture: {}

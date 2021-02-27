@@ -8,3 +8,6 @@ RUN wget https://github.com/2ndQuadrant/pglogical/archive/REL1_2_2.tar.gz && \
     make install && \
     cd / && \
     rm -rf /REL1_2_2.tar.gz /pglogical-REL1_2_2
+
+RUN chown -R postgres:postgres /usr/local/share/postgresql/extension
+RUN chown -R postgres:postgres /usr/local/lib/postgresql
