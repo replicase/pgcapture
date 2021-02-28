@@ -58,7 +58,7 @@ func (b *BaseSource) Error() error {
 	return b.err
 }
 
-func (b *BaseSource) capture(readFn ReadFn, flushFn FlushFn) (chan Change, error) {
+func (b *BaseSource) capture(readFn ReadFn, flushFn FlushFn, timeout time.Duration) (chan Change, error) {
 	b.stopped = make(chan struct{})
 	changes := make(chan Change, 100)
 	go func() {
@@ -66,7 +66,7 @@ func (b *BaseSource) capture(readFn ReadFn, flushFn FlushFn) (chan Change, error
 		defer close(changes)
 		defer flushFn()
 		for {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), timeout)
 			change, err := readFn(ctx)
 			cancel()
 			if atomic.LoadInt64(&b.stop) != 0 {

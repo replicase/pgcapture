@@ -88,7 +88,7 @@ func (p *PulsarReaderSource) Capture(cp Checkpoint) (changes chan Change, err er
 	}, func() {
 		p.reader.Close()
 		p.client.Close()
-	})
+	}, 5*time.Second)
 }
 
 func (p *PulsarReaderSource) Commit(cp Checkpoint) {
@@ -161,7 +161,7 @@ func (p *PulsarConsumerSource) Capture(cp Checkpoint) (changes chan Change, err 
 	}, func() {
 		p.consumer.Close()
 		p.client.Close()
-	})
+	}, 5*time.Second)
 }
 
 func (p *PulsarConsumerSource) Commit(cp Checkpoint) {

@@ -87,7 +87,7 @@ func (p *PGXSource) Capture(cp Checkpoint) (changes chan Change, err error) {
 	}
 	p.ackLsn = uint64(requestLSN)
 
-	return p.BaseSource.capture(p.fetching, p.cleanup)
+	return p.BaseSource.capture(p.fetching, p.cleanup, 5*time.Second)
 }
 
 func (p *PGXSource) fetching(ctx context.Context) (change Change, err error) {
