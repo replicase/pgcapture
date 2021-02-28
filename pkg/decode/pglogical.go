@@ -7,6 +7,17 @@ import (
 	"github.com/rueian/pgcapture/pkg/pb"
 )
 
+const OutputPlugin = "pglogical_output"
+
+var PGLogicalParam = []string{
+	"min_proto_version '1'",
+	"max_proto_version '1'",
+	"startup_params_format '1'",
+	"\"binary.want_binary_basetypes\" '1'",
+	"\"binary.basetypes_major_version\" '906'",
+	"\"binary.bigendian\" '1'",
+}
+
 var OpMap = map[byte]pb.Change_Operation{
 	'I': pb.Change_INSERT,
 	'U': pb.Change_UPDATE,

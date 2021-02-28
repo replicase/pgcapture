@@ -58,7 +58,7 @@ func (p *PGXSource) Capture(cp Checkpoint) (changes chan Change, err error) {
 	}
 
 	if p.CreateSlot {
-		if _, err = p.setupConn.Exec(ctx, sql.CreateLogicalSlot, p.ReplSlot, OutputPlugin); err != nil {
+		if _, err = p.setupConn.Exec(ctx, sql.CreateLogicalSlot, p.ReplSlot, decode.OutputPlugin); err != nil {
 			return nil, err
 		}
 	}
@@ -82,7 +82,7 @@ func (p *PGXSource) Capture(cp Checkpoint) (changes chan Change, err error) {
 		requestLSN = ident.XLogPos
 		log.Println("start logical replication on slot with previous position", p.ReplSlot, requestLSN)
 	}
-	if err = pglogrepl.StartReplication(context.Background(), p.replConn, p.ReplSlot, requestLSN, pglogrepl.StartReplicationOptions{PluginArgs: pgLogicalParam}); err != nil {
+	if err = pglogrepl.StartReplication(context.Background(), p.replConn, p.ReplSlot, requestLSN, pglogrepl.StartReplicationOptions{PluginArgs: decode.PGLogicalParam}); err != nil {
 		return nil, err
 	}
 	p.ackLsn = uint64(requestLSN)
@@ -153,17 +153,6 @@ func (p *PGXSource) cleanup() {
 	if p.replConn != nil {
 		p.replConn.Close(context.Background())
 	}
-}
-
-const OutputPlugin = "pglogical_output"
-
-var pgLogicalParam = []string{
-	"min_proto_version '1'",
-	"max_proto_version '1'",
-	"startup_params_format '1'",
-	"\"binary.want_binary_basetypes\" '1'",
-	"\"binary.basetypes_major_version\" '906'",
-	"\"binary.bigendian\" '1'",
 }
 
 func PGTime2Time(ts uint64) time.Time {
