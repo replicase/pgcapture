@@ -58,7 +58,47 @@ func TestBytesReader(t *testing.T) {
 	if v, err := reader.String16(); v != string(variable[:len(variable)-1]) || err != nil {
 		t.Fatalf("unexpected %v, %v", v, err)
 	}
+	// ended
 	if _, err := reader.Byte(); err != io.EOF {
+		t.Fatalf("unexpected %v", err)
+	}
+	if _, err := reader.Uint32(); err != io.EOF {
+		t.Fatalf("unexpected %v", err)
+	}
+	if _, err := reader.Uint16(); err != io.EOF {
+		t.Fatalf("unexpected %v", err)
+	}
+	if _, err := reader.String8(); err != io.EOF {
+		t.Fatalf("unexpected %v", err)
+	}
+	if _, err := reader.String16(); err != io.EOF {
+		t.Fatalf("unexpected %v", err)
+	}
+	if _, err := reader.Bytes32(); err != io.EOF {
+		t.Fatalf("unexpected %v", err)
+	}
+}
+
+func TestBytesReader_IncompleteString8(t *testing.T) {
+	buf := &bytes.Buffer{}
+	binary.Write(buf, binary.BigEndian, int8(1))
+	if _, err := NewBytesReader(buf.Bytes()).String8(); err != io.EOF {
+		t.Fatalf("unexpected %v", err)
+	}
+}
+
+func TestBytesReader_IncompleteString16(t *testing.T) {
+	buf := &bytes.Buffer{}
+	binary.Write(buf, binary.BigEndian, int16(1))
+	if _, err := NewBytesReader(buf.Bytes()).String16(); err != io.EOF {
+		t.Fatalf("unexpected %v", err)
+	}
+}
+
+func TestBytesReader_IncompleteBytes32(t *testing.T) {
+	buf := &bytes.Buffer{}
+	binary.Write(buf, binary.BigEndian, int32(1))
+	if _, err := NewBytesReader(buf.Bytes()).Bytes32(); err != io.EOF {
 		t.Fatalf("unexpected %v", err)
 	}
 }

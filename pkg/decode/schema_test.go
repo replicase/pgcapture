@@ -50,6 +50,16 @@ func TestSchemaLoader(t *testing.T) {
 				t.Fatalf("GetTypeOID OID mismatch: %s %v %v", name, oid, dt.OID)
 			}
 		}
+
+		if _, err = schema.GetTypeOID("other", "other", "other"); !errors.Is(err, ErrSchemaTableMissing) {
+			t.Fatalf("unexpected %v", err)
+		}
+		if _, err = schema.GetTypeOID("public", "other", "other"); !errors.Is(err, ErrSchemaTableMissing) {
+			t.Fatalf("unexpected %v", err)
+		}
+		if _, err = schema.GetTypeOID("public", "t", "other"); !errors.Is(err, ErrSchemaColumnMissing) {
+			t.Fatalf("unexpected %v", err)
+		}
 	})
 
 	t.Run("GetTableKey", func(t *testing.T) {
@@ -114,6 +124,9 @@ func TestSchemaLoader(t *testing.T) {
 			} else if !errors.Is(err, ErrSchemaIdentityMissing) {
 				t.Fatal(err)
 			}
+		}
+		if _, err = schema.GetTableKey("other", "other"); !errors.Is(err, ErrSchemaIdentityMissing) {
+			t.Fatalf("unexpected %v", err)
 		}
 	})
 }

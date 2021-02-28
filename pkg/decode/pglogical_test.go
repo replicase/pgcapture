@@ -20,57 +20,6 @@ import (
 	"github.com/rueian/pgcapture/pkg/sql"
 )
 
-type change struct {
-	New []interface{}
-	Old []interface{}
-}
-
-func (c *change) Apply(ctx context.Context, conn *pgx.Conn) (err error) {
-	if c.Old == nil {
-		_, err = conn.Exec(ctx, "insert into t values ($1,$2,$3,$4,$5,$6)", c.New...)
-	} else if c.New != nil {
-		_, err = conn.Exec(ctx, "update t set id=$1,uid=$2,txt=$3,bs=$4,js=$5,ts=$6 where id=$7", append(c.New, c.Old...)...)
-	} else {
-		_, err = conn.Exec(ctx, "delete from t where id=$1", c.Old[0])
-	}
-	conn.ConnInfo()
-	return err
-}
-
-func (c *change) Proto() *pb.Change {
-	ci := pgtype.NewConnInfo()
-	m := &pb.Change{Namespace: "public", Table: "t"}
-	if c.New != nil {
-		m.NewTuple = []*pb.Field{
-			{Name: "id", Oid: 20},
-			{Name: "uid", Oid: 2950},
-			{Name: "txt", Oid: 25},
-			{Name: "bs", Oid: 17},
-			{Name: "js", Oid: 3802},
-			{Name: "ts", Oid: 1184},
-		}
-		for i, f := range c.New {
-			m.NewTuple[i].Datum, _ = f.(pgtype.BinaryEncoder).EncodeBinary(ci, nil)
-		}
-		m.Op = pb.Change_INSERT
-	}
-	if c.Old != nil {
-		if c.New == nil || c.New[0].(pgtype.Int8).Int != c.Old[0].(pgtype.Int8).Int {
-			m.OldTuple = []*pb.Field{
-				{Name: "id", Oid: 20},
-			}
-			for i, f := range c.Old {
-				m.OldTuple[i].Datum, _ = f.(pgtype.BinaryEncoder).EncodeBinary(ci, nil)
-			}
-		}
-		m.Op = pb.Change_UPDATE
-	}
-	if c.New == nil {
-		m.Op = pb.Change_DELETE
-	}
-	return m
-}
-
 const TestSlot = "test_slot"
 
 func TestPGLogicalDecoder(t *testing.T) {
@@ -82,58 +31,74 @@ func TestPGLogicalDecoder(t *testing.T) {
 	defer conn.Close(ctx)
 
 	conn.Exec(ctx, "DROP SCHEMA public CASCADE; CREATE SCHEMA public; create extension if not exists \"uuid-ossp\";")
-	conn.Exec(ctx, "create table t (id bigint primary key, uid uuid, txt text, bs bytea, js jsonb, ts timestamptz)")
+	conn.Exec(ctx, "create table t (id bigint primary key, uid uuid, txt text, js jsonb, ts timestamptz, bs bytea)")
 	conn.Exec(ctx, fmt.Sprintf("select pg_drop_replication_slot('%s')", TestSlot))
 	conn.Exec(ctx, sql.CreateLogicalSlot, TestSlot, OutputPlugin)
 
-	changes := []change{
+	now := time.Now()
+	changes := []*change{
 		{
-			New: []interface{}{
-				pgInt8(1),
-				pgUUID("08d6af78-550c-4071-80be-2fece2db0474"),
-				pgText(genT(5)),
-				pgBytea(genB(5)),
-				pgJSON(`{"a": {"b": {"c": {"d": null}}}}`),
-				pgTz(time.Now()),
+			Expect: &pb.Change{Op: pb.Change_INSERT, Namespace: "public", Table: "t",
+				NewTuple: []*pb.Field{
+					{Name: "id", Oid: 20, Datum: b(Int8(1))},
+					{Name: "uid", Oid: 2950, Datum: b(UUID("08d6af78-550c-4071-80be-2fece2db0474"))},
+					{Name: "txt", Oid: 25, Datum: b(Text(nT(5)))},
+					{Name: "js", Oid: 3802, Datum: b(JSON(`{"a": {"b": {"c": {"d": null}}}}`))},
+					{Name: "ts", Oid: 1184, Datum: b(Tstz(now))},
+					{Name: "bs", Oid: 17, Datum: b(Bytea(nB(500000)))},
+				},
 			},
 		},
 		{
-			New: []interface{}{
-				pgInt8(2),
-				pgUUID("3e89ee8c-3657-4103-99a7-680292a0c22c"),
-				pgText(genT(5)),
-				pgBytea(genB(5)),
-				pgJSON(`{"a": {"b": {"c": {"d": null, "e": 123, "f": "fffffff"}}}}`),
-				pgTz(time.Now()),
+			Expect: &pb.Change{Op: pb.Change_INSERT, Namespace: "public", Table: "t",
+				NewTuple: []*pb.Field{
+					{Name: "id", Oid: 20, Datum: b(Int8(2))},
+					{Name: "uid", Oid: 2950, Datum: b(UUID("3e89ee8c-3657-4103-99a7-680292a0c22c"))},
+					{Name: "txt", Oid: 25, Datum: b(Text(nT(5)))},
+					{Name: "js", Oid: 3802, Datum: b(JSON(`{"a": {"b": {"c": {"d": null, "e": 123, "f": "fffffff"}}}}`))},
+					{Name: "ts", Oid: 1184, Datum: b(Tstz(now))},
+					{Name: "bs", Oid: 17, Datum: b(Bytea(nB(500000)))},
+				},
 			},
 		},
 		{
-			New: []interface{}{
-				pgInt8(1),
-				pgUUID("782b2492-3e7c-431b-9238-c1136ea57190"),
-				pgtype.Text{Status: pgtype.Null},
-				pgtype.Bytea{Status: pgtype.Null},
-				pgJSON(`{"a": {"b": {"c": {"d": null}}}}`),
-				pgTz(time.Now()),
+			Expect: &pb.Change{Op: pb.Change_UPDATE, Namespace: "public", Table: "t",
+				NewTuple: []*pb.Field{
+					{Name: "id", Oid: 20, Datum: b(Int8(1))},
+					{Name: "uid", Oid: 2950, Datum: b(UUID("782b2492-3e7c-431b-9238-c1136ea57190"))},
+					{Name: "txt", Oid: 25, Datum: b(pgtype.Text{Status: pgtype.Null})},
+					{Name: "js", Oid: 3802, Datum: b(JSON(`{"a": {"b": {"c": {"d": null}}}}`))},
+					{Name: "ts", Oid: 1184, Datum: b(Tstz(now.Add(time.Second)))},
+				},
 			},
-			Old: []interface{}{pgInt8(1)},
 		},
 		{
-			New: []interface{}{
-				pgInt8(3),
-				pgUUID("f0d3ad8e-709f-4f67-9860-e149c671d82a"),
-				pgText(genT(5)),
-				pgBytea(genB(5)),
-				pgJSON(`{"a": {"b": {"c": {"d": null}}}}`),
-				pgTz(time.Now()),
+			Expect: &pb.Change{Op: pb.Change_UPDATE, Namespace: "public", Table: "t",
+				NewTuple: []*pb.Field{
+					{Name: "id", Oid: 20, Datum: b(Int8(3))},
+					{Name: "uid", Oid: 2950, Datum: b(UUID("f0d3ad8e-709f-4f67-9860-e149c671d82a"))},
+					{Name: "txt", Oid: 25, Datum: b(Text(nT(5)))},
+					{Name: "js", Oid: 3802, Datum: b(JSON(`{"a": {"b": {"c": {"d": null}}}}`))},
+					{Name: "ts", Oid: 1184, Datum: b(Tstz(now.Add(time.Second)))},
+				},
+				OldTuple: []*pb.Field{
+					{Name: "id", Oid: 20, Datum: b(Int8(2))},
+				},
 			},
-			Old: []interface{}{pgInt8(2)},
 		},
 		{
-			Old: []interface{}{pgInt8(3)},
+			Expect: &pb.Change{Op: pb.Change_DELETE, Namespace: "public", Table: "t",
+				OldTuple: []*pb.Field{
+					{Name: "id", Oid: 20, Datum: b(Int8(3))},
+				},
+			},
 		},
 		{
-			Old: []interface{}{pgInt8(1)},
+			Expect: &pb.Change{Op: pb.Change_DELETE, Namespace: "public", Table: "t",
+				OldTuple: []*pb.Field{
+					{Name: "id", Oid: 20, Datum: b(Int8(1))},
+				},
+			},
 		},
 	}
 	for _, change := range changes {
@@ -198,7 +163,7 @@ recv:
 						t.Fatalf("unexpected %v", m.String())
 					}
 				case 2:
-					if c := m.GetChange(); c == nil || !proto.Equal(c, changes[(count-2)/3].Proto()) {
+					if c := m.GetChange(); c == nil || !proto.Equal(c, changes[(count-2)/3].Expect) {
 						t.Fatalf("unexpected %v", m.String())
 					}
 				}
@@ -209,27 +174,71 @@ recv:
 	}
 }
 
-func pgJSON(t string) pgtype.JSONB {
+type change struct {
+	Expect *pb.Change
+}
+
+func (c *change) Apply(ctx context.Context, conn *pgx.Conn) (err error) {
+	vals := make([][]byte, 6)
+	fmts := make([]int16, 6)
+	oids := make([]uint32, 6)
+
+	for i, t := range c.Expect.NewTuple {
+		vals[i] = t.Datum
+		oids[i] = t.Oid
+		fmts[i] = 1
+	}
+
+	switch c.Expect.Op {
+	case pb.Change_INSERT:
+		_, err = conn.PgConn().ExecParams(ctx, "insert into t values ($1,$2,$3,$4,$5,$6)", vals, oids, fmts, fmts).Close()
+	case pb.Change_UPDATE:
+		if c.Expect.OldTuple != nil {
+			vals[5] = c.Expect.OldTuple[0].Datum
+			oids[5] = c.Expect.OldTuple[0].Oid
+		} else {
+			vals[5] = c.Expect.NewTuple[0].Datum
+			oids[5] = c.Expect.NewTuple[0].Oid
+		}
+		fmts[5] = 1
+		_, err = conn.PgConn().ExecParams(ctx, "update t set id=$1,uid=$2,txt=$3,js=$4,ts=$5 where id=$6", vals, oids, fmts, fmts).Close()
+	case pb.Change_DELETE:
+		vals[0] = c.Expect.OldTuple[0].Datum
+		oids[0] = c.Expect.OldTuple[0].Oid
+		fmts[0] = 1
+		_, err = conn.PgConn().ExecParams(ctx, "delete from t where id=$1", vals[:1], oids[:1], fmts[:1], fmts[:1]).Close()
+	}
+	return err
+}
+
+func JSON(t string) pgtype.JSONB {
 	return pgtype.JSONB{Bytes: []byte(t), Status: pgtype.Present}
 }
 
-func pgText(t string) pgtype.Text {
+func Text(t string) pgtype.Text {
 	return pgtype.Text{String: t, Status: pgtype.Present}
 }
 
-func pgBytea(bs []byte) pgtype.Bytea {
+func Bytea(bs []byte) pgtype.Bytea {
 	return pgtype.Bytea{Bytes: bs, Status: pgtype.Present}
 }
 
-func genT(n int) string {
-	builder := strings.Builder{}
-	for i := 0; i < n; i++ {
-		builder.WriteString("A")
-	}
-	return builder.String()
+func UUID(t string) pgtype.UUID {
+	bs, _ := hex.DecodeString(strings.ReplaceAll(t, "-", ""))
+	ret := pgtype.UUID{}
+	ret.Set(bs)
+	return ret
 }
 
-func genB(n int) []byte {
+func Int8(i int64) pgtype.Int8 {
+	return pgtype.Int8{Int: i, Status: pgtype.Present}
+}
+
+func Tstz(ts time.Time) pgtype.Timestamptz {
+	return pgtype.Timestamptz{Time: ts, Status: pgtype.Present}
+}
+
+func nB(n int) []byte {
 	builder := bytes.Buffer{}
 	for i := 0; i < n; i++ {
 		builder.WriteByte('A')
@@ -237,17 +246,19 @@ func genB(n int) []byte {
 	return builder.Bytes()
 }
 
-func pgUUID(t string) pgtype.UUID {
-	bs, _ := hex.DecodeString(strings.ReplaceAll(t, "-", ""))
-	ret := pgtype.UUID{}
-	ret.Set(bs)
-	return ret
+func nT(n int) string {
+	builder := strings.Builder{}
+	for i := 0; i < n; i++ {
+		builder.WriteString("A")
+	}
+	return builder.String()
 }
 
-func pgInt8(i int64) pgtype.Int8 {
-	return pgtype.Int8{Int: i, Status: pgtype.Present}
-}
-
-func pgTz(ts time.Time) pgtype.Timestamptz {
-	return pgtype.Timestamptz{Time: ts, Status: pgtype.Present}
+func b(in pgtype.BinaryEncoder) []byte {
+	ci := pgtype.NewConnInfo()
+	bs, err := in.EncodeBinary(ci, nil)
+	if err != nil {
+		panic(err)
+	}
+	return bs
 }
