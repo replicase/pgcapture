@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgproto3/v2"
@@ -18,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v4"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/sql"
+	"google.golang.org/protobuf/proto"
 )
 
 const TestSlot = "test_slot"

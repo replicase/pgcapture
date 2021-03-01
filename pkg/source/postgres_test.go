@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v4"
 	"github.com/rueian/pgcapture/pkg/decode"
 	"github.com/rueian/pgcapture/pkg/pb"
+	"google.golang.org/protobuf/proto"
 )
 
 const TestSlot = "test_slot"

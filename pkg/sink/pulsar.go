@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar"
-	"github.com/golang/protobuf/proto"
 	"github.com/jackc/pglogrepl"
 	"github.com/rueian/pgcapture/pkg/source"
+	"google.golang.org/protobuf/proto"
 )
 
 type PulsarSink struct {

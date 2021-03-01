@@ -2,11 +2,9 @@ module github.com/rueian/pgcapture
 
 go 1.15
 
-replace github.com/apache/pulsar-client-go => github.com/rueian/pulsar-client-go v0.4.0
-
 require (
-	github.com/apache/pulsar-client-go v0.4.0
-	github.com/golang/protobuf v1.4.3
+	github.com/apache/pulsar-client-go v0.4.0-candidate-1.0.20210301053805-9546a1789ed3
+	github.com/golang/protobuf v1.4.2
 	github.com/jackc/pgconn v1.8.0
 	github.com/jackc/pglogrepl v0.0.0-20210109153808-a78a685a0bff
 	github.com/jackc/pgproto3/v2 v2.0.7
