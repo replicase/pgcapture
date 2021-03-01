@@ -1,11 +1,12 @@
 package sink
 
 import (
+	"testing"
+	"time"
+
 	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/source"
-	"testing"
-	"time"
 )
 
 func TestPulsarSink(t *testing.T) {

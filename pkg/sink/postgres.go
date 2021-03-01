@@ -71,7 +71,7 @@ func (p *PGXSink) findCheckpoint(ctx context.Context) (cp source.Checkpoint, err
 		cp.LSN = uint64(l)
 	}
 	if ts != "" {
-		cp.Time, err = time.Parse(time.RFC3339Nano, ts)
+		cp.Time, err = time.Parse("2006-01-02 15:04:05.999999999Z07", ts)
 	} else {
 		cp.Time = pts.Time
 	}

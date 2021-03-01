@@ -74,7 +74,7 @@ func InsertQuery(namespace, table string, fields []*pb.Field) string {
 		}
 	}
 	for i := range fields {
-		query.WriteString("$" + strconv.Itoa(i))
+		query.WriteString("$" + strconv.Itoa(i+1))
 		if i == len(fields)-1 {
 			query.WriteString(")")
 		} else {

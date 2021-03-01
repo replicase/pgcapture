@@ -8,7 +8,7 @@ import (
 
 func TestInsertQuery(t *testing.T) {
 	q := InsertQuery("public", "my_table", []*pb.Field{{Name: "f1"}, {Name: "f2"}, {Name: "f3"}})
-	if q != `insert into "public"."my_table"("f1","f2","f3") values ($0,$1,$2)` {
+	if q != `insert into "public"."my_table"("f1","f2","f3") values ($1,$2,$3)` {
 		t.Fatalf("not expected %q", q)
 	}
 }
