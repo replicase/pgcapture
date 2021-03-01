@@ -2,9 +2,7 @@ package sink
 
 import (
 	"context"
-	"errors"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar"
@@ -21,7 +19,8 @@ type PulsarSink struct {
 
 	client   pulsar.Client
 	producer pulsar.Producer
-	xid      string
+
+	lsn uint64
 }
 
 func (p *PulsarSink) Setup() (cp source.Checkpoint, err error) {
@@ -51,11 +50,12 @@ func (p *PulsarSink) Setup() (cp source.Checkpoint, err error) {
 		msg, err := reader.Next(ctx)
 		cancel()
 		if msg != nil {
-			l, err := pglogrepl.ParseLSN(msg.Properties()["lsn"])
+			l, err := pglogrepl.ParseLSN(msg.Key())
 			if err != nil {
 				return cp, err
 			}
 			cp.LSN = uint64(l)
+			p.lsn = cp.LSN
 		}
 		if err != nil && err != context.DeadlineExceeded {
 			return cp, err
@@ -70,7 +70,6 @@ func (p *PulsarSink) Setup() (cp source.Checkpoint, err error) {
 		CompressionType:     pulsar.ZSTD,
 		BatchingMaxMessages: 1000,
 		BatchingMaxSize:     1024 * 1024,
-		BatcherBuilderType:  pulsar.KeyBasedBatchBuilder,
 	})
 	if err != nil {
 		return cp, err
@@ -81,13 +80,13 @@ func (p *PulsarSink) Setup() (cp source.Checkpoint, err error) {
 
 func (p *PulsarSink) Apply(changes chan source.Change) chan source.Checkpoint {
 	return p.BaseSink.apply(changes, func(change source.Change, committed chan source.Checkpoint) error {
-		if begin := change.Message.GetBegin(); begin != nil {
-			p.xid = strconv.FormatUint(uint64(begin.RemoteXid), 16)
-		} else if p.xid == "" {
-			return errors.New("receive incomplete transaction")
+		if p.lsn >= change.Checkpoint.LSN {
+			// TODO log duplicated
+			return nil
 		}
-
+		p.lsn = change.Checkpoint.LSN
 		seq := int64(change.Checkpoint.LSN)
+		lsn := pglogrepl.LSN(change.Checkpoint.LSN).String()
 
 		bs, err := proto.Marshal(change.Message)
 		if err != nil {
@@ -95,9 +94,8 @@ func (p *PulsarSink) Apply(changes chan source.Change) chan source.Checkpoint {
 		}
 
 		p.producer.SendAsync(context.Background(), &pulsar.ProducerMessage{
-			Key:        p.xid,
+			Key:        lsn, // for topic compaction, not routing policy
 			Payload:    bs,
-			Properties: map[string]string{"lsn": pglogrepl.LSN(change.Checkpoint.LSN).String()},
 			SequenceID: &seq,
 		}, func(id pulsar.MessageID, message *pulsar.ProducerMessage, err error) {
 			if err != nil {

@@ -67,7 +67,7 @@ func (p *PulsarReaderSource) Capture(cp Checkpoint) (changes chan Change, err er
 		if err != nil {
 			return
 		}
-		lsn, err = pglogrepl.ParseLSN(msg.Properties()["lsn"])
+		lsn, err = pglogrepl.ParseLSN(msg.Key())
 		if err != nil {
 			return
 		}
@@ -148,7 +148,7 @@ func (p *PulsarConsumerSource) Capture(cp Checkpoint) (changes chan Change, err 
 		if err != nil {
 			return
 		}
-		lsn, err = pglogrepl.ParseLSN(msg.Properties()["lsn"])
+		lsn, err = pglogrepl.ParseLSN(msg.Key())
 		if err != nil {
 			return
 		}

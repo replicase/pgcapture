@@ -33,7 +33,7 @@ func (s *sink) Apply(changes chan source.Change) (committed chan source.Checkpoi
 var ErrAny = errors.New("error")
 
 func TestBaseSink_Stop(t *testing.T) {
-	// the sink should still consume changes after stopped, but no nothing
+	// the sink should still consume changes after stopped, but do nothing
 	sink := sink{}
 	changes := make(chan source.Change)
 	committed := sink.Apply(changes)

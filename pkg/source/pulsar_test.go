@@ -34,8 +34,8 @@ func TestPulsarReaderSource(t *testing.T) {
 	// prepend incomplete message into topic
 	incomplete, _ := proto.Marshal(&pb.Message{Type: &pb.Message_Commit{Commit: &pb.Commit{EndLsn: 111}}})
 	if _, err = producer.Send(context.Background(), &pulsar.ProducerMessage{
-		Payload:    incomplete,
-		Properties: map[string]string{"lsn": pglogrepl.LSN(111).String()},
+		Key:     pglogrepl.LSN(111).String(),
+		Payload: incomplete,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -43,8 +43,8 @@ func TestPulsarReaderSource(t *testing.T) {
 	for ; lsn < 3; lsn++ {
 		bs, _ := proto.Marshal(&pb.Message{Type: &pb.Message_Begin{Begin: &pb.Begin{FinalLsn: uint64(lsn)}}})
 		if _, err = producer.Send(context.Background(), &pulsar.ProducerMessage{
-			Payload:    bs,
-			Properties: map[string]string{"lsn": pglogrepl.LSN(lsn).String()},
+			Key:     pglogrepl.LSN(lsn).String(),
+			Payload: bs,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -111,8 +111,8 @@ func TestPulsarReaderSource(t *testing.T) {
 	// continue to receive latest msg
 	latest, _ := proto.Marshal(&pb.Message{Type: &pb.Message_Begin{Begin: &pb.Begin{FinalLsn: 3}}})
 	if _, err = producer.Send(context.Background(), &pulsar.ProducerMessage{
-		Payload:    latest,
-		Properties: map[string]string{"lsn": pglogrepl.LSN(3).String()},
+		Key:     pglogrepl.LSN(3).String(),
+		Payload: latest,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -164,8 +164,8 @@ func TestPulsarConsumerSource(t *testing.T) {
 	for ; lsn < 3; lsn++ {
 		bs, _ := proto.Marshal(&pb.Message{Type: &pb.Message_Begin{Begin: &pb.Begin{FinalLsn: uint64(lsn)}}})
 		if _, err = producer.Send(context.Background(), &pulsar.ProducerMessage{
-			Payload:    bs,
-			Properties: map[string]string{"lsn": pglogrepl.LSN(lsn).String()},
+			Key:     pglogrepl.LSN(lsn).String(),
+			Payload: bs,
 		}); err != nil {
 			t.Fatal(err)
 		}
