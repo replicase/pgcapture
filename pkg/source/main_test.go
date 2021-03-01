@@ -10,16 +10,15 @@ import (
 
 type source struct {
 	BaseSource
-	ReadFn      ReadFn
-	ReadTimeout time.Duration
-	Flushed     chan struct{}
+	ReadFn  ReadFn
+	Flushed chan struct{}
 }
 
 func (s *source) Capture(cp Checkpoint) (changes chan Change, err error) {
 	s.Flushed = make(chan struct{})
 	return s.BaseSource.capture(s.ReadFn, func() {
 		close(s.Flushed)
-	}, s.ReadTimeout)
+	})
 }
 
 func (s *source) Commit(cp Checkpoint) {
@@ -30,7 +29,7 @@ var ErrAny = errors.New("error")
 
 func TestBaseSource_Stop(t *testing.T) {
 	source := source{
-		ReadTimeout: time.Second,
+		BaseSource: BaseSource{ReadTimeout: time.Second},
 		ReadFn: func(ctx context.Context) (Change, error) {
 			return Change{Message: &pb.Message{}}, ctx.Err()
 		},
@@ -61,7 +60,7 @@ func TestBaseSource_Stop(t *testing.T) {
 func TestBaseSource_Timeout(t *testing.T) {
 	count := 0
 	source := source{
-		ReadTimeout: time.Second / 5,
+		BaseSource: BaseSource{ReadTimeout: time.Second / 5},
 		ReadFn: func(ctx context.Context) (Change, error) {
 			if count == 0 {
 				time.Sleep(time.Second / 3)
@@ -94,7 +93,7 @@ func TestBaseSource_Timeout(t *testing.T) {
 
 func TestBaseSource_Error(t *testing.T) {
 	source := source{
-		ReadTimeout: time.Second,
+		BaseSource: BaseSource{ReadTimeout: time.Second},
 		ReadFn: func(ctx context.Context) (Change, error) {
 			return Change{}, ErrAny
 		},

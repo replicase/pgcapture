@@ -22,9 +22,15 @@ type PulsarReaderSource struct {
 	reader       pulsar.Reader
 
 	consistent bool
+
+	seekOffset time.Duration
 }
 
 func (p *PulsarReaderSource) Capture(cp Checkpoint) (changes chan Change, err error) {
+	if p.seekOffset == 0 {
+		p.seekOffset = -1 * time.Second
+	}
+
 	host, err := os.Hostname()
 	if err != nil {
 		return nil, err
@@ -46,7 +52,7 @@ func (p *PulsarReaderSource) Capture(cp Checkpoint) (changes chan Change, err er
 	}
 
 	if !cp.Time.IsZero() {
-		ts := cp.Time.Add(-1 * time.Second)
+		ts := cp.Time.Add(p.seekOffset)
 		if err = p.reader.SeekByTime(ts); err != nil {
 			return nil, err
 		}
@@ -88,7 +94,7 @@ func (p *PulsarReaderSource) Capture(cp Checkpoint) (changes chan Change, err er
 	}, func() {
 		p.reader.Close()
 		p.client.Close()
-	}, 5*time.Second)
+	})
 }
 
 func (p *PulsarReaderSource) Commit(cp Checkpoint) {
@@ -126,7 +132,7 @@ func (p *PulsarConsumerSource) Capture(cp Checkpoint) (changes chan Change, err 
 		Topic:             p.PulsarTopic,
 		SubscriptionName:  p.PulsarSubscription,
 		ReceiverQueueSize: ReceiverQueueSize,
-		Type:              pulsar.KeyShared,
+		Type:              pulsar.Shared, // not use key_shared on xid, because transaction sizes are vary dramatically
 	})
 	if err != nil {
 		return nil, err
@@ -161,7 +167,7 @@ func (p *PulsarConsumerSource) Capture(cp Checkpoint) (changes chan Change, err 
 	}, func() {
 		p.consumer.Close()
 		p.client.Close()
-	}, 5*time.Second)
+	})
 }
 
 func (p *PulsarConsumerSource) Commit(cp Checkpoint) {

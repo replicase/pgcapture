@@ -33,6 +33,8 @@ type RequeueSource interface {
 }
 
 type BaseSource struct {
+	ReadTimeout time.Duration
+
 	stop    int64
 	stopped chan struct{}
 
@@ -58,9 +60,15 @@ func (b *BaseSource) Error() error {
 	return b.err
 }
 
-func (b *BaseSource) capture(readFn ReadFn, flushFn FlushFn, timeout time.Duration) (chan Change, error) {
+func (b *BaseSource) capture(readFn ReadFn, flushFn FlushFn) (chan Change, error) {
 	b.stopped = make(chan struct{})
 	changes := make(chan Change, 100)
+
+	timeout := b.ReadTimeout
+	if timeout == 0 {
+		timeout = 5 * time.Second
+	}
+
 	go func() {
 		defer close(b.stopped)
 		defer close(changes)

@@ -87,7 +87,7 @@ func (p *PGXSource) Capture(cp Checkpoint) (changes chan Change, err error) {
 		return nil, err
 	}
 
-	return p.BaseSource.capture(p.fetching, p.cleanup, 5*time.Second)
+	return p.BaseSource.capture(p.fetching, p.cleanup)
 }
 
 func (p *PGXSource) fetching(ctx context.Context) (change Change, err error) {
