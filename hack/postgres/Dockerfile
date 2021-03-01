@@ -11,3 +11,6 @@ RUN wget https://github.com/2ndQuadrant/pglogical/archive/REL1_2_2.tar.gz && \
 
 RUN chown -R postgres:postgres /usr/local/share/postgresql/extension
 RUN chown -R postgres:postgres /usr/local/lib/postgresql
+
+COPY ./extension /extension
+RUN cd /extension && ./make.sh

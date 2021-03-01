@@ -10,7 +10,6 @@ services:
       POSTGRES_HOST_AUTH_METHOD: trust
     volumes:
       - ./hack/postgres:/pgc
-      - ./share:/docker-entrypoint-initdb.d
   pulsar:
     image: apachepulsar/pulsar:2.6.1
     command: ["bin/pulsar", "standalone"]

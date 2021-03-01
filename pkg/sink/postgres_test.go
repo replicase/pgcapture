@@ -30,7 +30,7 @@ func TestPGXSink(t *testing.T) {
 	defer conn.Close(ctx)
 
 	conn.Exec(ctx, "DROP SCHEMA public CASCADE; CREATE SCHEMA public")
-	conn.Exec(ctx, "DROP SCHEMA pgcapture CASCADE")
+	conn.Exec(ctx, "DROP EXTENSION IF EXISTS pgcapture")
 
 	sink := newPGXSink()
 
@@ -158,7 +158,7 @@ func TestPGXSink(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cp.LSN != lsn || !cp.Time.Equal(now) {
+	if cp.LSN != lsn || !cp.Time.Truncate(time.Millisecond).Equal(now.Truncate(time.Millisecond)) {
 		t.Fatalf("unexpected %v %v %v", cp, lsn, now)
 	}
 	sink.Stop()
@@ -173,7 +173,7 @@ func TestPGXSink_ScanCheckpointFromLog(t *testing.T) {
 	defer conn.Close(ctx)
 
 	conn.Exec(ctx, "DROP SCHEMA public CASCADE; CREATE SCHEMA public")
-	conn.Exec(ctx, "DROP SCHEMA pgcapture CASCADE")
+	conn.Exec(ctx, "DROP EXTENSION IF EXISTS pgcapture")
 
 	tmp, err := ioutil.TempFile("", "postgres.sql")
 	if err != nil {

@@ -24,7 +24,7 @@ func TestPGXSource_Capture(t *testing.T) {
 	defer conn.Close(ctx)
 
 	conn.Exec(ctx, "DROP SCHEMA public CASCADE; CREATE SCHEMA public;")
-	conn.Exec(ctx, "DROP SCHEMA pgcapture CASCADE")
+	conn.Exec(ctx, "DROP EXTENSION IF EXISTS pgcapture")
 	conn.Exec(ctx, fmt.Sprintf("select pg_drop_replication_slot('%s')", TestSlot))
 
 	newPGXSource := func() *PGXSource {
