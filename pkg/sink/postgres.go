@@ -291,5 +291,14 @@ func pgInt8(i int64) pgtype.Int8 {
 }
 
 func pgTz(ts uint64) pgtype.Timestamptz {
-	return pgtype.Timestamptz{Time: source.PGTime2Time(ts), Status: pgtype.Present}
+	return pgtype.Timestamptz{Time: PGTime2Time(ts), Status: pgtype.Present}
 }
+
+func PGTime2Time(ts uint64) time.Time {
+	micro := microsecFromUnixEpochToY2K + int64(ts)
+	return time.Unix(micro/microInSecond, (micro%microInSecond)*nsInSecond)
+}
+
+const microInSecond = int64(1e6)
+const nsInSecond = int64(1e3)
+const microsecFromUnixEpochToY2K = int64(946684800 * 1000000)

@@ -46,16 +46,17 @@ func (p *PGXSource) Capture(cp Checkpoint) (changes chan Change, err error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if _, err = p.setupConn.Exec(ctx, sql.InstallExtension); err != nil {
+		return nil, err
+	}
+
 	p.schema = decode.NewPGXSchemaLoader(p.setupConn)
 	if err = p.schema.RefreshType(); err != nil {
 		return nil, err
 	}
 
 	p.decoder = decode.NewPGLogicalDecoder(p.schema)
-
-	if _, err = p.setupConn.Exec(ctx, sql.InstallExtension); err != nil {
-		return nil, err
-	}
 
 	if p.CreateSlot {
 		if _, err = p.setupConn.Exec(ctx, sql.CreateLogicalSlot, p.ReplSlot, decode.OutputPlugin); err != nil {
@@ -80,19 +81,18 @@ func (p *PGXSource) Capture(cp Checkpoint) (changes chan Change, err error) {
 		log.Println("start logical replication on slot with requested position", p.ReplSlot, requestLSN)
 	} else {
 		requestLSN = ident.XLogPos
-		log.Println("start logical replication on slot with previous position", p.ReplSlot, requestLSN)
+		log.Println("start logical replication on slot with latest position", p.ReplSlot, requestLSN)
 	}
 	if err = pglogrepl.StartReplication(context.Background(), p.replConn, p.ReplSlot, requestLSN, pglogrepl.StartReplicationOptions{PluginArgs: decode.PGLogicalParam}); err != nil {
 		return nil, err
 	}
-	p.ackLsn = uint64(requestLSN)
 
 	return p.BaseSource.capture(p.fetching, p.cleanup, 5*time.Second)
 }
 
 func (p *PGXSource) fetching(ctx context.Context) (change Change, err error) {
 	if time.Now().After(p.nextReportTime) {
-		if err = pglogrepl.SendStandbyStatusUpdate(ctx, p.replConn, pglogrepl.StandbyStatusUpdate{WALWritePosition: p.committedLSN()}); err != nil {
+		if err = p.reportLSN(ctx); err != nil {
 			return change, err
 		}
 		p.nextReportTime = time.Now().Add(5 * time.Second)
@@ -146,20 +146,20 @@ func (p *PGXSource) committedLSN() (lsn pglogrepl.LSN) {
 	return pglogrepl.LSN(atomic.LoadUint64(&p.ackLsn))
 }
 
+func (p *PGXSource) reportLSN(ctx context.Context) error {
+	if committed := p.committedLSN(); committed != 0 {
+		return pglogrepl.SendStandbyStatusUpdate(ctx, p.replConn, pglogrepl.StandbyStatusUpdate{WALWritePosition: committed})
+	}
+	return nil
+}
+
 func (p *PGXSource) cleanup() {
+	ctx := context.Background()
 	if p.setupConn != nil {
-		p.setupConn.Close(context.Background())
+		p.setupConn.Close(ctx)
 	}
 	if p.replConn != nil {
-		p.replConn.Close(context.Background())
+		p.reportLSN(ctx)
+		p.replConn.Close(ctx)
 	}
 }
-
-func PGTime2Time(ts uint64) time.Time {
-	micro := microsecFromUnixEpochToY2K + int64(ts)
-	return time.Unix(micro/microInSecond, (micro%microInSecond)*nsInSecond)
-}
-
-const microInSecond = int64(1e6)
-const nsInSecond = int64(1e3)
-const microsecFromUnixEpochToY2K = int64(946684800 * 1000000)
