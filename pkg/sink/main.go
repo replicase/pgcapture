@@ -18,10 +18,12 @@ type Sink interface {
 }
 
 type BaseSink struct {
+	CleanFn CleanFn
+
 	committed chan source.Checkpoint
 
-	stop int64
-	err  error
+	state int64
+	err   error
 }
 
 func (b *BaseSink) Setup() (cp source.Checkpoint, err error) {
@@ -32,22 +34,30 @@ func (b *BaseSink) Apply(changes chan source.Change) (committed chan source.Chec
 	panic("implement me")
 }
 
-func (b *BaseSink) apply(changes chan source.Change, applyFn ApplyFn, cleanFn CleanFn) (committed chan source.Checkpoint) {
+func (b *BaseSink) apply(changes chan source.Change, applyFn ApplyFn) (committed chan source.Checkpoint) {
+	if !atomic.CompareAndSwapInt64(&b.state, 0, 1) {
+		return nil
+	}
 	b.committed = make(chan source.Checkpoint, 100)
 	go func() {
-		for !b.clean(cleanFn) {
-			time.Sleep(time.Second)
-		}
-	}()
-	go func() {
-		defer b.Stop()
-		// this loop should be exit only if the input channel is closed
-		for change := range changes {
-			if !b.stopped() {
-				if b.err = applyFn(change, b.committed); b.err != nil {
-					b.Stop()
+		for atomic.LoadInt64(&b.state) == 1 {
+			select {
+			case change, more := <-changes:
+				if !more {
+					goto cleanup
 				}
+				if b.err = applyFn(change, b.committed); b.err != nil {
+					goto cleanup
+				}
+			default:
 			}
+		}
+	cleanup:
+		atomic.StoreInt64(&b.state, 3)
+		close(b.committed)
+
+		for range changes {
+			// this loop should do nothing and only exit when the input channel is closed
 		}
 	}()
 	return b.committed
@@ -58,17 +68,14 @@ func (b *BaseSink) Error() error {
 }
 
 func (b *BaseSink) Stop() {
-	atomic.CompareAndSwapInt64(&b.stop, 0, 1)
-}
-
-func (b *BaseSink) stopped() (stopped bool) {
-	return atomic.LoadInt64(&b.stop) != 0
-}
-
-func (b *BaseSink) clean(cleanFn CleanFn) (cleaned bool) {
-	if cleaned = atomic.CompareAndSwapInt64(&b.stop, 1, 2); cleaned {
-		cleanFn()
-		close(b.committed)
+	switch atomic.SwapInt64(&b.state, 2) {
+	case 0, 3:
+		b.CleanFn()
+	case 1:
+		for !atomic.CompareAndSwapInt64(&b.state, 3, 2) {
+			time.Sleep(time.Millisecond * 50)
+		}
+		b.CleanFn()
+	default:
 	}
-	return
 }

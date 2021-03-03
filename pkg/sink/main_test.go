@@ -14,19 +14,20 @@ type sink struct {
 }
 
 func (s *sink) Setup() (cp source.Checkpoint, err error) {
+	s.Cleaned = make(chan struct{})
+	s.BaseSink.CleanFn = func() {
+		close(s.Cleaned)
+	}
 	return
 }
 
 func (s *sink) Apply(changes chan source.Change) (committed chan source.Checkpoint) {
-	s.Cleaned = make(chan struct{})
 	return s.BaseSink.apply(changes, func(message source.Change, committed chan source.Checkpoint) error {
 		if message.Message != nil {
 			return ErrAny
 		}
 		committed <- message.Checkpoint
 		return nil
-	}, func() {
-		close(s.Cleaned)
 	})
 }
 
@@ -35,9 +36,9 @@ var ErrAny = errors.New("error")
 func TestBaseSink_Stop(t *testing.T) {
 	// the sink should still consume changes after stopped, but do nothing
 	sink := sink{}
+	sink.Setup()
 	changes := make(chan source.Change)
 	committed := sink.Apply(changes)
-
 	sink.Stop()
 
 	if _, more := <-committed; more {
@@ -64,6 +65,7 @@ func TestBaseSink_Stop(t *testing.T) {
 func TestBaseSink_Clean(t *testing.T) {
 	// the clean func should be call if changes is closed
 	sink := sink{}
+	sink.Setup()
 	changes := make(chan source.Change)
 	committed := sink.Apply(changes)
 
@@ -83,8 +85,10 @@ func TestBaseSink_Clean(t *testing.T) {
 	if _, more := <-committed; more {
 		t.Fatal("committed channel should be closed")
 	}
+
+	sink.Stop()
 	if _, more := <-sink.Cleaned; more {
-		t.Fatal("clean func should be called once")
+		t.Fatal("clean func should be called after Stop()")
 	}
 
 	if sink.Error() != nil {
@@ -94,6 +98,7 @@ func TestBaseSink_Clean(t *testing.T) {
 
 func TestBaseSink_Error(t *testing.T) {
 	sink := sink{}
+	sink.Setup()
 	changes := make(chan source.Change)
 	committed := sink.Apply(changes)
 
@@ -103,8 +108,10 @@ func TestBaseSink_Error(t *testing.T) {
 	if _, more := <-committed; more {
 		t.Fatal("committed channel should be closed")
 	}
+
+	sink.Stop()
 	if _, more := <-sink.Cleaned; more {
-		t.Fatal("clean func should be called once")
+		t.Fatal("clean func should be called after Stop()")
 	}
 
 	close(changes)

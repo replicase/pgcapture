@@ -9,17 +9,17 @@ import (
 	"github.com/rueian/pgcapture/pkg/source"
 )
 
+func newPulsarSink(topic string) *PulsarSink {
+	return &PulsarSink{
+		PulsarOption: pulsar.ClientOptions{URL: "pulsar://127.0.0.1:6650"},
+		PulsarTopic:  topic,
+	}
+}
+
 func TestPulsarSink(t *testing.T) {
 	topic := time.Now().Format("20060102150405")
 
-	newPulsarSink := func() *PulsarSink {
-		return &PulsarSink{
-			PulsarOption: pulsar.ClientOptions{URL: "pulsar://127.0.0.1:6650"},
-			PulsarTopic:  topic,
-		}
-	}
-
-	sink := newPulsarSink()
+	sink := newPulsarSink(topic)
 	cp, err := sink.Setup()
 	if err != nil {
 		t.Fatal(err)
@@ -51,18 +51,34 @@ func TestPulsarSink(t *testing.T) {
 		}
 	}
 	close(changes)
+	sink.Stop()
 	if _, more := <-changes; more {
 		t.Fatal("unexpected")
 	}
-	time.Sleep(2 * time.Second) // wait pulsar client close
 
 	// test restart from last message
-	sink = newPulsarSink()
+	sink = newPulsarSink(topic)
 	cp, err = sink.Setup()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if cp.LSN != 3 {
 		t.Fatalf("checkpoint of non empty topic should be last message")
+	}
+	sink.Stop()
+}
+
+func TestPulsarSink_DuplicatedSink(t *testing.T) {
+	topic := time.Now().Format("20060102150405")
+
+	sink1 := newPulsarSink(topic)
+	if _, err := sink1.Setup(); err != nil {
+		t.Fatal(err)
+	}
+	defer sink1.Stop()
+
+	sink2 := newPulsarSink(topic)
+	if _, err := sink2.Setup(); err == nil {
+		t.Fatal("duplicated sink")
 	}
 }

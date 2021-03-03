@@ -33,6 +33,8 @@ type PGXSink struct {
 	inTX    bool
 	skip    bool
 	refresh bool
+
+	init source.Checkpoint
 }
 
 func (p *PGXSink) Setup() (cp source.Checkpoint, err error) {
@@ -43,6 +45,14 @@ func (p *PGXSink) Setup() (cp source.Checkpoint, err error) {
 	}
 	p.raw = p.conn.PgConn()
 
+	var locked bool
+	if err := p.conn.QueryRow(ctx, "select pg_try_advisory_lock(('x' || md5(current_database()))::bit(64)::bigint)").Scan(&locked); err != nil {
+		return cp, err
+	}
+	if !locked {
+		return cp, errors.New("pg_try_advisory_lock failed, another process is occupying")
+	}
+
 	if _, err = p.conn.Exec(ctx, sql.InstallExtension); err != nil {
 		return cp, err
 	}
@@ -50,6 +60,10 @@ func (p *PGXSink) Setup() (cp source.Checkpoint, err error) {
 	p.schema = decode.NewPGXSchemaLoader(p.conn)
 	if err = p.schema.RefreshKeys(); err != nil {
 		return cp, err
+	}
+
+	p.BaseSink.CleanFn = func() {
+		p.conn.Close(context.Background())
 	}
 
 	return p.findCheckpoint(ctx)
@@ -78,11 +92,15 @@ func (p *PGXSink) findCheckpoint(ctx context.Context) (cp source.Checkpoint, err
 	if err != nil {
 		return cp, err
 	}
+	p.init = cp
 	return cp, nil
 }
 
 func (p *PGXSink) Apply(changes chan source.Change) chan source.Checkpoint {
 	return p.BaseSink.apply(changes, func(change source.Change, committed chan source.Checkpoint) (err error) {
+		if p.init.LSN >= change.Checkpoint.LSN {
+			return nil
+		}
 		switch msg := change.Message.Type.(type) {
 		case *pb.Message_Begin:
 			if p.inTX {
@@ -119,8 +137,6 @@ func (p *PGXSink) Apply(changes chan source.Change) chan source.Checkpoint {
 			}
 		}
 		return err
-	}, func() {
-		p.conn.Close(context.Background())
 	})
 }
 

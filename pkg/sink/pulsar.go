@@ -75,6 +75,12 @@ func (p *PulsarSink) Setup() (cp source.Checkpoint, err error) {
 		return cp, err
 	}
 
+	p.BaseSink.CleanFn = func() {
+		p.producer.Flush()
+		p.producer.Close()
+		p.client.Close()
+	}
+
 	return cp, nil
 }
 
@@ -106,9 +112,5 @@ func (p *PulsarSink) Apply(changes chan source.Change) chan source.Checkpoint {
 			committed <- change.Checkpoint
 		})
 		return nil
-	}, func() {
-		p.producer.Flush()
-		p.producer.Close()
-		p.client.Close()
 	})
 }

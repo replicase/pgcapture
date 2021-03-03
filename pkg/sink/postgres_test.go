@@ -49,6 +49,13 @@ func TestPGXSink(t *testing.T) {
 
 	lsn := uint64(0)
 	now := time.Now()
+
+	// ignore duplicated start lsn
+	changes <- source.Change{
+		Checkpoint: source.Checkpoint{LSN: lsn},
+		Message:    &pb.Message{Type: &pb.Message_Begin{Begin: &pb.Begin{}}},
+	}
+
 	doTx := func(chs []*pb.Change) {
 		now = now.Add(time.Second)
 		ts := now.Unix()*1000000 + int64(now.Nanosecond())/1000 - microsecFromUnixEpochToY2K
@@ -162,6 +169,19 @@ func TestPGXSink(t *testing.T) {
 		t.Fatalf("unexpected %v %v %v", cp, lsn, now)
 	}
 	sink.Stop()
+}
+
+func TestPGXSink_DuplicatedSink(t *testing.T) {
+	sink1 := newPGXSink()
+	if _, err := sink1.Setup(); err != nil {
+		t.Fatal(err)
+	}
+	defer sink1.Stop()
+
+	sink2 := newPGXSink()
+	if _, err := sink2.Setup(); err == nil {
+		t.Fatal("duplicated sink")
+	}
 }
 
 func TestPGXSink_ScanCheckpointFromLog(t *testing.T) {
