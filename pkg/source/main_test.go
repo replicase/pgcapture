@@ -111,3 +111,17 @@ func TestBaseSource_Error(t *testing.T) {
 		t.Fatalf("unexpected %v", source.Error())
 	}
 }
+
+func TestBaseSink_CapturePanic(t *testing.T) {
+	defer func() { recover() }()
+	s := BaseSource{}
+	s.Capture(Checkpoint{})
+	t.Fatal("should panic")
+}
+
+func TestBaseSink_CommitPanic(t *testing.T) {
+	defer func() { recover() }()
+	s := BaseSource{}
+	s.Commit(Checkpoint{})
+	t.Fatal("should panic")
+}

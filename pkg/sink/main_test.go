@@ -120,3 +120,30 @@ func TestBaseSink_Error(t *testing.T) {
 		t.Fatalf("unexpected %v", sink.Error())
 	}
 }
+
+func TestBaseSink_SecondApply(t *testing.T) {
+	sink := sink{}
+	sink.Setup()
+	changes := make(chan source.Change)
+	if first := sink.Apply(changes); first == nil {
+		t.Fatal("should not nil if first time")
+	}
+	if second := sink.Apply(changes); second != nil {
+		t.Fatal("should nil if second time")
+	}
+	sink.Stop()
+}
+
+func TestBaseSink_SetupPanic(t *testing.T) {
+	defer func() { recover() }()
+	s := BaseSink{}
+	s.Setup()
+	t.Fatal("should panic")
+}
+
+func TestBaseSink_ApplyPanic(t *testing.T) {
+	defer func() { recover() }()
+	s := BaseSink{}
+	s.Apply(make(chan source.Change))
+	t.Fatal("should panic")
+}

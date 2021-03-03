@@ -4,6 +4,7 @@ import (
 	"context"
 	"io/ioutil"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -179,7 +180,7 @@ func TestPGXSink_DuplicatedSink(t *testing.T) {
 	defer sink1.Stop()
 
 	sink2 := newPGXSink()
-	if _, err := sink2.Setup(); err == nil {
+	if _, err := sink2.Setup(); err == nil || !strings.Contains(err.Error(), "occupying") {
 		t.Fatal("duplicated sink")
 	}
 }

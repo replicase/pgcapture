@@ -1,6 +1,7 @@
 package sink
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -78,7 +79,7 @@ func TestPulsarSink_DuplicatedSink(t *testing.T) {
 	defer sink1.Stop()
 
 	sink2 := newPulsarSink(topic)
-	if _, err := sink2.Setup(); err == nil {
+	if _, err := sink2.Setup(); err == nil || !strings.Contains(err.Error(), "is already connected to topic") {
 		t.Fatal("duplicated sink")
 	}
 }
