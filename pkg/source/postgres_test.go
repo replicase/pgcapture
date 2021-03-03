@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pglogrepl"
@@ -14,6 +15,14 @@ import (
 )
 
 const TestSlot = "test_slot"
+
+func newPGXSource() *PGXSource {
+	return &PGXSource{
+		SetupConnStr: "postgres://postgres@127.0.0.1/postgres?sslmode=disable",
+		ReplConnStr:  "postgres://postgres@127.0.0.1/postgres?replication=database",
+		ReplSlot:     TestSlot,
+	}
+}
 
 func TestPGXSource_Capture(t *testing.T) {
 	ctx := context.Background()
@@ -26,14 +35,6 @@ func TestPGXSource_Capture(t *testing.T) {
 	conn.Exec(ctx, "DROP SCHEMA public CASCADE; CREATE SCHEMA public;")
 	conn.Exec(ctx, "DROP EXTENSION IF EXISTS pgcapture")
 	conn.Exec(ctx, fmt.Sprintf("select pg_drop_replication_slot('%s')", TestSlot))
-
-	newPGXSource := func() *PGXSource {
-		return &PGXSource{
-			SetupConnStr: "postgres://postgres@127.0.0.1/postgres?sslmode=disable",
-			ReplConnStr:  "postgres://postgres@127.0.0.1/postgres?replication=database",
-			ReplSlot:     TestSlot,
-		}
-	}
 
 	src := newPGXSource()
 	src.CreateSlot = true
@@ -124,6 +125,34 @@ func TestPGXSource_Capture(t *testing.T) {
 	if lsn != pglogrepl.LSN(commit.Checkpoint.LSN).String() {
 		t.Fatalf("unexpected %v", lsn)
 	}
+}
+
+func TestPGXSource_DuplicatedCapture(t *testing.T) {
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, "postgres://postgres@127.0.0.1/postgres?sslmode=disable")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close(ctx)
+
+	conn.Exec(ctx, "DROP SCHEMA public CASCADE; CREATE SCHEMA public;")
+	conn.Exec(ctx, "DROP EXTENSION IF EXISTS pgcapture")
+	conn.Exec(ctx, fmt.Sprintf("select pg_drop_replication_slot('%s')", TestSlot))
+
+	src := newPGXSource()
+	src.CreateSlot = true
+	_, err = src.Capture(Checkpoint{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer src.Stop()
+
+	// duplicated
+	src2 := newPGXSource()
+	if _, err = src2.Capture(Checkpoint{}); err == nil || !strings.Contains(err.Error(), fmt.Sprintf("replication slot \"%s\" is active", TestSlot)) {
+		t.Fatal("duplicated pgx source")
+	}
+	src2.Stop()
 }
 
 type TxTest struct {
