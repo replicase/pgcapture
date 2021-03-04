@@ -12,5 +12,6 @@ require (
 	github.com/jackc/pgx/v4 v4.6.1-0.20200606145419-4e5062306904
 	golang.org/x/crypto v0.0.0-20201221181555-eec23a3978ad // indirect
 	golang.org/x/text v0.3.5 // indirect
+	google.golang.org/grpc v1.36.0
 	google.golang.org/protobuf v1.25.0
 )
