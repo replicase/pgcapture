@@ -29,7 +29,7 @@ type Source interface {
 
 type RequeueSource interface {
 	Source
-	Abort(checkpoint Checkpoint)
+	Requeue(checkpoint Checkpoint)
 }
 
 type BaseSource struct {

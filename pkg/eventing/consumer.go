@@ -58,7 +58,7 @@ func (c *Consumer) Consume(mh ModelHandlers) error {
 				}
 			}
 			if err := ref.hdl(ptr.Interface(), deleted); err != nil {
-				c.source.Abort(change.Checkpoint)
+				c.source.Requeue(change.Checkpoint)
 				continue
 			}
 		}
