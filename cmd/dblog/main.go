@@ -3,11 +3,13 @@ package main
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v4"
 	"github.com/rueian/pgcapture/pkg/dblog"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/source"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
 
@@ -26,9 +28,10 @@ func main() {
 	conn.Exec(ctx, "CREATE TABLE t1 (id int primary key, txt text)")
 	conn.Exec(ctx, fmt.Sprintf("select pg_drop_replication_slot('%s')", TestSlot))
 
-	server := dblog.Service{
+	server := dblog.Gateway{
 		SourceResolver: &PGXSourceResolver{},
 		SourceDumper:   &dblog.PGXSourceDumper{Conn: conn},
+		DumpInfoPuller: &dblog.GRPCDumpInfoPuller{Client: &ctrl{m: make(chan struct{})}},
 	}
 
 	fmt.Println(server.Capture(&logging{}))
@@ -89,4 +92,56 @@ func (r *PGXSourceResolver) Resolve(ctx context.Context, uri string) (source.Req
 		ReplSlot:     TestSlot,
 		CreateSlot:   true,
 	}, nil
+}
+
+type ctrl struct {
+	m chan struct{}
+}
+
+func (c *ctrl) Send(request *pb.DumpInfoRequest) error {
+	fmt.Println("REQ", request.String())
+	go func() {
+		c.m <- struct{}{}
+	}()
+	return nil
+}
+
+func (c *ctrl) Recv() (*pb.DumpInfoResponse, error) {
+	<-c.m
+	time.Sleep(time.Second)
+	return &pb.DumpInfoResponse{
+		Source:     "",
+		Namespace:  "public",
+		Table:      "t1",
+		PageStart:  0,
+		PageBefore: 0,
+	}, nil
+}
+
+func (c *ctrl) Header() (metadata.MD, error) {
+	panic("implement me")
+}
+
+func (c *ctrl) Trailer() metadata.MD {
+	panic("implement me")
+}
+
+func (c *ctrl) CloseSend() error {
+	panic("implement me")
+}
+
+func (c *ctrl) Context() context.Context {
+	return context.Background()
+}
+
+func (c *ctrl) SendMsg(m interface{}) error {
+	panic("implement me")
+}
+
+func (c *ctrl) RecvMsg(m interface{}) error {
+	panic("implement me")
+}
+
+func (c *ctrl) PullDumpInfo(ctx context.Context, opts ...grpc.CallOption) (pb.DBLogController_PullDumpInfoClient, error) {
+	return c, nil
 }

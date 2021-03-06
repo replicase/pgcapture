@@ -14,7 +14,7 @@ type DumpInfoPuller interface {
 }
 
 type GRPCDumpInfoPuller struct {
-	client pb.DBLogControllerClient
+	Client pb.DBLogControllerClient
 
 	state   int64
 	requeue chan string
@@ -22,7 +22,7 @@ type GRPCDumpInfoPuller struct {
 
 func (p *GRPCDumpInfoPuller) PullDumpInfo(ctx context.Context, uri string) (chan *pb.DumpInfoResponse, error) {
 	if !atomic.CompareAndSwapInt64(&p.state, 0, 1) {
-		return nil, nil
+		return nil, errors.New("puller is already started")
 	}
 
 	p.requeue = make(chan string)
@@ -54,7 +54,7 @@ func (p *GRPCDumpInfoPuller) Ack(err error) {
 }
 
 func (p *GRPCDumpInfoPuller) pulling(ctx context.Context, uri string, resp chan *pb.DumpInfoResponse) error {
-	server, err := p.client.PullDumpInfo(ctx)
+	server, err := p.Client.PullDumpInfo(ctx)
 	if err != nil {
 		return err
 	}
