@@ -3,10 +3,6 @@ package dblog
 import (
 	"context"
 	"errors"
-	"log"
-	"sync/atomic"
-	"time"
-
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/source"
 )
@@ -16,21 +12,17 @@ type SourceResolver interface {
 }
 
 type SourceDumper interface {
-	NextDumpInfo(uri string) (*DumpInfo, error)
-	LoadDump(minLSN uint64, info *DumpInfo) ([]*pb.Change, error)
+	LoadDump(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.Change, error)
 }
 
-type DumpInfo struct {
-	URI string
-}
-
-type Service struct {
-	pb.UnimplementedDBLogServer
+type Gateway struct {
+	pb.UnimplementedDBLogGatewayServer
 	SourceResolver SourceResolver
 	SourceDumper   SourceDumper
+	DumpInfoPuller DumpInfoPuller
 }
 
-func (s *Service) Capture(server pb.DBLog_CaptureServer) error {
+func (s *Gateway) Capture(server pb.DBLogGateway_CaptureServer) error {
 	request, err := server.Recv()
 	if err != nil {
 		return err
@@ -55,7 +47,7 @@ func (s *Service) Capture(server pb.DBLog_CaptureServer) error {
 	return s.capture(init, server, changes)
 }
 
-func (s *Service) acknowledge(server pb.DBLog_CaptureServer, src source.RequeueSource) error {
+func (s *Gateway) acknowledge(server pb.DBLogGateway_CaptureServer, src source.RequeueSource) error {
 	defer src.Stop()
 	for {
 		request, err := server.Recv()
@@ -72,33 +64,13 @@ func (s *Service) acknowledge(server pb.DBLog_CaptureServer, src source.RequeueS
 	}
 }
 
-func (s *Service) capture(init *pb.CaptureInit, server pb.DBLog_CaptureServer, changes chan source.Change) error {
+func (s *Gateway) capture(init *pb.CaptureInit, server pb.DBLogGateway_CaptureServer, changes chan source.Change) error {
 	lsn := uint64(0)
-	sig := int64(0)
-	var nextDumpInfo *DumpInfo
 
-	go func() {
-		var err error
-		for {
-			select {
-			case <-server.Context().Done():
-				return
-			default:
-			}
-
-			nextDumpInfo, err = s.SourceDumper.NextDumpInfo(init.Uri)
-			if err != nil {
-				// TODO
-				continue
-			}
-
-			if nextDumpInfo != nil {
-				atomic.StoreInt64(&sig, 1)
-			}
-
-			time.Sleep(time.Second)
-		}
-	}()
+	dumps, err := s.DumpInfoPuller.PullDumpInfo(server.Context(), init.Uri)
+	if err != nil {
+		return err
+	}
 
 	for {
 		select {
@@ -112,21 +84,19 @@ func (s *Service) capture(init *pb.CaptureInit, server pb.DBLog_CaptureServer, c
 				}
 			}
 			lsn = msg.Checkpoint.LSN
-		default:
-			if !atomic.CompareAndSwapInt64(&sig, 1, 0) {
-				continue
+		case info, more := <-dumps:
+			if !more {
+				return nil
 			}
-			dump, err := s.SourceDumper.LoadDump(lsn, nextDumpInfo)
-			if err != nil {
-				log.Println("fail LoadDump", err)
-				continue
-			}
-
-			for _, change := range dump {
-				if err := server.Send(&pb.CaptureMessage{Checkpoint: 0, Change: change}); err != nil {
-					return err
+			dump, err := s.SourceDumper.LoadDump(lsn, info)
+			if err == nil {
+				for _, change := range dump {
+					if err := server.Send(&pb.CaptureMessage{Checkpoint: 0, Change: change}); err != nil {
+						return err
+					}
 				}
 			}
+			s.DumpInfoPuller.Ack(err)
 		}
 	}
 }

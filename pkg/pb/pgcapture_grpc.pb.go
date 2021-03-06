@@ -14,45 +14,45 @@ import (
 // Requires gRPC-Go v1.32.0 or later.
 const _ = grpc.SupportPackageIsVersion7
 
-// DBLogClient is the client API for DBLog service.
+// DBLogGatewayClient is the client API for DBLogGateway service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
-type DBLogClient interface {
-	Capture(ctx context.Context, opts ...grpc.CallOption) (DBLog_CaptureClient, error)
+type DBLogGatewayClient interface {
+	Capture(ctx context.Context, opts ...grpc.CallOption) (DBLogGateway_CaptureClient, error)
 }
 
-type dBLogClient struct {
+type dBLogGatewayClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewDBLogClient(cc grpc.ClientConnInterface) DBLogClient {
-	return &dBLogClient{cc}
+func NewDBLogGatewayClient(cc grpc.ClientConnInterface) DBLogGatewayClient {
+	return &dBLogGatewayClient{cc}
 }
 
-func (c *dBLogClient) Capture(ctx context.Context, opts ...grpc.CallOption) (DBLog_CaptureClient, error) {
-	stream, err := c.cc.NewStream(ctx, &DBLog_ServiceDesc.Streams[0], "/pgcapture.DBLog/Capture", opts...)
+func (c *dBLogGatewayClient) Capture(ctx context.Context, opts ...grpc.CallOption) (DBLogGateway_CaptureClient, error) {
+	stream, err := c.cc.NewStream(ctx, &DBLogGateway_ServiceDesc.Streams[0], "/pgcapture.DBLogGateway/Capture", opts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &dBLogCaptureClient{stream}
+	x := &dBLogGatewayCaptureClient{stream}
 	return x, nil
 }
 
-type DBLog_CaptureClient interface {
+type DBLogGateway_CaptureClient interface {
 	Send(*CaptureRequest) error
 	Recv() (*CaptureMessage, error)
 	grpc.ClientStream
 }
 
-type dBLogCaptureClient struct {
+type dBLogGatewayCaptureClient struct {
 	grpc.ClientStream
 }
 
-func (x *dBLogCaptureClient) Send(m *CaptureRequest) error {
+func (x *dBLogGatewayCaptureClient) Send(m *CaptureRequest) error {
 	return x.ClientStream.SendMsg(m)
 }
 
-func (x *dBLogCaptureClient) Recv() (*CaptureMessage, error) {
+func (x *dBLogGatewayCaptureClient) Recv() (*CaptureMessage, error) {
 	m := new(CaptureMessage)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
@@ -60,53 +60,53 @@ func (x *dBLogCaptureClient) Recv() (*CaptureMessage, error) {
 	return m, nil
 }
 
-// DBLogServer is the server API for DBLog service.
-// All implementations must embed UnimplementedDBLogServer
+// DBLogGatewayServer is the server API for DBLogGateway service.
+// All implementations must embed UnimplementedDBLogGatewayServer
 // for forward compatibility
-type DBLogServer interface {
-	Capture(DBLog_CaptureServer) error
-	mustEmbedUnimplementedDBLogServer()
+type DBLogGatewayServer interface {
+	Capture(DBLogGateway_CaptureServer) error
+	mustEmbedUnimplementedDBLogGatewayServer()
 }
 
-// UnimplementedDBLogServer must be embedded to have forward compatible implementations.
-type UnimplementedDBLogServer struct {
+// UnimplementedDBLogGatewayServer must be embedded to have forward compatible implementations.
+type UnimplementedDBLogGatewayServer struct {
 }
 
-func (UnimplementedDBLogServer) Capture(DBLog_CaptureServer) error {
+func (UnimplementedDBLogGatewayServer) Capture(DBLogGateway_CaptureServer) error {
 	return status.Errorf(codes.Unimplemented, "method Capture not implemented")
 }
-func (UnimplementedDBLogServer) mustEmbedUnimplementedDBLogServer() {}
+func (UnimplementedDBLogGatewayServer) mustEmbedUnimplementedDBLogGatewayServer() {}
 
-// UnsafeDBLogServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to DBLogServer will
+// UnsafeDBLogGatewayServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to DBLogGatewayServer will
 // result in compilation errors.
-type UnsafeDBLogServer interface {
-	mustEmbedUnimplementedDBLogServer()
+type UnsafeDBLogGatewayServer interface {
+	mustEmbedUnimplementedDBLogGatewayServer()
 }
 
-func RegisterDBLogServer(s grpc.ServiceRegistrar, srv DBLogServer) {
-	s.RegisterService(&DBLog_ServiceDesc, srv)
+func RegisterDBLogGatewayServer(s grpc.ServiceRegistrar, srv DBLogGatewayServer) {
+	s.RegisterService(&DBLogGateway_ServiceDesc, srv)
 }
 
-func _DBLog_Capture_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(DBLogServer).Capture(&dBLogCaptureServer{stream})
+func _DBLogGateway_Capture_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(DBLogGatewayServer).Capture(&dBLogGatewayCaptureServer{stream})
 }
 
-type DBLog_CaptureServer interface {
+type DBLogGateway_CaptureServer interface {
 	Send(*CaptureMessage) error
 	Recv() (*CaptureRequest, error)
 	grpc.ServerStream
 }
 
-type dBLogCaptureServer struct {
+type dBLogGatewayCaptureServer struct {
 	grpc.ServerStream
 }
 
-func (x *dBLogCaptureServer) Send(m *CaptureMessage) error {
+func (x *dBLogGatewayCaptureServer) Send(m *CaptureMessage) error {
 	return x.ServerStream.SendMsg(m)
 }
 
-func (x *dBLogCaptureServer) Recv() (*CaptureRequest, error) {
+func (x *dBLogGatewayCaptureServer) Recv() (*CaptureRequest, error) {
 	m := new(CaptureRequest)
 	if err := x.ServerStream.RecvMsg(m); err != nil {
 		return nil, err
@@ -114,17 +114,135 @@ func (x *dBLogCaptureServer) Recv() (*CaptureRequest, error) {
 	return m, nil
 }
 
-// DBLog_ServiceDesc is the grpc.ServiceDesc for DBLog service.
+// DBLogGateway_ServiceDesc is the grpc.ServiceDesc for DBLogGateway service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var DBLog_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "pgcapture.DBLog",
-	HandlerType: (*DBLogServer)(nil),
+var DBLogGateway_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "pgcapture.DBLogGateway",
+	HandlerType: (*DBLogGatewayServer)(nil),
 	Methods:     []grpc.MethodDesc{},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "Capture",
-			Handler:       _DBLog_Capture_Handler,
+			Handler:       _DBLogGateway_Capture_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+	},
+	Metadata: "pb/pgcapture.proto",
+}
+
+// DBLogControllerClient is the client API for DBLogController service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type DBLogControllerClient interface {
+	PullDumpInfo(ctx context.Context, opts ...grpc.CallOption) (DBLogController_PullDumpInfoClient, error)
+}
+
+type dBLogControllerClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewDBLogControllerClient(cc grpc.ClientConnInterface) DBLogControllerClient {
+	return &dBLogControllerClient{cc}
+}
+
+func (c *dBLogControllerClient) PullDumpInfo(ctx context.Context, opts ...grpc.CallOption) (DBLogController_PullDumpInfoClient, error) {
+	stream, err := c.cc.NewStream(ctx, &DBLogController_ServiceDesc.Streams[0], "/pgcapture.DBLogController/PullDumpInfo", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &dBLogControllerPullDumpInfoClient{stream}
+	return x, nil
+}
+
+type DBLogController_PullDumpInfoClient interface {
+	Send(*DumpInfoRequest) error
+	Recv() (*DumpInfoResponse, error)
+	grpc.ClientStream
+}
+
+type dBLogControllerPullDumpInfoClient struct {
+	grpc.ClientStream
+}
+
+func (x *dBLogControllerPullDumpInfoClient) Send(m *DumpInfoRequest) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *dBLogControllerPullDumpInfoClient) Recv() (*DumpInfoResponse, error) {
+	m := new(DumpInfoResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// DBLogControllerServer is the server API for DBLogController service.
+// All implementations must embed UnimplementedDBLogControllerServer
+// for forward compatibility
+type DBLogControllerServer interface {
+	PullDumpInfo(DBLogController_PullDumpInfoServer) error
+	mustEmbedUnimplementedDBLogControllerServer()
+}
+
+// UnimplementedDBLogControllerServer must be embedded to have forward compatible implementations.
+type UnimplementedDBLogControllerServer struct {
+}
+
+func (UnimplementedDBLogControllerServer) PullDumpInfo(DBLogController_PullDumpInfoServer) error {
+	return status.Errorf(codes.Unimplemented, "method PullDumpInfo not implemented")
+}
+func (UnimplementedDBLogControllerServer) mustEmbedUnimplementedDBLogControllerServer() {}
+
+// UnsafeDBLogControllerServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to DBLogControllerServer will
+// result in compilation errors.
+type UnsafeDBLogControllerServer interface {
+	mustEmbedUnimplementedDBLogControllerServer()
+}
+
+func RegisterDBLogControllerServer(s grpc.ServiceRegistrar, srv DBLogControllerServer) {
+	s.RegisterService(&DBLogController_ServiceDesc, srv)
+}
+
+func _DBLogController_PullDumpInfo_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(DBLogControllerServer).PullDumpInfo(&dBLogControllerPullDumpInfoServer{stream})
+}
+
+type DBLogController_PullDumpInfoServer interface {
+	Send(*DumpInfoResponse) error
+	Recv() (*DumpInfoRequest, error)
+	grpc.ServerStream
+}
+
+type dBLogControllerPullDumpInfoServer struct {
+	grpc.ServerStream
+}
+
+func (x *dBLogControllerPullDumpInfoServer) Send(m *DumpInfoResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *dBLogControllerPullDumpInfoServer) Recv() (*DumpInfoRequest, error) {
+	m := new(DumpInfoRequest)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// DBLogController_ServiceDesc is the grpc.ServiceDesc for DBLogController service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var DBLogController_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "pgcapture.DBLogController",
+	HandlerType: (*DBLogControllerServer)(nil),
+	Methods:     []grpc.MethodDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "PullDumpInfo",
+			Handler:       _DBLogController_PullDumpInfo_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},
