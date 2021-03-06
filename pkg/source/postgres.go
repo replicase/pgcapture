@@ -83,6 +83,7 @@ func (p *PGXSource) Capture(cp Checkpoint) (changes chan Change, err error) {
 		requestLSN = ident.XLogPos
 		log.Println("start logical replication on slot with latest position", p.ReplSlot, requestLSN)
 	}
+	p.Commit(Checkpoint{LSN: uint64(requestLSN)})
 	if err = pglogrepl.StartReplication(context.Background(), p.replConn, p.ReplSlot, requestLSN, pglogrepl.StartReplicationOptions{PluginArgs: decode.PGLogicalParam}); err != nil {
 		return nil, err
 	}
@@ -139,7 +140,9 @@ func (p *PGXSource) fetching(ctx context.Context) (change Change, err error) {
 }
 
 func (p *PGXSource) Commit(cp Checkpoint) {
-	atomic.StoreUint64(&p.ackLsn, cp.LSN)
+	if cp.LSN != 0 {
+		atomic.StoreUint64(&p.ackLsn, cp.LSN)
+	}
 }
 
 func (p *PGXSource) committedLSN() (lsn pglogrepl.LSN) {
