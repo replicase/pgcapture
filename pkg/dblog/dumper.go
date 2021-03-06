@@ -2,11 +2,11 @@ package dblog
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"github.com/jackc/pglogrepl"
+	"fmt"
 	"time"
 
+	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v4"
 	"github.com/rueian/pgcapture/pkg/pb"
 )
@@ -15,16 +15,11 @@ type PGXSourceDumper struct {
 	Conn *pgx.Conn
 }
 
-func (p *PGXSourceDumper) NextDumpInfo(uri string) (*DumpInfo, error) {
-	// TODO
-	return &DumpInfo{URI: `{"Source":"debug","Namespace":"public","Table":"t1","Query":"select * from t1"}`}, nil
-}
-
-func (p *PGXSourceDumper) LoadDump(minLSN uint64, info *DumpInfo) ([]*pb.Change, error) {
+func (p *PGXSourceDumper) LoadDump(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.Change, error) {
 	for {
 		changes, err := p.load(minLSN, info)
 		if err == errRetry {
-			time.Sleep(time.Second)
+			time.Sleep(time.Millisecond * 100)
 			continue
 		}
 		if err != nil {
@@ -34,24 +29,22 @@ func (p *PGXSourceDumper) LoadDump(minLSN uint64, info *DumpInfo) ([]*pb.Change,
 	}
 }
 
-func (p *PGXSourceDumper) load(minLSN uint64, info *DumpInfo) ([]*pb.Change, error) {
-	pi := &pgDumpInfo{}
-	if err := json.Unmarshal([]byte(info.URI), pi); err != nil {
-		return nil, err
-	}
+const DumpQuery = `select * from "%s"."%s" where ctid = any(array(select format('(%%s,%%s)', i, j)::tid from generate_series($1::int,$2::int) as gs(i), generate_series(1,(current_setting('block_size')::int-24)/28) as gs2(j)))`
 
+func (p *PGXSourceDumper) load(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.Change, error) {
 	ctx := context.Background()
+
 	tx, err := p.Conn.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback(ctx)
 
-	if err = checkLSN(ctx, tx, pi, minLSN); err != nil {
+	if err = checkLSN(ctx, tx, info, minLSN); err != nil {
 		return nil, err
 	}
 
-	rows, err := tx.Query(ctx, pi.Query)
+	rows, err := tx.Query(ctx, fmt.Sprintf(DumpQuery, info.Namespace, info.Table), info.PageStart, info.PageBefore)
 	if err != nil {
 		return nil, err
 	}
@@ -59,26 +52,18 @@ func (p *PGXSourceDumper) load(minLSN uint64, info *DumpInfo) ([]*pb.Change, err
 	var changes []*pb.Change
 	for rows.Next() {
 		values := rows.RawValues()
-		change := &pb.Change{
-			Op:        pb.Change_UPDATE,
-			Namespace: pi.Namespace,
-			Table:     pi.Table,
-		}
+		change := &pb.Change{Op: pb.Change_UPDATE, Namespace: info.Namespace, Table: info.Table}
 		for i, fd := range rows.FieldDescriptions() {
-			change.NewTuple = append(change.NewTuple, &pb.Field{
-				Name:  string(fd.Name),
-				Oid:   fd.DataTypeOID,
-				Datum: values[i],
-			})
+			change.NewTuple = append(change.NewTuple, &pb.Field{Name: string(fd.Name), Oid: fd.DataTypeOID, Datum: values[i]})
 		}
 		changes = append(changes, change)
 	}
 	return changes, nil
 }
 
-func checkLSN(ctx context.Context, tx pgx.Tx, pi *pgDumpInfo, minLSN uint64) (err error) {
+func checkLSN(ctx context.Context, tx pgx.Tx, info *pb.DumpInfoResponse, minLSN uint64) (err error) {
 	var str string
-	if err = tx.QueryRow(ctx, "SELECT commit FROM pgcapture.sources WHERE id = $1 AND status IS NULL", pi.Source).Scan(&str); err != nil {
+	if err = tx.QueryRow(ctx, "SELECT commit FROM pgcapture.sources WHERE id = $1 AND status IS NULL", info.Source).Scan(&str); err != nil {
 		return err
 	}
 
@@ -91,13 +76,6 @@ func checkLSN(ctx context.Context, tx pgx.Tx, pi *pgDumpInfo, minLSN uint64) (er
 		return errRetry
 	}
 	return nil
-}
-
-type pgDumpInfo struct {
-	Source    string
-	Namespace string
-	Table     string
-	Query     string
 }
 
 var errRetry = errors.New("retry")
