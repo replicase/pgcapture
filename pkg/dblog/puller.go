@@ -62,9 +62,14 @@ func (p *GRPCDumpInfoPuller) pulling(ctx context.Context, uri string, resp chan 
 		return err
 	}
 	go func() {
-		for msg := range p.requeue {
-			if err := server.Send(&pb.DumpInfoRequest{RequeueErr: msg}); err != nil {
+		for {
+			select {
+			case <-server.Context().Done():
 				return
+			case msg := <-p.requeue:
+				if err := server.Send(&pb.DumpInfoRequest{RequeueErr: msg}); err != nil {
+					return
+				}
 			}
 		}
 	}()

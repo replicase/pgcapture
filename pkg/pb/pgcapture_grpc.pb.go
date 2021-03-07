@@ -137,6 +137,7 @@ var DBLogGateway_ServiceDesc = grpc.ServiceDesc{
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type DBLogControllerClient interface {
 	PullDumpInfo(ctx context.Context, opts ...grpc.CallOption) (DBLogController_PullDumpInfoClient, error)
+	Schedule(ctx context.Context, in *ScheduleRequest, opts ...grpc.CallOption) (*ScheduleResponse, error)
 }
 
 type dBLogControllerClient struct {
@@ -178,11 +179,21 @@ func (x *dBLogControllerPullDumpInfoClient) Recv() (*DumpInfoResponse, error) {
 	return m, nil
 }
 
+func (c *dBLogControllerClient) Schedule(ctx context.Context, in *ScheduleRequest, opts ...grpc.CallOption) (*ScheduleResponse, error) {
+	out := new(ScheduleResponse)
+	err := c.cc.Invoke(ctx, "/pgcapture.DBLogController/Schedule", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DBLogControllerServer is the server API for DBLogController service.
 // All implementations must embed UnimplementedDBLogControllerServer
 // for forward compatibility
 type DBLogControllerServer interface {
 	PullDumpInfo(DBLogController_PullDumpInfoServer) error
+	Schedule(context.Context, *ScheduleRequest) (*ScheduleResponse, error)
 	mustEmbedUnimplementedDBLogControllerServer()
 }
 
@@ -192,6 +203,9 @@ type UnimplementedDBLogControllerServer struct {
 
 func (UnimplementedDBLogControllerServer) PullDumpInfo(DBLogController_PullDumpInfoServer) error {
 	return status.Errorf(codes.Unimplemented, "method PullDumpInfo not implemented")
+}
+func (UnimplementedDBLogControllerServer) Schedule(context.Context, *ScheduleRequest) (*ScheduleResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Schedule not implemented")
 }
 func (UnimplementedDBLogControllerServer) mustEmbedUnimplementedDBLogControllerServer() {}
 
@@ -232,13 +246,36 @@ func (x *dBLogControllerPullDumpInfoServer) Recv() (*DumpInfoRequest, error) {
 	return m, nil
 }
 
+func _DBLogController_Schedule_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ScheduleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DBLogControllerServer).Schedule(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/pgcapture.DBLogController/Schedule",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DBLogControllerServer).Schedule(ctx, req.(*ScheduleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // DBLogController_ServiceDesc is the grpc.ServiceDesc for DBLogController service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var DBLogController_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "pgcapture.DBLogController",
 	HandlerType: (*DBLogControllerServer)(nil),
-	Methods:     []grpc.MethodDesc{},
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Schedule",
+			Handler:    _DBLogController_Schedule_Handler,
+		},
+	},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "PullDumpInfo",

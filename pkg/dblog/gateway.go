@@ -37,6 +37,8 @@ func (s *Gateway) Capture(server pb.DBLogGateway_CaptureServer) error {
 	if err != nil {
 		return err
 	}
+	defer src.Stop()
+
 	changes, err := src.Capture(source.Checkpoint{})
 	if err != nil {
 		return err
@@ -48,7 +50,6 @@ func (s *Gateway) Capture(server pb.DBLogGateway_CaptureServer) error {
 }
 
 func (s *Gateway) acknowledge(server pb.DBLogGateway_CaptureServer, src source.RequeueSource) error {
-	defer src.Stop()
 	for {
 		request, err := server.Recv()
 		if err != nil {
