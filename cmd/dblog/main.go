@@ -110,11 +110,10 @@ func (c *ctrl) Recv() (*pb.DumpInfoResponse, error) {
 	<-c.m
 	time.Sleep(time.Second)
 	return &pb.DumpInfoResponse{
-		Source:     "",
-		Namespace:  "public",
-		Table:      "t1",
-		PageStart:  0,
-		PageBefore: 0,
+		Namespace: "public",
+		Table:     "t1",
+		PageBegin: 0,
+		PageEnd:   0,
 	}, nil
 }
 

@@ -80,9 +80,8 @@ message DumpInfoRequest {
 }
 
 message DumpInfoResponse {
-  string source = 1;
-  string namespace = 2;
-  string table = 3;
-  uint32 page_start = 4;
-  uint32 page_before = 5;
+  string namespace = 1;
+  string table = 2;
+  uint32 page_begin = 3;
+  uint32 page_end = 4;
 }

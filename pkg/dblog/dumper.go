@@ -40,11 +40,11 @@ func (p *PGXSourceDumper) load(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.
 	}
 	defer tx.Rollback(ctx)
 
-	if err = checkLSN(ctx, tx, info, minLSN); err != nil {
+	if err = checkLSN(ctx, tx, minLSN); err != nil {
 		return nil, err
 	}
 
-	rows, err := tx.Query(ctx, fmt.Sprintf(DumpQuery, info.Namespace, info.Table), info.PageStart, info.PageBefore)
+	rows, err := tx.Query(ctx, fmt.Sprintf(DumpQuery, info.Namespace, info.Table), info.PageBegin, info.PageEnd)
 	if err != nil {
 		return nil, err
 	}
@@ -61,9 +61,9 @@ func (p *PGXSourceDumper) load(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.
 	return changes, nil
 }
 
-func checkLSN(ctx context.Context, tx pgx.Tx, info *pb.DumpInfoResponse, minLSN uint64) (err error) {
+func checkLSN(ctx context.Context, tx pgx.Tx, minLSN uint64) (err error) {
 	var str string
-	if err = tx.QueryRow(ctx, "SELECT commit FROM pgcapture.sources WHERE id = $1 AND status IS NULL", info.Source).Scan(&str); err != nil {
+	if err = tx.QueryRow(ctx, "SELECT MAX(commit) FROM pgcapture.sources WHERE status IS NULL").Scan(&str); err != nil {
 		return err
 	}
 
