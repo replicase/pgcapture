@@ -23,7 +23,7 @@ type BaseSink struct {
 	committed chan source.Checkpoint
 
 	state int64
-	err   error
+	err   atomic.Value
 }
 
 func (b *BaseSink) Setup() (cp source.Checkpoint, err error) {
@@ -46,7 +46,8 @@ func (b *BaseSink) apply(changes chan source.Change, applyFn ApplyFn) (committed
 				if !more {
 					goto cleanup
 				}
-				if b.err = applyFn(change, b.committed); b.err != nil {
+				if err := applyFn(change, b.committed); err != nil {
+					b.err.Store(err)
 					goto cleanup
 				}
 			default:
@@ -64,7 +65,10 @@ func (b *BaseSink) apply(changes chan source.Change, applyFn ApplyFn) (committed
 }
 
 func (b *BaseSink) Error() error {
-	return b.err
+	if err, ok := b.err.Load().(error); ok {
+		return err
+	}
+	return nil
 }
 
 func (b *BaseSink) Stop() {

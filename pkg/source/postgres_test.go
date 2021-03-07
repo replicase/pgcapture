@@ -88,13 +88,11 @@ func TestPGXSource_Capture(t *testing.T) {
 		},
 	}
 
-	go func() {
-		for _, tx := range txs {
-			if _, err = conn.Exec(ctx, tx.SQL); err != nil {
-				t.Fatal(err)
-			}
+	for _, tx := range txs {
+		if _, err := conn.Exec(ctx, tx.SQL); err != nil {
+			t.Fatal(err)
 		}
-	}()
+	}
 
 	// test schema refresh
 	for _, tx := range txs {

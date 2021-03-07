@@ -38,7 +38,7 @@ type BaseSource struct {
 	stop    int64
 	stopped chan struct{}
 
-	err error
+	err atomic.Value
 }
 
 func (b *BaseSource) Capture(cp Checkpoint) (changes chan Change, err error) {
@@ -57,7 +57,10 @@ func (b *BaseSource) Stop() {
 }
 
 func (b *BaseSource) Error() error {
-	return b.err
+	if err, ok := b.err.Load().(error); ok {
+		return err
+	}
+	return nil
 }
 
 func (b *BaseSource) capture(readFn ReadFn, flushFn FlushFn) (chan Change, error) {
@@ -84,7 +87,7 @@ func (b *BaseSource) capture(readFn ReadFn, flushFn FlushFn) (chan Change, error
 				continue
 			}
 			if err != nil {
-				b.err = err
+				b.err.Store(err)
 				return
 			}
 			if change.Message != nil {

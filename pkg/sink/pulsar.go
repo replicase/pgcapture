@@ -105,7 +105,7 @@ func (p *PulsarSink) Apply(changes chan source.Change) chan source.Checkpoint {
 			SequenceID: &seq,
 		}, func(id pulsar.MessageID, message *pulsar.ProducerMessage, err error) {
 			if err != nil {
-				p.BaseSink.err = err
+				p.BaseSink.err.Store(err)
 				p.BaseSink.Stop()
 				return
 			}
