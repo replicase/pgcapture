@@ -2,7 +2,6 @@ package dblog
 
 import (
 	"errors"
-	"net"
 	"sync"
 	"time"
 
@@ -12,17 +11,27 @@ import (
 type OnSchedule func(response *pb.DumpInfoResponse) error
 type CancelFunc func()
 
+var ErrAlreadyScheduled = errors.New("already scheduled")
+var ErrAlreadyRegistered = errors.New("already registered")
+
 type Scheduler interface {
 	Schedule(uri string, dumps []*pb.DumpInfoResponse) error
-	Register(uri string, client net.Addr, fn OnSchedule) CancelFunc
-	Ack(uri string, client net.Addr, requeue string)
+	Register(uri string, client string, fn OnSchedule) (CancelFunc, error)
+	Ack(uri string, client string, requeue string)
+}
+
+func NewMemoryScheduler(interval time.Duration) *MemoryScheduler {
+	return &MemoryScheduler{
+		interval: interval,
+		pending:  make(map[string]*pending),
+		clients:  make(map[string]map[string]*track),
+	}
 }
 
 type MemoryScheduler struct {
-	ScheduleInterval time.Duration
-
+	interval  time.Duration
 	pending   map[string]*pending
-	clients   map[string]map[net.Addr]*track
+	clients   map[string]map[string]*track
 	pendingMu sync.Mutex
 	clientsMu sync.Mutex
 }
@@ -31,7 +40,7 @@ func (s *MemoryScheduler) Schedule(uri string, dumps []*pb.DumpInfoResponse) err
 	s.pendingMu.Lock()
 	defer s.pendingMu.Unlock()
 	if _, ok := s.pending[uri]; ok {
-		return errors.New("already scheduled")
+		return ErrAlreadyScheduled
 	}
 	s.pending[uri] = &pending{dumps: dumps}
 	go s.schedule(uri)
@@ -46,9 +55,10 @@ func (s *MemoryScheduler) schedule(uri string) {
 	}()
 
 	for {
+		time.Sleep(s.interval)
+
 		var candidate *track
 		var dump *pb.DumpInfoResponse
-		time.Sleep(s.ScheduleInterval)
 
 		busy := 0
 		remain := 0
@@ -89,14 +99,17 @@ func (s *MemoryScheduler) schedule(uri string) {
 	}
 }
 
-func (s *MemoryScheduler) Register(uri string, client net.Addr, fn OnSchedule) CancelFunc {
+func (s *MemoryScheduler) Register(uri string, client string, fn OnSchedule) (CancelFunc, error) {
 	s.clientsMu.Lock()
 	defer s.clientsMu.Unlock()
 
 	clients, ok := s.clients[uri]
 	if !ok {
-		clients = make(map[net.Addr]*track)
+		clients = make(map[string]*track)
 		s.clients[uri] = clients
+	}
+	if _, ok = clients[client]; ok {
+		return nil, ErrAlreadyRegistered
 	}
 	track := &track{schedule: fn, cancel: func() {
 		s.Ack(uri, client, "canceled")
@@ -105,10 +118,10 @@ func (s *MemoryScheduler) Register(uri string, client net.Addr, fn OnSchedule) C
 		s.clientsMu.Unlock()
 	}}
 	clients[client] = track
-	return track.cancel
+	return track.cancel, nil
 }
 
-func (s *MemoryScheduler) Ack(uri string, client net.Addr, requeue string) {
+func (s *MemoryScheduler) Ack(uri string, client string, requeue string) {
 	var dump *pb.DumpInfoResponse
 
 	s.clientsMu.Lock()

@@ -28,7 +28,10 @@ func (c *Controller) PullDumpInfo(server pb.DBLogController_PullDumpInfoServer) 
 		return errors.New("first request uri should not be empty")
 	}
 
-	cancel := c.Scheduler.Register(uri, client.Addr, func(dump *pb.DumpInfoResponse) error { return server.Send(dump) })
+	cancel, err := c.Scheduler.Register(uri, client.Addr.String(), func(dump *pb.DumpInfoResponse) error { return server.Send(dump) })
+	if err != nil {
+		return err
+	}
 	defer cancel()
 
 	for {
@@ -36,7 +39,7 @@ func (c *Controller) PullDumpInfo(server pb.DBLogController_PullDumpInfoServer) 
 		if err != nil {
 			return err
 		}
-		c.Scheduler.Ack(uri, client.Addr, msg.RequeueErr)
+		c.Scheduler.Ack(uri, client.Addr.String(), msg.RequeueErr)
 	}
 }
 

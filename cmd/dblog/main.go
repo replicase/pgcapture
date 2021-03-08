@@ -98,6 +98,10 @@ type ctrl struct {
 	m chan struct{}
 }
 
+func (c *ctrl) Schedule(ctx context.Context, in *pb.ScheduleRequest, opts ...grpc.CallOption) (*pb.ScheduleResponse, error) {
+	panic("implement me")
+}
+
 func (c *ctrl) Send(request *pb.DumpInfoRequest) error {
 	fmt.Println("REQ", request.String())
 	go func() {
