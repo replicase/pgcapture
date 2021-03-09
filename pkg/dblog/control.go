@@ -14,6 +14,7 @@ type Controller struct {
 }
 
 func (c *Controller) PullDumpInfo(server pb.DBLogController_PullDumpInfoServer) (err error) {
+	// TODO Is tcp connection is shared between bidirectional stream?
 	client, ok := peer.FromContext(server.Context())
 	if !ok {
 		return errors.New("fail to get peer info from context")

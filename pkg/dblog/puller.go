@@ -3,62 +3,40 @@ package dblog
 import (
 	"context"
 	"errors"
-	"sync/atomic"
 
 	"github.com/rueian/pgcapture/pkg/pb"
 )
 
 type DumpInfoPuller interface {
-	PullDumpInfo(ctx context.Context, uri string) (chan *pb.DumpInfoResponse, error)
-	Ack(err error)
+	Pull(ctx context.Context, uri string, acks chan error) chan *pb.DumpInfoResponse
 }
 
 type GRPCDumpInfoPuller struct {
 	Client pb.DBLogControllerClient
-
-	state   int64
-	requeue chan string
 }
 
-func (p *GRPCDumpInfoPuller) PullDumpInfo(ctx context.Context, uri string) (chan *pb.DumpInfoResponse, error) {
-	if !atomic.CompareAndSwapInt64(&p.state, 0, 1) {
-		return nil, errors.New("puller is already started")
-	}
-
-	p.requeue = make(chan string)
+func (p *GRPCDumpInfoPuller) Pull(ctx context.Context, uri string, acks chan error) chan *pb.DumpInfoResponse {
 	resp := make(chan *pb.DumpInfoResponse)
-
-	atomic.StoreInt64(&p.state, 2)
 
 	go func() {
 		defer close(resp)
 		for {
-			err := p.pulling(ctx, uri, resp)
+			err := p.pulling(ctx, uri, resp, acks)
 			if errors.Is(err, context.Canceled) {
 				return
 			}
 		}
 	}()
 
-	return resp, nil
+	return resp
 }
 
-func (p *GRPCDumpInfoPuller) Ack(err error) {
-	if atomic.LoadInt64(&p.state) == 2 {
-		if err == nil {
-			p.requeue <- ""
-		} else {
-			p.requeue <- err.Error()
-		}
-	}
-}
-
-func (p *GRPCDumpInfoPuller) pulling(ctx context.Context, uri string, resp chan *pb.DumpInfoResponse) error {
+func (p *GRPCDumpInfoPuller) pulling(ctx context.Context, uri string, resp chan *pb.DumpInfoResponse, acks chan error) error {
 	server, err := p.Client.PullDumpInfo(ctx)
 	if err != nil {
 		return err
 	}
-	if err := server.Send(&pb.DumpInfoRequest{Uri: uri}); err != nil {
+	if err = server.Send(&pb.DumpInfoRequest{Uri: uri}); err != nil {
 		return err
 	}
 	go func() {
@@ -66,7 +44,14 @@ func (p *GRPCDumpInfoPuller) pulling(ctx context.Context, uri string, resp chan 
 			select {
 			case <-server.Context().Done():
 				return
-			case msg := <-p.requeue:
+			case e, more := <-acks:
+				if !more {
+					return
+				}
+				var msg string
+				if e != nil {
+					msg = e.Error()
+				}
 				if err := server.Send(&pb.DumpInfoRequest{RequeueErr: msg}); err != nil {
 					return
 				}
