@@ -3,22 +3,22 @@ package dblog
 import (
 	"context"
 	"errors"
+	"strconv"
+	"sync/atomic"
 
 	"github.com/rueian/pgcapture/pkg/pb"
-	"google.golang.org/grpc/peer"
 )
+
+var ErrEmptyURI = errors.New("first request uri should not be empty")
 
 type Controller struct {
 	pb.UnimplementedDBLogControllerServer
 	Scheduler Scheduler
+	clients   int64
 }
 
 func (c *Controller) PullDumpInfo(server pb.DBLogController_PullDumpInfoServer) (err error) {
-	// TODO Is tcp connection is shared between bidirectional stream?
-	client, ok := peer.FromContext(server.Context())
-	if !ok {
-		return errors.New("fail to get peer info from context")
-	}
+	id := strconv.FormatInt(atomic.AddInt64(&c.clients, 1), 10)
 
 	msg, err := server.Recv()
 	if err != nil {
@@ -26,10 +26,10 @@ func (c *Controller) PullDumpInfo(server pb.DBLogController_PullDumpInfoServer) 
 	}
 	uri := msg.Uri
 	if uri == "" {
-		return errors.New("first request uri should not be empty")
+		return ErrEmptyURI
 	}
 
-	cancel, err := c.Scheduler.Register(uri, client.Addr.String(), func(dump *pb.DumpInfoResponse) error { return server.Send(dump) })
+	cancel, err := c.Scheduler.Register(uri, id, func(dump *pb.DumpInfoResponse) error { return server.Send(dump) })
 	if err != nil {
 		return err
 	}
@@ -40,7 +40,7 @@ func (c *Controller) PullDumpInfo(server pb.DBLogController_PullDumpInfoServer) 
 		if err != nil {
 			return err
 		}
-		c.Scheduler.Ack(uri, client.Addr.String(), msg.RequeueErr)
+		c.Scheduler.Ack(uri, id, msg.RequeueErr)
 	}
 }
 

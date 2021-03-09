@@ -3,6 +3,7 @@ package dblog
 import (
 	"context"
 	"errors"
+
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/source"
 )
