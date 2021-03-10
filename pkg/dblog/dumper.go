@@ -16,9 +16,13 @@ type PGXSourceDumper struct {
 }
 
 func (p *PGXSourceDumper) LoadDump(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.Change, error) {
+	if info.Namespace == "" || info.Table == "" {
+		return nil, ErrMissingTable
+	}
+
 	for {
 		changes, err := p.load(minLSN, info)
-		if err == errRetry {
+		if err == ErrLSNFallBehind {
 			time.Sleep(time.Millisecond * 100)
 			continue
 		}
@@ -63,7 +67,10 @@ func (p *PGXSourceDumper) load(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.
 
 func checkLSN(ctx context.Context, tx pgx.Tx, minLSN uint64) (err error) {
 	var str string
-	if err = tx.QueryRow(ctx, "SELECT MAX(commit) FROM pgcapture.sources WHERE status IS NULL").Scan(&str); err != nil {
+	if err = tx.QueryRow(ctx, "SELECT commit FROM pgcapture.sources WHERE status IS NULL ORDER BY commit DESC LIMIT 1").Scan(&str); err != nil {
+		if err == pgx.ErrNoRows {
+			return ErrLSNMissing
+		}
 		return err
 	}
 
@@ -73,9 +80,11 @@ func checkLSN(ctx context.Context, tx pgx.Tx, minLSN uint64) (err error) {
 	}
 
 	if uint64(lsn) < minLSN {
-		return errRetry
+		return ErrLSNFallBehind
 	}
 	return nil
 }
 
-var errRetry = errors.New("retry")
+var ErrMissingTable = errors.New("missing namespace or table")
+var ErrLSNFallBehind = errors.New("lsn fall behind")
+var ErrLSNMissing = errors.New("missing lsn record")
