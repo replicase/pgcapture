@@ -3,6 +3,8 @@ syntax = "proto3";
 package pgcapture;
 option go_package = "github.com/rueian/pgcapture/pkg/pb";
 
+import "google/protobuf/struct.proto";
+
 message Message {
   oneof type {
     Begin begin = 1;
@@ -40,4 +42,56 @@ message Field {
   string name = 1;
   uint32 oid = 2;
   bytes datum = 3;
+}
+
+service DBLogGateway {
+  rpc Capture(stream CaptureRequest) returns (stream CaptureMessage);
+}
+
+service DBLogController {
+  rpc PullDumpInfo(stream DumpInfoRequest) returns(stream DumpInfoResponse);
+  rpc Schedule(ScheduleRequest) returns (ScheduleResponse);
+}
+
+message CaptureRequest {
+  oneof type {
+    CaptureInit init = 1;
+    CaptureAck ack = 2;
+  }
+}
+
+message CaptureInit {
+  string uri = 1;
+  google.protobuf.Struct parameters = 2;
+}
+
+message CaptureAck {
+  uint64 checkpoint = 1;
+  string requeue_reason = 2;
+}
+
+message CaptureMessage {
+  uint64 checkpoint = 1;
+  Change change = 2;
+}
+
+message DumpInfoRequest {
+  string uri = 1;
+  string requeue_reason = 2;
+}
+
+message DumpInfoResponse {
+  string namespace = 1;
+  string table = 2;
+  uint32 page_begin = 3;
+  uint32 page_end = 4;
+}
+
+message ScheduleRequest {
+  string uri = 1;
+  repeated DumpInfoResponse dumps = 2;
+}
+
+message ScheduleResponse {
+
 }

@@ -1,0 +1,94 @@
+package dblog
+
+import (
+	"context"
+	"github.com/jackc/pglogrepl"
+	"github.com/jackc/pgtype"
+	"github.com/rueian/pgcapture/pkg/pb"
+	"github.com/rueian/pgcapture/pkg/sql"
+	"testing"
+	"time"
+
+	"github.com/jackc/pgx/v4"
+)
+
+func TestPGXSourceDumper(t *testing.T) {
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, "postgres://postgres@127.0.0.1/postgres?sslmode=disable")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close(ctx)
+
+	conn.Exec(ctx, "DROP SCHEMA public CASCADE; CREATE SCHEMA public")
+	conn.Exec(ctx, "DROP EXTENSION IF EXISTS pgcapture")
+	conn.Exec(ctx, sql.InstallExtension)
+	conn.Exec(ctx, "CREATE TABLE t1 AS SELECT * FROM generate_series(1,100000) AS id; ANALYZE t1")
+
+	dumper := PGXSourceDumper{Conn: conn}
+	if _, err := dumper.LoadDump(0, &pb.DumpInfoResponse{}); err != ErrMissingTable {
+		t.Fatal(err)
+	}
+	if _, err := dumper.LoadDump(0, &pb.DumpInfoResponse{Namespace: "public", Table: "t1"}); err != ErrLSNMissing {
+		t.Fatal(err)
+	}
+
+	conn.Exec(ctx, "INSERT INTO pgcapture.sources (id,commit) VALUES ($1,$2)", "t1", pglogrepl.LSN(0).String())
+
+	catchup := make(chan struct{})
+	go func() {
+		time.Sleep(time.Millisecond * 50)
+		conn.Exec(ctx, "UPDATE pgcapture.sources SET commit=$2 WHERE id = $1", "t1", pglogrepl.LSN(100).String())
+		close(catchup)
+	}()
+	if _, err := dumper.LoadDump(100, &pb.DumpInfoResponse{Namespace: "public", Table: "t1"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, more := <-catchup; more {
+		t.Fatal("dumper should wait for lsn")
+	}
+
+	var pages int
+	if err := conn.QueryRow(ctx, "select relpages from pg_class where relname = 't1'").Scan(&pages); err != nil || pages == 0 {
+		t.Fatal(err)
+	}
+
+	seq := int32(1)
+	for i := uint32(0); i < uint32(pages); i += 5 {
+		changes, err := dumper.LoadDump(100, &pb.DumpInfoResponse{Namespace: "public", Table: "t1", PageBegin: i, PageEnd: i + 4})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, change := range changes {
+			if change.Namespace != "public" {
+				t.Fatal("unexpected")
+			}
+			if change.Table != "t1" {
+				t.Fatal("unexpected")
+			}
+			if change.Op != pb.Change_UPDATE {
+				t.Fatal("unexpected")
+			}
+			if change.OldTuple != nil {
+				t.Fatal("unexpected")
+			}
+			if len(change.NewTuple) != 1 {
+				t.Fatal("unexpected")
+			}
+			if change.NewTuple[0].Name != "id" {
+				t.Fatal("unexpected")
+			}
+			if change.NewTuple[0].Oid != 23 {
+				t.Fatal("unexpected")
+			}
+			var id pgtype.Int4
+			if err := id.DecodeBinary(conn.ConnInfo(), change.NewTuple[0].Datum); err != nil {
+				t.Fatal(err)
+			}
+			if id.Int != seq {
+				t.Fatal("unexpected")
+			}
+			seq++
+		}
+	}
+}

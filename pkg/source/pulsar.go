@@ -176,7 +176,7 @@ func (p *PulsarConsumerSource) Commit(cp Checkpoint) {
 	}
 }
 
-func (p *PulsarConsumerSource) Abort(cp Checkpoint) {
+func (p *PulsarConsumerSource) Requeue(cp Checkpoint) {
 	if id := p.unAckID(cp); id != nil {
 		p.consumer.NackID(id)
 	}
