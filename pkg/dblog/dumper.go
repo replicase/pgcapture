@@ -11,6 +11,10 @@ import (
 	"github.com/rueian/pgcapture/pkg/pb"
 )
 
+type SourceDumper interface {
+	LoadDump(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.Change, error)
+}
+
 type PGXSourceDumper struct {
 	Conn *pgx.Conn
 }

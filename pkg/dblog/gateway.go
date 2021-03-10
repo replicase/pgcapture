@@ -12,10 +12,6 @@ type SourceResolver interface {
 	Resolve(ctx context.Context, uri string) (source.RequeueSource, error)
 }
 
-type SourceDumper interface {
-	LoadDump(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.Change, error)
-}
-
 type Gateway struct {
 	pb.UnimplementedDBLogGatewayServer
 	SourceResolver SourceResolver
@@ -38,46 +34,48 @@ func (s *Gateway) Capture(server pb.DBLogGateway_CaptureServer) error {
 	if err != nil {
 		return err
 	}
-	defer src.Stop()
 
 	changes, err := src.Capture(source.Checkpoint{})
 	if err != nil {
 		return err
 	}
+	defer src.Stop()
 
-	dumpAcks := make(chan error)
+	dumpAcks := make(chan string)
 	defer close(dumpAcks)
 
-	go s.acknowledge(server, src, dumpAcks)
+	done := s.acknowledge(server, src, dumpAcks)
 
-	return s.capture(init, server, changes, dumpAcks)
+	return s.capture(init, server, changes, dumpAcks, done)
 }
 
-func (s *Gateway) acknowledge(server pb.DBLogGateway_CaptureServer, src source.RequeueSource, dumpAcks chan error) error {
-	for {
-		request, err := server.Recv()
-		if err != nil {
-			return err
-		}
-		if ack := request.GetAck(); ack != nil {
-			if ack.Checkpoint == 0 {
-				if ack.Requeue {
-					dumpAcks <- errors.New("client error")
+func (s *Gateway) acknowledge(server pb.DBLogGateway_CaptureServer, src source.RequeueSource, dumpAcks chan string) chan error {
+	done := make(chan error)
+	go func() {
+		for {
+			request, err := server.Recv()
+			if err != nil {
+				done <- err
+				close(done)
+				return
+			}
+			if ack := request.GetAck(); ack != nil {
+				if ack.Checkpoint == 0 {
+					dumpAcks <- ack.RequeueReason
 				} else {
-					dumpAcks <- nil
-				}
-			} else {
-				if ack.Requeue {
-					src.Requeue(source.Checkpoint{LSN: ack.Checkpoint})
-				} else {
-					src.Commit(source.Checkpoint{LSN: ack.Checkpoint})
+					if ack.RequeueReason != "" {
+						src.Requeue(source.Checkpoint{LSN: ack.Checkpoint})
+					} else {
+						src.Commit(source.Checkpoint{LSN: ack.Checkpoint})
+					}
 				}
 			}
 		}
-	}
+	}()
+	return done
 }
 
-func (s *Gateway) capture(init *pb.CaptureInit, server pb.DBLogGateway_CaptureServer, changes chan source.Change, dumpAcks chan error) error {
+func (s *Gateway) capture(init *pb.CaptureInit, server pb.DBLogGateway_CaptureServer, changes chan source.Change, dumpAcks chan string, done chan error) error {
 	lsn := uint64(0)
 
 	dumps := s.DumpInfoPuller.Pull(server.Context(), init.Uri, dumpAcks)
@@ -106,6 +104,8 @@ func (s *Gateway) capture(init *pb.CaptureInit, server pb.DBLogGateway_CaptureSe
 					}
 				}
 			}
+		case err := <-done:
+			return err
 		}
 	}
 }

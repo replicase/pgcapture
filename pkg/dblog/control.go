@@ -40,7 +40,7 @@ func (c *Controller) PullDumpInfo(server pb.DBLogController_PullDumpInfoServer) 
 		if err != nil {
 			return err
 		}
-		c.Scheduler.Ack(uri, id, msg.RequeueErr)
+		c.Scheduler.Ack(uri, id, msg.RequeueReason)
 	}
 }
 

@@ -38,7 +38,7 @@ func TestPuller_Delegate(t *testing.T) {
 		},
 	}
 
-	acks := make(chan error)
+	acks := make(chan string)
 	dumps := puller.Pull(ctx, URI1, acks)
 
 	init := <-sendCh
@@ -71,7 +71,7 @@ func TestPuller_RetryPull(t *testing.T) {
 		},
 	}
 
-	dumps := puller.Pull(context.Background(), URI1, make(chan error))
+	dumps := puller.Pull(context.Background(), URI1, make(chan string))
 	if _, more := <-dumps; more {
 		t.Fatal("dumps should be closed after canceled")
 	}
@@ -93,7 +93,7 @@ func TestPuller_RetryInit(t *testing.T) {
 		},
 	}
 
-	dumps := puller.Pull(context.Background(), URI1, make(chan error))
+	dumps := puller.Pull(context.Background(), URI1, make(chan string))
 	if _, more := <-dumps; more {
 		t.Fatal("dumps should be closed after canceled")
 	}
@@ -119,7 +119,7 @@ func TestPuller_RetryRecv(t *testing.T) {
 		},
 	}
 
-	dumps := puller.Pull(context.Background(), URI1, make(chan error))
+	dumps := puller.Pull(context.Background(), URI1, make(chan string))
 	if _, more := <-dumps; more {
 		t.Fatal("dumps should be closed after canceled")
 	}
@@ -147,11 +147,11 @@ func TestPuller_SendErr(t *testing.T) {
 		},
 	}
 
-	acks := make(chan error, 2)
+	acks := make(chan string, 2)
 	dumps := puller.Pull(context.Background(), URI1, acks)
 
-	acks <- errors.New("first ack should be called with SendCB")
-	acks <- errors.New("second ack should not be call with SendCB")
+	acks <- "first ack should be called with SendCB"
+	acks <- "second ack should not be call with SendCB"
 
 	time.Sleep(time.Millisecond * 10)
 
@@ -182,7 +182,7 @@ func TestPuller_SendClose(t *testing.T) {
 		},
 	}
 
-	acks := make(chan error)
+	acks := make(chan string)
 	close(acks)
 	dumps := puller.Pull(context.Background(), URI1, acks)
 

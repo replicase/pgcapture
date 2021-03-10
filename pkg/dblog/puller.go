@@ -8,14 +8,14 @@ import (
 )
 
 type DumpInfoPuller interface {
-	Pull(ctx context.Context, uri string, acks chan error) chan *pb.DumpInfoResponse
+	Pull(ctx context.Context, uri string, acks chan string) chan *pb.DumpInfoResponse
 }
 
 type GRPCDumpInfoPuller struct {
 	Client pb.DBLogControllerClient
 }
 
-func (p *GRPCDumpInfoPuller) Pull(ctx context.Context, uri string, acks chan error) chan *pb.DumpInfoResponse {
+func (p *GRPCDumpInfoPuller) Pull(ctx context.Context, uri string, acks chan string) chan *pb.DumpInfoResponse {
 	resp := make(chan *pb.DumpInfoResponse)
 
 	go func() {
@@ -31,7 +31,7 @@ func (p *GRPCDumpInfoPuller) Pull(ctx context.Context, uri string, acks chan err
 	return resp
 }
 
-func (p *GRPCDumpInfoPuller) pulling(ctx context.Context, uri string, resp chan *pb.DumpInfoResponse, acks chan error) error {
+func (p *GRPCDumpInfoPuller) pulling(ctx context.Context, uri string, resp chan *pb.DumpInfoResponse, acks chan string) error {
 	server, err := p.Client.PullDumpInfo(ctx)
 	if err != nil {
 		return err
@@ -44,15 +44,11 @@ func (p *GRPCDumpInfoPuller) pulling(ctx context.Context, uri string, resp chan 
 			select {
 			case <-server.Context().Done():
 				return
-			case e, more := <-acks:
+			case msg, more := <-acks:
 				if !more {
 					return
 				}
-				var msg string
-				if e != nil {
-					msg = e.Error()
-				}
-				if err := server.Send(&pb.DumpInfoRequest{RequeueErr: msg}); err != nil {
+				if err := server.Send(&pb.DumpInfoRequest{RequeueReason: msg}); err != nil {
 					return
 				}
 			}

@@ -67,7 +67,7 @@ message CaptureInit {
 
 message CaptureAck {
   uint64 checkpoint = 1;
-  bool requeue = 2;
+  string requeue_reason = 2;
 }
 
 message CaptureMessage {
@@ -77,7 +77,7 @@ message CaptureMessage {
 
 message DumpInfoRequest {
   string uri = 1;
-  string requeue_err = 2;
+  string requeue_reason = 2;
 }
 
 message DumpInfoResponse {
