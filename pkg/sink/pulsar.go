@@ -90,7 +90,15 @@ func (p *PulsarSink) Apply(changes chan source.Change) chan source.Checkpoint {
 			// TODO log duplicated
 			return nil
 		}
-		p.lsn = change.Checkpoint.LSN
+
+		// correct the lsn check for the next begin message check
+		if commit := change.Message.GetCommit(); commit != nil {
+			p.lsn = commit.EndLsn
+		} else if change.Message.GetBegin() == nil {
+			// do not update the lsn check on begin message
+			p.lsn = change.Checkpoint.LSN
+		}
+
 		seq := int64(change.Checkpoint.LSN)
 		lsn := pglogrepl.LSN(change.Checkpoint.LSN).String()
 

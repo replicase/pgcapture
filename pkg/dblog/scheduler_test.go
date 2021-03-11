@@ -2,7 +2,6 @@ package dblog
 
 import (
 	"errors"
-	"fmt"
 	"strconv"
 	"testing"
 	"time"
@@ -42,9 +41,6 @@ func TestMemoryScheduler_Schedule(t *testing.T) {
 			i := i
 			group.clients[i] = &client{}
 			group.clients[i].cancel, _ = s.Register(uri, strconv.Itoa(i), func(dump *pb.DumpInfoResponse) error {
-				if group.counter == 100 {
-					fmt.Println(dump.String())
-				}
 				if dump != group.dumps[group.counter] {
 					t.Fatalf("dump should be delivered in order if no error")
 				}
@@ -77,7 +73,7 @@ func TestMemoryScheduler_Schedule(t *testing.T) {
 		<-group.done
 		for _, client := range group.clients {
 			if client.counter == 0 {
-				t.Fatalf("all client should be scheduled")
+				t.Fatalf("full client should be scheduled")
 			}
 			client.cancel()
 		}

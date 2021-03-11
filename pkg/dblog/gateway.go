@@ -3,7 +3,6 @@ package dblog
 import (
 	"context"
 	"errors"
-
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/source"
 )
@@ -103,6 +102,8 @@ func (s *Gateway) capture(init *pb.CaptureInit, server pb.DBLogGateway_CaptureSe
 						return err
 					}
 				}
+			} else {
+				dumpAcks <- err.Error()
 			}
 		case err := <-done:
 			return err

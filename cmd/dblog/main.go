@@ -43,7 +43,6 @@ type logging struct {
 }
 
 func (l *logging) Send(message *pb.CaptureMessage) error {
-	fmt.Println("Sent", message.String())
 	l.checkpoints <- message
 	return nil
 }
@@ -103,7 +102,6 @@ func (c *ctrl) Schedule(ctx context.Context, in *pb.ScheduleRequest, opts ...grp
 }
 
 func (c *ctrl) Send(request *pb.DumpInfoRequest) error {
-	fmt.Println("REQ", request.String())
 	go func() {
 		c.m <- struct{}{}
 	}()

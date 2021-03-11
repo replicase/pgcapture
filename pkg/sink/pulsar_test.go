@@ -36,7 +36,7 @@ func TestPulsarSink(t *testing.T) {
 
 	for j := 0; j < 2; j++ {
 		for i := uint64(1); i < 4; i++ {
-			changes <- source.Change{Checkpoint: source.Checkpoint{LSN: i}, Message: &pb.Message{Type: &pb.Message_Begin{Begin: &pb.Begin{FinalLsn: i}}}}
+			changes <- source.Change{Checkpoint: source.Checkpoint{LSN: i}, Message: &pb.Message{Type: &pb.Message_Commit{Commit: &pb.Commit{EndLsn: i}}}}
 			if j == 0 {
 				if cp := <-committed; cp.LSN != i {
 					t.Fatalf("unexpected %v", i)

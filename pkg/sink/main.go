@@ -55,8 +55,7 @@ func (b *BaseSink) apply(changes chan source.Change, applyFn ApplyFn) (committed
 		}
 	cleanup:
 		atomic.StoreInt64(&b.state, 3)
-		close(b.committed)
-
+		go b.Stop()
 		for range changes {
 			// this loop should do nothing and only exit when the input channel is closed
 		}
@@ -75,11 +74,20 @@ func (b *BaseSink) Stop() {
 	switch atomic.SwapInt64(&b.state, 2) {
 	case 0, 3:
 		b.CleanFn()
+		if b.committed != nil {
+			close(b.committed)
+		}
 	case 1:
 		for !atomic.CompareAndSwapInt64(&b.state, 3, 2) {
 			time.Sleep(time.Millisecond * 50)
+			if atomic.LoadInt64(&b.state) == 2 {
+				return
+			}
 		}
 		b.CleanFn()
+		if b.committed != nil {
+			close(b.committed)
+		}
 	default:
 	}
 }
