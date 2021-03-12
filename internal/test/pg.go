@@ -44,10 +44,10 @@ func RandomData(u DBURL) error {
 	}
 	defer conn.Close(ctx)
 
-	if _, err = conn.Exec(ctx, "create table if not exists test (id int)"); err != nil {
+	if _, err = conn.Exec(ctx, "create table if not exists test (id int primary key)"); err != nil {
 		return err
 	}
 	_, err = conn.Exec(ctx, "insert into test select * from generate_series(1,100) as id")
-	_, err = conn.Exec(ctx, "truncate test")
+	_, err = conn.Exec(ctx, "delete from test")
 	return err
 }
