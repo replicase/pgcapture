@@ -3,6 +3,7 @@ package dblog
 import (
 	"context"
 	"errors"
+
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/source"
 )
@@ -34,18 +35,7 @@ func (s *Gateway) Capture(server pb.DBLogGateway_CaptureServer) error {
 		return err
 	}
 
-	changes, err := src.Capture(source.Checkpoint{})
-	if err != nil {
-		return err
-	}
-	defer src.Stop()
-
-	dumpAcks := make(chan string)
-	defer close(dumpAcks)
-
-	done := s.acknowledge(server, src, dumpAcks)
-
-	return s.capture(init, server, changes, dumpAcks, done)
+	return s.capture(init, server, src)
 }
 
 func (s *Gateway) acknowledge(server pb.DBLogGateway_CaptureServer, src source.RequeueSource, dumpAcks chan string) chan error {
@@ -74,10 +64,18 @@ func (s *Gateway) acknowledge(server pb.DBLogGateway_CaptureServer, src source.R
 	return done
 }
 
-func (s *Gateway) capture(init *pb.CaptureInit, server pb.DBLogGateway_CaptureServer, changes chan source.Change, dumpAcks chan string, done chan error) error {
-	lsn := uint64(0)
+func (s *Gateway) capture(init *pb.CaptureInit, server pb.DBLogGateway_CaptureServer, src source.RequeueSource) error {
+	changes, err := src.Capture(source.Checkpoint{})
+	if err != nil {
+		return err
+	}
+	defer src.Stop()
 
-	dumps := s.DumpInfoPuller.Pull(server.Context(), init.Uri, dumpAcks)
+	acks := make(chan string)
+	defer close(acks)
+	done := s.acknowledge(server, src, acks)
+	dumps := s.DumpInfoPuller.Pull(server.Context(), init.Uri, acks)
+	lsn := uint64(0)
 
 	for {
 		select {
@@ -89,6 +87,8 @@ func (s *Gateway) capture(init *pb.CaptureInit, server pb.DBLogGateway_CaptureSe
 				if err := server.Send(&pb.CaptureMessage{Checkpoint: msg.Checkpoint.LSN, Change: change}); err != nil {
 					return err
 				}
+			} else {
+				src.Commit(source.Checkpoint{LSN: msg.Checkpoint.LSN})
 			}
 			lsn = msg.Checkpoint.LSN
 		case info, more := <-dumps:
@@ -103,7 +103,7 @@ func (s *Gateway) capture(init *pb.CaptureInit, server pb.DBLogGateway_CaptureSe
 					}
 				}
 			} else {
-				dumpAcks <- err.Error()
+				acks <- err.Error()
 			}
 		case err := <-done:
 			return err

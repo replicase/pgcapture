@@ -164,6 +164,18 @@ func TestGateway_Capture(t *testing.T) {
 		t.Fatal("unexpected")
 	}
 
+	// if source have begin, not send it to client, but ack
+	changes <- source.Change{Checkpoint: source.Checkpoint{LSN: 1}, Message: &pb.Message{Type: &pb.Message_Begin{Begin: &pb.Begin{}}}}
+	if cp := <-commit; cp.LSN != 1 {
+		t.Fatal("unexpected")
+	}
+
+	// if source have commit, not send it to client, but ack
+	changes <- source.Change{Checkpoint: source.Checkpoint{LSN: 1}, Message: &pb.Message{Type: &pb.Message_Commit{Commit: &pb.Commit{}}}}
+	if cp := <-commit; cp.LSN != 1 {
+		t.Fatal("unexpected")
+	}
+
 	// if dump puller has dump
 	dump := &pb.DumpInfoResponse{Namespace: "public", Table: "t1", PageBegin: 0, PageEnd: 0}
 	dumps <- dump
