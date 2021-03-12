@@ -22,6 +22,7 @@ import (
 
 const PGHost = "127.0.0.1"
 const PulsarURL = "pulsar://127.0.0.1:6650"
+const TestTable = "test"
 
 func init() {
 	rand.Seed(time.Now().UnixNano())
@@ -83,8 +84,13 @@ func main() {
 					return
 				default:
 				}
-				if err := test.RandomData(dbSrc); err != nil {
+				if err := dbSrc.RandomData(TestTable); err != nil {
 					panic(err)
+				}
+				if rand.Intn(20) == 0 {
+					if err = dbSrc.CleanData(TestTable); err != nil {
+						panic(err)
+					}
 				}
 			}
 		}()
@@ -199,26 +205,16 @@ func main() {
 		defer conn.Close()
 		client := pb.NewDBLogControllerClient(conn)
 
-		page := 1
 		for {
-			dumps := make([]*pb.DumpInfoResponse, 10)
-			for i := 0; i < len(dumps); i++ {
-				dumps[i] = &pb.DumpInfoResponse{
-					Namespace: "public",
-					Table:     "test",
-					PageBegin: uint32(page),
-					PageEnd:   uint32(page + 9),
-				}
-				page = page + 10
+			pages, _ := dbSink.TablePages(TestTable)
+			dumps := make([]*pb.DumpInfoResponse, pages)
+			for i := uint32(0); i < uint32(pages); i++ {
+				dumps[i] = &pb.DumpInfoResponse{Namespace: "public", Table: "test", PageBegin: i, PageEnd: i}
 			}
-			for {
-				if _, err := client.Schedule(context.Background(), &pb.ScheduleRequest{Uri: dbSrc.DB, Dumps: dumps}); err != nil {
-					time.Sleep(time.Minute * 2)
-					continue
-				} else {
-					break
-				}
+			if pages > 0 {
+				_, _ = client.Schedule(context.Background(), &pb.ScheduleRequest{Uri: dbSrc.DB, Dumps: dumps})
 			}
+			time.Sleep(time.Second * 5)
 		}
 	}()
 
@@ -227,7 +223,6 @@ func main() {
 	controlCancel()
 
 	wg.Wait()
-	fmt.Println("exit")
 }
 
 type PulsarSourceResolver struct {
