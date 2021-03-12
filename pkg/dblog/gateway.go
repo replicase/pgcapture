@@ -38,7 +38,7 @@ func (s *Gateway) Capture(server pb.DBLogGateway_CaptureServer) error {
 	return s.capture(init, server, src)
 }
 
-func (s *Gateway) acknowledge(server pb.DBLogGateway_CaptureServer, src source.RequeueSource, dumpAcks chan string) chan error {
+func (s *Gateway) acknowledge(server pb.DBLogGateway_CaptureServer, src source.RequeueSource) chan error {
 	done := make(chan error)
 	go func() {
 		for {
@@ -49,9 +49,8 @@ func (s *Gateway) acknowledge(server pb.DBLogGateway_CaptureServer, src source.R
 				return
 			}
 			if ack := request.GetAck(); ack != nil {
-				if ack.Checkpoint == 0 {
-					dumpAcks <- ack.RequeueReason
-				} else {
+				// ignore dump changes (Checkpoint == 0), do nothing
+				if ack.Checkpoint != 0 {
 					if ack.RequeueReason != "" {
 						src.Requeue(source.Checkpoint{LSN: ack.Checkpoint})
 					} else {
@@ -73,7 +72,7 @@ func (s *Gateway) capture(init *pb.CaptureInit, server pb.DBLogGateway_CaptureSe
 
 	acks := make(chan string)
 	defer close(acks)
-	done := s.acknowledge(server, src, acks)
+	done := s.acknowledge(server, src)
 	dumps := s.DumpInfoPuller.Pull(server.Context(), init.Uri, acks)
 	lsn := uint64(0)
 
@@ -102,6 +101,7 @@ func (s *Gateway) capture(init *pb.CaptureInit, server pb.DBLogGateway_CaptureSe
 						return err
 					}
 				}
+				acks <- ""
 			} else {
 				acks <- err.Error()
 			}

@@ -2,6 +2,7 @@ package dblog
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/rueian/pgcapture/pkg/pb"
@@ -108,7 +109,11 @@ func TestGateway_Capture(t *testing.T) {
 		SourceDumper: &dumper{
 			LoadDumpCB: func(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.Change, error) {
 				dumpsReq <- loadDumpReq{minLSN: minLSN, info: info}
-				return <-dumpsRes, nil
+				res := <-dumpsRes
+				if res == nil {
+					return nil, errors.New("fake")
+				}
+				return res, nil
 			},
 		},
 		DumpInfoPuller: &puller{
@@ -183,7 +188,7 @@ func TestGateway_Capture(t *testing.T) {
 		t.Fatal("unexpected")
 	}
 
-	// prepare dump content
+	// prepare dump content, send it out, and ack
 	loaded := []*pb.Change{{Op: pb.Change_UPDATE}, {Op: pb.Change_UPDATE}, {Op: pb.Change_UPDATE}}
 	dumpsRes <- loaded
 	for _, change := range loaded {
@@ -191,20 +196,18 @@ func TestGateway_Capture(t *testing.T) {
 			t.Fatal("unexpected")
 		}
 	}
-	// if client ack, ack the puller
-	for range loaded {
-		recv <- &pb.CaptureRequest{Type: &pb.CaptureRequest_Ack{Ack: &pb.CaptureAck{Checkpoint: 0}}}
-		if reason := <-dumpAcks; reason != "" {
-			t.Fatal("unexpected")
-		}
+	if reason := <-dumpAcks; reason != "" {
+		t.Fatal("unexpected")
 	}
 
-	// if client requeue, requeue the puller
-	for range loaded {
-		recv <- &pb.CaptureRequest{Type: &pb.CaptureRequest_Ack{Ack: &pb.CaptureAck{Checkpoint: 0, RequeueReason: "requeue"}}}
-		if reason := <-dumpAcks; reason != "requeue" {
-			t.Fatal("unexpected")
-		}
+	// if dump error, requeue dump
+	dumps <- dump
+	if req := <-dumpsReq; req.minLSN != 1 || req.info != dump {
+		t.Fatal("unexpected")
+	}
+	dumpsRes <- nil
+	if reason := <-dumpAcks; reason != "fake" {
+		t.Fatal("unexpected")
 	}
 
 	close(dumps)
