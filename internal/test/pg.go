@@ -48,5 +48,6 @@ func RandomData(u DBURL) error {
 		return err
 	}
 	_, err = conn.Exec(ctx, "insert into test select * from generate_series(1,100) as id")
+	_, err = conn.Exec(ctx, "truncate test")
 	return err
 }
