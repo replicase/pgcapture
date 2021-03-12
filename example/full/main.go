@@ -56,34 +56,10 @@ func main() {
 	go func() {
 		defer wg.Done()
 
-		pgSrc := source.PGXSource{SetupConnStr: dbSrc.URL(), ReplConnStr: dbSrc.Repl(), ReplSlot: dbSrc.DB, CreateSlot: true}
-		pulsarSink := sink.PulsarSink{PulsarOption: pulsar.ClientOptions{URL: PulsarURL}, PulsarTopic: dbSrc.DB}
-
-		lastCheckPoint, err := pulsarSink.Setup()
-		if err != nil {
-			panic(err)
-		}
-
-		changes, err := pgSrc.Capture(lastCheckPoint)
-		if err != nil {
-			panic(err)
-		}
-
-		go func() {
-			checkpoints := pulsarSink.Apply(changes)
-			for cp := range checkpoints {
-				pgSrc.Commit(cp)
-			}
-		}()
-
-		// insert random data
-		go func() {
+		pgSrc := &source.PGXSource{SetupConnStr: dbSrc.URL(), ReplConnStr: dbSrc.Repl(), ReplSlot: dbSrc.DB, CreateSlot: true}
+		pulsarSink := &sink.PulsarSink{PulsarOption: pulsar.ClientOptions{URL: PulsarURL}, PulsarTopic: dbSrc.DB}
+		if err := test.SourceToSink(pgSrc, pulsarSink, shutdown, func() {
 			for {
-				select {
-				case <-shutdown:
-					return
-				default:
-				}
 				if err := dbSrc.RandomData(TestTable); err != nil {
 					panic(err)
 				}
@@ -93,15 +69,7 @@ func main() {
 					}
 				}
 			}
-		}()
-
-		<-shutdown
-		pulsarSink.Stop()
-		pgSrc.Stop()
-		if err := pulsarSink.Error(); err != nil {
-			panic(err)
-		}
-		if err := pgSrc.Error(); err != nil {
+		}); err != nil {
 			panic(err)
 		}
 	}()
@@ -111,36 +79,10 @@ func main() {
 	go func() {
 		defer wg.Done()
 
-		pulsarSrc := source.PulsarReaderSource{PulsarOption: pulsar.ClientOptions{URL: PulsarURL}, PulsarTopic: dbSrc.DB}
+		pulsarSrc := &source.PulsarReaderSource{PulsarOption: pulsar.ClientOptions{URL: PulsarURL}, PulsarTopic: dbSrc.DB}
+		pgSink := &sink.PGXSink{ConnStr: dbSink.URL(), SourceID: dbSrc.DB}
 
-		pgSink := sink.PGXSink{ConnStr: dbSink.URL(), SourceID: dbSrc.DB}
-
-		lastCheckPoint, err := pgSink.Setup()
-		if err != nil {
-			panic(err)
-		}
-
-		lastCheckPoint.Time = time.Now().Add(-5 * time.Second)
-
-		changes, err := pulsarSrc.Capture(lastCheckPoint)
-		if err != nil {
-			panic(err)
-		}
-
-		go func() {
-			checkpoints := pgSink.Apply(changes)
-			for cp := range checkpoints {
-				pulsarSrc.Commit(cp)
-			}
-		}()
-
-		<-shutdown
-		pgSink.Stop()
-		pulsarSrc.Stop()
-		if err := pgSink.Error(); err != nil {
-			panic(err)
-		}
-		if err := pulsarSrc.Error(); err != nil {
+		if err := test.SourceToSink(pulsarSrc, pgSink, shutdown, func() {}); err != nil {
 			panic(err)
 		}
 	}()
@@ -203,8 +145,8 @@ func main() {
 			panic(err)
 		}
 		defer conn.Close()
-		client := pb.NewDBLogControllerClient(conn)
 
+		client := pb.NewDBLogControllerClient(conn)
 		for {
 			pages, _ := dbSink.TablePages(TestTable)
 			dumps := make([]*pb.DumpInfoResponse, pages)
