@@ -35,7 +35,7 @@ type RequeueSource interface {
 type BaseSource struct {
 	ReadTimeout time.Duration
 
-	stop    int64
+	state   int64
 	stopped chan struct{}
 
 	err atomic.Value
@@ -50,8 +50,16 @@ func (b *BaseSource) Commit(cp Checkpoint) {
 }
 
 func (b *BaseSource) Stop() error {
-	atomic.StoreInt64(&b.stop, 1)
-	if b.stopped != nil {
+	switch atomic.LoadInt64(&b.state) {
+	case 1, 2:
+		for {
+			if atomic.LoadInt64(&b.state) == 2 {
+				atomic.CompareAndSwapInt64(&b.state, 2, 3)
+				break
+			}
+		}
+		fallthrough
+	case 3:
 		<-b.stopped
 	}
 	return b.Error()
@@ -65,8 +73,14 @@ func (b *BaseSource) Error() error {
 }
 
 func (b *BaseSource) capture(readFn ReadFn, flushFn FlushFn) (chan Change, error) {
+	if !atomic.CompareAndSwapInt64(&b.state, 0, 1) {
+		return nil, nil
+	}
+
 	b.stopped = make(chan struct{})
 	changes := make(chan Change, 100)
+
+	atomic.StoreInt64(&b.state, 2)
 
 	timeout := b.ReadTimeout
 	if timeout == 0 {
@@ -81,7 +95,7 @@ func (b *BaseSource) capture(readFn ReadFn, flushFn FlushFn) (chan Change, error
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)
 			change, err := readFn(ctx)
 			cancel()
-			if atomic.LoadInt64(&b.stop) != 0 {
+			if atomic.LoadInt64(&b.state) != 2 {
 				return
 			}
 			if isTimeout(err) {

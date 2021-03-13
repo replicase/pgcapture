@@ -57,6 +57,37 @@ func TestBaseSource_Stop(t *testing.T) {
 	}
 }
 
+func TestBaseSource_SecondCapture(t *testing.T) {
+	source := source{
+		BaseSource: BaseSource{ReadTimeout: time.Second},
+		ReadFn: func(ctx context.Context) (Change, error) {
+			return Change{Message: &pb.Message{}}, ctx.Err()
+		},
+	}
+	changes, _ := source.Capture(Checkpoint{})
+
+	if second, err := source.Capture(Checkpoint{}); second != nil || err != nil {
+		t.Fatal("second capture should be ignore")
+	}
+
+	source.Stop()
+
+	for range changes {
+	}
+
+	if _, more := <-changes; more {
+		t.Fatal("committed channel should be closed after stop")
+	}
+
+	if _, more := <-source.Flushed; more {
+		t.Fatal("clean func should be called once")
+	}
+
+	if source.Error() != nil {
+		t.Fatalf("unexpected %v", source.Error())
+	}
+}
+
 func TestBaseSource_Timeout(t *testing.T) {
 	count := 0
 	source := source{
