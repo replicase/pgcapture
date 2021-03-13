@@ -17,6 +17,7 @@ import (
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/source"
 	"github.com/rueian/pgcapture/pkg/sql"
+	"github.com/sirupsen/logrus"
 )
 
 type PGXSink struct {
@@ -26,15 +27,14 @@ type PGXSink struct {
 	SourceID  string
 	LogReader io.Reader
 
-	conn   *pgx.Conn
-	raw    *pgconn.PgConn
-	schema *decode.PGXSchemaLoader
-
+	conn    *pgx.Conn
+	raw     *pgconn.PgConn
+	schema  *decode.PGXSchemaLoader
+	init    source.Checkpoint
+	log     *logrus.Entry
 	inTX    bool
 	skip    bool
 	refresh bool
-
-	init source.Checkpoint
 }
 
 func (p *PGXSink) Setup() (cp source.Checkpoint, err error) {
@@ -66,6 +66,11 @@ func (p *PGXSink) Setup() (cp source.Checkpoint, err error) {
 		p.conn.Close(context.Background())
 	}
 
+	p.log = logrus.WithFields(logrus.Fields{
+		"From":     "PGXSink",
+		"SourceID": p.SourceID,
+	})
+
 	return p.findCheckpoint(ctx)
 }
 
@@ -76,6 +81,7 @@ func (p *PGXSink) findCheckpoint(ctx context.Context) (cp source.Checkpoint, err
 	if err == pgx.ErrNoRows {
 		err = nil
 		if p.LogReader != nil {
+			p.log.Info("try to find last checkpoint from log reader")
 			str, ts, err = ScanCheckpointFromLog(p.LogReader)
 		}
 	}
@@ -92,25 +98,43 @@ func (p *PGXSink) findCheckpoint(ctx context.Context) (cp source.Checkpoint, err
 	if err != nil {
 		return cp, err
 	}
+	p.log.WithFields(logrus.Fields{
+		"RequiredLSN": cp.LSN,
+		"SeekTs":      cp.Time,
+	}).Info("last checkpoint found")
 	p.init = cp
 	return cp, nil
 }
 
 func (p *PGXSink) Apply(changes chan source.Change) chan source.Checkpoint {
+	var first bool
 	return p.BaseSink.apply(changes, func(change source.Change, committed chan source.Checkpoint) (err error) {
+		if !first {
+			p.log.WithFields(logrus.Fields{
+				"MessageLSN":  change.Checkpoint.LSN,
+				"SinkLastLSN": p.init.LSN,
+			}).Info("applying the first message from source")
+			first = true
+		}
 		if p.init.LSN >= change.Checkpoint.LSN {
+			p.log.WithFields(logrus.Fields{
+				"MessageLSN":  change.Checkpoint.LSN,
+				"SinkLastLSN": p.init.LSN,
+			}).Warn("message dropped due to its lsn smaller than the last lsn of sink")
 			return nil
 		}
 		switch msg := change.Message.Type.(type) {
 		case *pb.Message_Begin:
 			if p.inTX {
-				return ErrIncompleteTx
+				err = ErrIncompleteTx
+				break
 			}
 			err = p.handleBegin(msg.Begin)
 			p.inTX = true
 		case *pb.Message_Change:
 			if !p.inTX {
-				return ErrIncompleteTx
+				err = ErrIncompleteTx
+				break
 			}
 			if p.skip {
 				return nil
@@ -123,10 +147,11 @@ func (p *PGXSink) Apply(changes chan source.Change) chan source.Checkpoint {
 			}
 		case *pb.Message_Commit:
 			if !p.inTX {
-				return ErrIncompleteTx
+				err = ErrIncompleteTx
+				break
 			}
 			if err = p.handleCommit(change.Checkpoint, msg.Commit); err != nil {
-				return err
+				break
 			}
 			committed <- change.Checkpoint
 			p.inTX = false
@@ -135,6 +160,12 @@ func (p *PGXSink) Apply(changes chan source.Change) chan source.Checkpoint {
 				err = p.schema.RefreshKeys()
 				p.refresh = false
 			}
+		}
+		if err != nil {
+			p.log.WithFields(logrus.Fields{
+				"MessageLSN": change.Checkpoint.LSN,
+				"Message":    change.Message.String(),
+			}).Errorf("fail to apply message: %v", err)
 		}
 		return err
 	})

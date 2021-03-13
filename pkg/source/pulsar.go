@@ -2,7 +2,6 @@ package source
 
 import (
 	"context"
-	"log"
 	"os"
 	"sync"
 	"time"
@@ -10,6 +9,7 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/jackc/pglogrepl"
 	"github.com/rueian/pgcapture/pkg/pb"
+	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -18,18 +18,20 @@ type PulsarReaderSource struct {
 
 	PulsarOption pulsar.ClientOptions
 	PulsarTopic  string
-	client       pulsar.Client
-	reader       pulsar.Reader
 
+	client     pulsar.Client
+	reader     pulsar.Reader
 	consistent bool
-
 	seekOffset time.Duration
+	log        *logrus.Entry
 }
 
 func (p *PulsarReaderSource) Capture(cp Checkpoint) (changes chan Change, err error) {
 	if p.seekOffset == 0 {
 		p.seekOffset = -1 * time.Second
 	}
+
+	p.log = logrus.WithFields(logrus.Fields{"From": "PulsarReaderSource", "Topic": p.PulsarTopic})
 
 	host, err := os.Hostname()
 	if err != nil {
@@ -56,8 +58,17 @@ func (p *PulsarReaderSource) Capture(cp Checkpoint) (changes chan Change, err er
 		if err = p.reader.SeekByTime(ts); err != nil {
 			return nil, err
 		}
-		log.Printf("seek pulsar topic %s from time: %v", p.PulsarTopic, ts)
+		p.log.WithFields(logrus.Fields{
+			"SeekTs":      ts,
+			"RequiredLSN": cp.LSN,
+		}).Info("start reading pulsar topic from requested timestamp")
+	} else {
+		p.log.WithFields(logrus.Fields{
+			"RequiredLSN": cp.LSN,
+		}).Info("start reading pulsar topic from latest position")
 	}
+
+	var first bool
 
 	return p.BaseSource.capture(func(ctx context.Context) (change Change, err error) {
 		var msg pulsar.Message
@@ -72,9 +83,21 @@ func (p *PulsarReaderSource) Capture(cp Checkpoint) (changes chan Change, err er
 			return
 		}
 
+		if !first {
+			p.log.WithFields(logrus.Fields{
+				"MessageLSN":  uint64(lsn),
+				"RequiredLSN": cp.LSN,
+			}).Info("retrived the first message from pulsar")
+			first = true
+		}
+
 		if !p.consistent && cp.LSN != 0 {
 			p.consistent = cp.LSN == uint64(lsn)
-			log.Printf("catching lsn from %s to %s", lsn, pglogrepl.LSN(cp.LSN))
+			p.log.WithFields(logrus.Fields{
+				"MessageLSN":  uint64(lsn),
+				"RequiredLSN": cp.LSN,
+				"Consistent":  p.consistent,
+			}).Info("still catching lsn from pulsar")
 			return
 		}
 
@@ -84,7 +107,13 @@ func (p *PulsarReaderSource) Capture(cp Checkpoint) (changes chan Change, err er
 		}
 
 		if !p.consistent && cp.LSN == 0 {
-			if p.consistent = m.GetBegin() != nil; !p.consistent {
+			p.consistent = m.GetBegin() != nil
+			p.log.WithFields(logrus.Fields{
+				"MessageLSN":  uint64(lsn),
+				"RequiredLSN": cp.LSN,
+				"Consistent":  p.consistent,
+			}).Info("still waiting for the first begin message")
+			if !p.consistent {
 				return
 			}
 		}
@@ -112,6 +141,7 @@ type PulsarConsumerSource struct {
 	consumer pulsar.Consumer
 	mu       sync.Mutex
 	pending  map[uint64]pulsar.MessageID
+	log      *logrus.Entry
 }
 
 var ReceiverQueueSize = 1000
@@ -138,8 +168,15 @@ func (p *PulsarConsumerSource) Capture(cp Checkpoint) (changes chan Change, err 
 		return nil, err
 	}
 
+	p.log = logrus.WithFields(logrus.Fields{
+		"From":         "PulsarConsumerSource",
+		"Topic":        p.PulsarTopic,
+		"Subscription": p.PulsarSubscription,
+	})
+
 	p.pending = make(map[uint64]pulsar.MessageID, ReceiverQueueSize)
 
+	var first bool
 	return p.BaseSource.capture(func(ctx context.Context) (change Change, err error) {
 		var msg pulsar.Message
 		var lsn pglogrepl.LSN
@@ -156,6 +193,11 @@ func (p *PulsarConsumerSource) Capture(cp Checkpoint) (changes chan Change, err 
 		m := &pb.Message{}
 		if err = proto.Unmarshal(msg.Payload(), m); err != nil {
 			return
+		}
+
+		if !first {
+			p.log.WithFields(logrus.Fields{"MessageLSN": uint64(lsn)}).Info("retrieved the first message from pulsar")
+			first = true
 		}
 
 		p.mu.Lock()

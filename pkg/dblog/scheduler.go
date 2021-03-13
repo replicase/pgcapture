@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/rueian/pgcapture/pkg/pb"
+	"github.com/sirupsen/logrus"
 )
 
 type OnSchedule func(response *pb.DumpInfoResponse) error
@@ -25,6 +26,7 @@ func NewMemoryScheduler(interval time.Duration) *MemoryScheduler {
 		interval: interval,
 		pending:  make(map[string]*pending),
 		clients:  make(map[string]map[string]*track),
+		log:      logrus.WithFields(logrus.Fields{"From": "MemoryScheduler"}),
 	}
 }
 
@@ -34,6 +36,7 @@ type MemoryScheduler struct {
 	clients   map[string]map[string]*track
 	pendingMu sync.Mutex
 	clientsMu sync.Mutex
+	log       *logrus.Entry
 }
 
 func (s *MemoryScheduler) Schedule(uri string, dumps []*pb.DumpInfoResponse) error {
@@ -43,6 +46,10 @@ func (s *MemoryScheduler) Schedule(uri string, dumps []*pb.DumpInfoResponse) err
 		return ErrAlreadyScheduled
 	}
 	s.pending[uri] = &pending{dumps: dumps}
+	s.log.WithFields(logrus.Fields{
+		"URI":     uri,
+		"NumDump": len(dumps),
+	}).Infof("start scheduling dumps of %s", uri)
 	go s.schedule(uri)
 	return nil
 }
@@ -52,6 +59,9 @@ func (s *MemoryScheduler) schedule(uri string) {
 		s.pendingMu.Lock()
 		delete(s.pending, uri)
 		s.pendingMu.Unlock()
+		s.log.WithFields(logrus.Fields{
+			"URI": uri,
+		}).Infof("finish scheduling dumps of %s", uri)
 	}()
 
 	for {
@@ -116,8 +126,18 @@ func (s *MemoryScheduler) Register(uri string, client string, fn OnSchedule) (Ca
 		s.clientsMu.Lock()
 		delete(clients, client)
 		s.clientsMu.Unlock()
+		s.log.WithFields(logrus.Fields{
+			"URI":    uri,
+			"Client": client,
+		}).Infof("unregistered client %s from uri %s", client, uri)
 	}}
 	clients[client] = track
+
+	s.log.WithFields(logrus.Fields{
+		"URI":    uri,
+		"Client": client,
+	}).Infof("registered client %s to uri %s", client, uri)
+
 	return track.cancel, nil
 }
 

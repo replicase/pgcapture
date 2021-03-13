@@ -209,9 +209,8 @@ func TestPGXSink_ScanCheckpointFromLog(t *testing.T) {
 	defer tmp.Close()
 
 	go func() {
-		var err error
-		for err == nil {
-			_, err = tmp.WriteString("2021-03-01 16:25:03 UTC [2163-1] postgres@postgres FATAL:  the database system is starting up\n")
+		for i := 0; i < 10000; i++ {
+			tmp.WriteString("2021-03-01 16:25:03 UTC [2163-1] postgres@postgres FATAL:  the database system is starting up\n")
 		}
 	}()
 	reader, err := os.Open(tmp.Name())

@@ -10,6 +10,7 @@ require (
 	github.com/jackc/pgproto3/v2 v2.0.7
 	github.com/jackc/pgtype v1.6.3-0.20210115001048-6830cc09847c
 	github.com/jackc/pgx/v4 v4.10.1
+	github.com/sirupsen/logrus v1.4.2
 	golang.org/x/crypto v0.0.0-20210220033148-5ea612d1eb83 // indirect
 	golang.org/x/text v0.3.5 // indirect
 	google.golang.org/grpc v1.36.0

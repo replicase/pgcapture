@@ -3,7 +3,6 @@ package source
 import (
 	"context"
 	"errors"
-	"log"
 	"sync/atomic"
 	"time"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v4"
 	"github.com/rueian/pgcapture/pkg/decode"
 	"github.com/rueian/pgcapture/pkg/sql"
+	"github.com/sirupsen/logrus"
 )
 
 type PGXSource struct {
@@ -23,15 +23,13 @@ type PGXSource struct {
 	ReplSlot     string
 	CreateSlot   bool
 
-	setupConn *pgx.Conn
-	replConn  *pgconn.PgConn
-
-	schema  *decode.PGXSchemaLoader
-	decoder *decode.PGLogicalDecoder
-
+	setupConn      *pgx.Conn
+	replConn       *pgconn.PgConn
+	schema         *decode.PGXSchemaLoader
+	decoder        *decode.PGLogicalDecoder
 	nextReportTime time.Time
-
-	ackLsn uint64
+	ackLsn         uint64
+	log            *logrus.Entry
 }
 
 func (p *PGXSource) Capture(cp Checkpoint) (changes chan Change, err error) {
@@ -75,15 +73,28 @@ func (p *PGXSource) Capture(cp Checkpoint) (changes chan Change, err error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Println("SystemID:", ident.SystemID, "Timeline:", ident.Timeline, "XLogPos:", ident.XLogPos, "DBName:", ident.DBName)
+
+	p.log = logrus.WithFields(logrus.Fields{"From": "PGXSource"})
+	p.log.WithFields(logrus.Fields{
+		"SystemID": ident.SystemID,
+		"Timeline": ident.Timeline,
+		"XLogPos":  ident.XLogPos,
+		"DBName":   ident.DBName,
+	}).Info("retrieved current info of source database")
 
 	var requestLSN pglogrepl.LSN
 	if cp.LSN != 0 {
 		requestLSN = pglogrepl.LSN(cp.LSN)
-		log.Println("start logical replication on slot with requested position", p.ReplSlot, requestLSN)
+		p.log.WithFields(logrus.Fields{
+			"ReplSlot": p.ReplSlot,
+			"FromLSN":  requestLSN,
+		}).Info("start logical replication from requested position")
 	} else {
 		requestLSN = ident.XLogPos
-		log.Println("start logical replication on slot with latest position", p.ReplSlot, requestLSN)
+		p.log.WithFields(logrus.Fields{
+			"ReplSlot": p.ReplSlot,
+			"FromLSN":  requestLSN,
+		}).Info("start logical replication from the latest position")
 	}
 	p.Commit(Checkpoint{LSN: uint64(requestLSN)})
 	if err = pglogrepl.StartReplication(context.Background(), p.replConn, p.ReplSlot, requestLSN, pglogrepl.StartReplicationOptions{PluginArgs: decode.PGLogicalParam}); err != nil {

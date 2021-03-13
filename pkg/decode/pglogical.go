@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/rueian/pgcapture/pkg/pb"
+	"github.com/sirupsen/logrus"
 )
 
 const OutputPlugin = "pglogical_output"
@@ -28,12 +29,14 @@ func NewPGLogicalDecoder(schema *PGXSchemaLoader) *PGLogicalDecoder {
 	return &PGLogicalDecoder{
 		schema:    schema,
 		relations: make(map[uint32]Relation),
+		log:       logrus.WithFields(logrus.Fields{"From": "PGLogicalDecoder"}),
 	}
 }
 
 type PGLogicalDecoder struct {
 	schema    *PGXSchemaLoader
 	relations map[uint32]Relation
+	log       *logrus.Entry
 }
 
 func (p *PGLogicalDecoder) Decode(in []byte) (m *pb.Message, err error) {
@@ -81,7 +84,8 @@ func (p *PGLogicalDecoder) makePBTuple(rel Relation, src []Field, noNull bool) (
 		}
 		oid, err := p.schema.GetTypeOID(rel.NspName, rel.RelName, rel.Fields[i])
 		if err != nil {
-			continue // TODO log dropped schema error
+			p.log.Warnf("field data dropped: %v", err)
+			continue
 		}
 		switch s.Format {
 		case 'n', 'b':
