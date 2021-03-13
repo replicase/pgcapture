@@ -42,14 +42,17 @@ type MemoryScheduler struct {
 func (s *MemoryScheduler) Schedule(uri string, dumps []*pb.DumpInfoResponse) error {
 	s.pendingMu.Lock()
 	defer s.pendingMu.Unlock()
+
 	if _, ok := s.pending[uri]; ok {
 		return ErrAlreadyScheduled
 	}
 	s.pending[uri] = &pending{dumps: dumps}
+
 	s.log.WithFields(logrus.Fields{
 		"URI":     uri,
 		"NumDump": len(dumps),
 	}).Infof("start scheduling dumps of %s", uri)
+
 	go s.schedule(uri)
 	return nil
 }
@@ -59,54 +62,64 @@ func (s *MemoryScheduler) schedule(uri string) {
 		s.pendingMu.Lock()
 		delete(s.pending, uri)
 		s.pendingMu.Unlock()
-		s.log.WithFields(logrus.Fields{
-			"URI": uri,
-		}).Infof("finish scheduling dumps of %s", uri)
+		s.log.WithFields(logrus.Fields{"URI": uri}).Infof("finish scheduling dumps of %s", uri)
 	}()
 
 	for {
 		time.Sleep(s.interval)
 
-		var candidate *track
-		var dump *pb.DumpInfoResponse
-
-		busy := 0
-		remain := 0
-
+		loops := 0
 		s.clientsMu.Lock()
-		if clients, ok := s.clients[uri]; ok {
-			for _, track := range clients {
-				if track.dump == nil {
-					candidate = track
-				} else {
-					busy++
-				}
-			}
-		}
+		loops = len(s.clients[uri])
 		s.clientsMu.Unlock()
+		loops++
 
-		s.pendingMu.Lock()
-		if pending, ok := s.pending[uri]; ok {
-			remain = pending.Remaining()
-			if candidate != nil {
-				dump = pending.Pop()
+		for i := 0; i < loops; i++ {
+			if s.scheduleOne(uri) {
+				return
 			}
-		}
-		s.pendingMu.Unlock()
-
-		if candidate != nil && dump != nil {
-			s.clientsMu.Lock()
-			candidate.dump = dump
-			s.clientsMu.Unlock()
-			if err := candidate.schedule(dump); err != nil {
-				candidate.cancel()
-			}
-		}
-
-		if busy == 0 && remain == 0 {
-			return
 		}
 	}
+}
+
+func (s *MemoryScheduler) scheduleOne(uri string) bool {
+	var candidate *track
+	var dump *pb.DumpInfoResponse
+
+	busy := 0
+	remain := 0
+
+	s.clientsMu.Lock()
+	if clients, ok := s.clients[uri]; ok {
+		for _, track := range clients {
+			if track.dump == nil {
+				candidate = track
+			} else {
+				busy++
+			}
+		}
+	}
+	s.clientsMu.Unlock()
+
+	s.pendingMu.Lock()
+	if pending, ok := s.pending[uri]; ok {
+		remain = pending.Remaining()
+		if candidate != nil {
+			dump = pending.Pop()
+		}
+	}
+	s.pendingMu.Unlock()
+
+	if candidate != nil && dump != nil {
+		s.clientsMu.Lock()
+		candidate.dump = dump
+		s.clientsMu.Unlock()
+		if err := candidate.schedule(dump); err != nil {
+			candidate.cancel()
+		}
+	}
+
+	return busy == 0 && remain == 0
 }
 
 func (s *MemoryScheduler) Register(uri string, client string, fn OnSchedule) (CancelFunc, error) {
