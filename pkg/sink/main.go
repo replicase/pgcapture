@@ -78,18 +78,12 @@ func (b *BaseSink) Stop() error {
 	case 0:
 		b.cleanOnce.Do(b.CleanFn)
 	case 1, 2:
-		for {
-			if atomic.LoadInt64(&b.state) == 2 {
-				atomic.CompareAndSwapInt64(&b.state, 2, 3)
-				break
-			}
+		for atomic.LoadInt64(&b.state) != 2 {
 		}
+		atomic.CompareAndSwapInt64(&b.state, 2, 3)
 		fallthrough
 	case 3:
-		for {
-			if atomic.LoadInt64(&b.state) == 4 {
-				break
-			}
+		for atomic.LoadInt64(&b.state) != 4 {
 			time.Sleep(time.Millisecond * 100)
 		}
 		fallthrough

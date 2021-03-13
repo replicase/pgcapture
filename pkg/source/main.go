@@ -52,12 +52,9 @@ func (b *BaseSource) Commit(cp Checkpoint) {
 func (b *BaseSource) Stop() error {
 	switch atomic.LoadInt64(&b.state) {
 	case 1, 2:
-		for {
-			if atomic.LoadInt64(&b.state) == 2 {
-				atomic.CompareAndSwapInt64(&b.state, 2, 3)
-				break
-			}
+		for atomic.LoadInt64(&b.state) != 2 {
 		}
+		atomic.CompareAndSwapInt64(&b.state, 2, 3)
 		fallthrough
 	case 3:
 		<-b.stopped
