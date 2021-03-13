@@ -60,7 +60,9 @@ func (p *PGXSource) Capture(cp Checkpoint) (changes chan Change, err error) {
 
 	if p.CreateSlot {
 		if _, err = p.setupConn.Exec(ctx, sql.CreateLogicalSlot, p.ReplSlot, decode.OutputPlugin); err != nil {
-			return nil, err
+			if pge, ok := err.(*pgconn.PgError); !ok || pge.Code != "42710" {
+				return nil, err
+			}
 		}
 	}
 

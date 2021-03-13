@@ -6,8 +6,8 @@ import (
 	"google.golang.org/grpc"
 )
 
-func NewGRPCServer(desc *grpc.ServiceDesc, impl interface{}) (net.Addr, func()) {
-	lis, err := net.Listen("tcp", "localhost:0")
+func NewGRPCServer(desc *grpc.ServiceDesc, addr string, impl interface{}) (net.Addr, func()) {
+	lis, err := net.Listen("tcp", addr)
 	if err != nil {
 		panic(err)
 	}

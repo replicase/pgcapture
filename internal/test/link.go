@@ -5,7 +5,7 @@ import (
 	"github.com/rueian/pgcapture/pkg/source"
 )
 
-func SourceToSink(src source.Source, sk sink.Sink, shutdown chan struct{}, cb func()) (err error) {
+func SourceToSink(src source.Source, sk sink.Sink, shutdown chan struct{}) (err error) {
 	lastCheckPoint, err := sk.Setup()
 	if err != nil {
 		panic(err)
@@ -22,8 +22,6 @@ func SourceToSink(src source.Source, sk sink.Sink, shutdown chan struct{}, cb fu
 			src.Commit(cp)
 		}
 	}()
-
-	go cb()
 
 	<-shutdown
 	sk.Stop()

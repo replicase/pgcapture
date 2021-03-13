@@ -3,9 +3,8 @@ package test
 import (
 	"context"
 	"fmt"
-	"math/rand"
-	"strconv"
 
+	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v4"
 )
 
@@ -58,16 +57,21 @@ func (u DBURL) TablePages(table string) (pages int, err error) {
 	}
 	defer conn.Close(ctx)
 
+	if err := u.Exec("analyze " + table); err != nil {
+		return 0, err
+	}
+
 	if err = conn.QueryRow(ctx, fmt.Sprintf("select relpages from pg_class where relname = '%s'", table)).Scan(&pages); err != nil {
 		return 0, err
 	}
 	return pages, nil
 }
 
-func RandomDB(u DBURL) (DBURL, error) {
-	name := "test_" + strconv.FormatUint(rand.Uint64(), 10)
-	if err := u.Exec("create database " + name); err != nil {
-		return DBURL{}, err
+func CreateDB(u DBURL, n DBURL) (DBURL, error) {
+	if err := u.Exec("create database " + n.DB); err != nil {
+		if pge, ok := err.(*pgconn.PgError); !ok || pge.Code != "42P04" {
+			return DBURL{}, err
+		}
 	}
-	return DBURL{Host: u.Host, DB: name}, nil
+	return n, nil
 }
