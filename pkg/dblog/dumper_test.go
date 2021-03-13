@@ -20,12 +20,18 @@ func TestPGXSourceDumper(t *testing.T) {
 	}
 	defer conn.Close(ctx)
 
+	dumpConn, err := pgx.Connect(ctx, "postgres://postgres@127.0.0.1/postgres?sslmode=disable")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dumpConn.Close(ctx)
+
 	conn.Exec(ctx, "DROP SCHEMA public CASCADE; CREATE SCHEMA public")
 	conn.Exec(ctx, "DROP EXTENSION IF EXISTS pgcapture")
 	conn.Exec(ctx, sql.InstallExtension)
 	conn.Exec(ctx, "CREATE TABLE t1 AS SELECT * FROM generate_series(1,100000) AS id; ANALYZE t1")
 
-	dumper := PGXSourceDumper{Conn: conn}
+	dumper := PGXSourceDumper{Conn: dumpConn}
 	if _, err := dumper.LoadDump(0, &pb.DumpInfoResponse{}); err != ErrMissingTable {
 		t.Fatal(err)
 	}
