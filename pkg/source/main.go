@@ -24,7 +24,7 @@ type Source interface {
 	Capture(cp Checkpoint) (changes chan Change, err error)
 	Commit(cp Checkpoint)
 	Error() error
-	Stop()
+	Stop() error
 }
 
 type RequeueSource interface {
@@ -49,11 +49,12 @@ func (b *BaseSource) Commit(cp Checkpoint) {
 	panic("implement me")
 }
 
-func (b *BaseSource) Stop() {
+func (b *BaseSource) Stop() error {
 	atomic.StoreInt64(&b.stop, 1)
 	if b.stopped != nil {
 		<-b.stopped
 	}
+	return b.Error()
 }
 
 func (b *BaseSource) Error() error {

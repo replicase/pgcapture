@@ -1,6 +1,7 @@
 package sink
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -34,6 +35,8 @@ func TestPulsarSink(t *testing.T) {
 	changes := make(chan source.Change)
 	committed := sink.Apply(changes)
 
+	fmt.Println("@#)(@#*$")
+
 	for j := 0; j < 2; j++ {
 		for i := uint64(1); i < 4; i++ {
 			changes <- source.Change{Checkpoint: source.Checkpoint{LSN: i}, Message: &pb.Message{Type: &pb.Message_Commit{Commit: &pb.Commit{EndLsn: i}}}}
@@ -52,7 +55,12 @@ func TestPulsarSink(t *testing.T) {
 		}
 	}
 	close(changes)
-	sink.Stop()
+	fmt.Println("QLPKPKQPDK")
+	if err := sink.Stop(); err != nil {
+		t.Fatal("unexpected", err)
+	}
+	fmt.Println("WOIFJOIWEJFOIJWEIOFJWOEIF")
+
 	if _, more := <-changes; more {
 		t.Fatal("unexpected")
 	}
@@ -66,7 +74,9 @@ func TestPulsarSink(t *testing.T) {
 	if cp.LSN != 3 {
 		t.Fatalf("checkpoint of non empty topic should be last message")
 	}
-	sink.Stop()
+	if err := sink.Stop(); err != nil {
+		t.Fatal("unexpected", err)
+	}
 }
 
 func TestPulsarSink_DuplicatedSink(t *testing.T) {
@@ -76,10 +86,13 @@ func TestPulsarSink_DuplicatedSink(t *testing.T) {
 	if _, err := sink1.Setup(); err != nil {
 		t.Fatal(err)
 	}
-	defer sink1.Stop()
 
 	sink2 := newPulsarSink(topic)
 	if _, err := sink2.Setup(); err == nil || !strings.Contains(err.Error(), "is already connected to topic") {
 		t.Fatal("duplicated sink")
+	}
+
+	if err := sink1.Stop(); err != nil {
+		t.Fatal("unexpected", err)
 	}
 }

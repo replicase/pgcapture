@@ -78,7 +78,7 @@ func TestPGXSink(t *testing.T) {
 			Message:    &pb.Message{Type: &pb.Message_Commit{Commit: &pb.Commit{CommitTime: uint64(ts)}}},
 		}
 		if cp := <-committed; cp.LSN != lsn || cp.Time.Equal(now) {
-			t.Fatalf("unexpected %v %v %v %v", cp, lsn, now, sink.Error())
+			t.Fatalf("unexpected %v %v %v", cp, lsn, now)
 		}
 		if err = sink.Error(); err != nil {
 			t.Fatalf("unexpected %v", err)

@@ -64,7 +64,6 @@ func main() {
 
 		pulsarSrc := &source.PulsarReaderSource{PulsarOption: pulsar.ClientOptions{URL: example.PulsarURL}, PulsarTopic: dbSrc.DB}
 		pgSink := &sink.PGXSink{ConnStr: dbSink.URL(), SourceID: dbSrc.DB}
-
 		if err := test.SourceToSink(pulsarSrc, pgSink, shutdown); err != nil {
 			panic(err)
 		}

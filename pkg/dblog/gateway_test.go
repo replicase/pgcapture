@@ -100,8 +100,9 @@ func TestGateway_Capture(t *testing.T) {
 					CommitCB: func(cp source.Checkpoint) {
 						commit <- cp
 					},
-					StopCB: func() {
+					StopCB: func() error {
 						close(stopped)
+						return nil
 					},
 				}, nil
 			},
@@ -247,8 +248,9 @@ func TestGateway_CaptureSendSourceError(t *testing.T) {
 					CommitCB: func(cp source.Checkpoint) {
 						commit <- cp
 					},
-					StopCB: func() {
+					StopCB: func() error {
 						close(stopped)
+						return nil
 					},
 				}, nil
 			},
@@ -335,8 +337,9 @@ func TestGateway_CaptureSendDumpError(t *testing.T) {
 					CommitCB: func(cp source.Checkpoint) {
 						commit <- cp
 					},
-					StopCB: func() {
+					StopCB: func() error {
 						close(stopped)
+						return nil
 					},
 				}, nil
 			},
@@ -430,8 +433,9 @@ func TestGateway_CaptureRecvError(t *testing.T) {
 					CommitCB: func(cp source.Checkpoint) {
 						commit <- cp
 					},
-					StopCB: func() {
+					StopCB: func() error {
 						close(stopped)
+						return nil
 					},
 				}, nil
 			},
@@ -501,7 +505,7 @@ func (d *dumper) LoadDump(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.Chang
 type sources struct {
 	CaptureCB func(cp source.Checkpoint) (changes chan source.Change, err error)
 	CommitCB  func(cp source.Checkpoint)
-	StopCB    func()
+	StopCB    func() error
 	RequeueCB func(checkpoint source.Checkpoint)
 }
 
@@ -517,8 +521,8 @@ func (s *sources) Error() error {
 	panic("implement me")
 }
 
-func (s *sources) Stop() {
-	s.StopCB()
+func (s *sources) Stop() error {
+	return s.StopCB()
 }
 
 func (s *sources) Requeue(checkpoint source.Checkpoint) {

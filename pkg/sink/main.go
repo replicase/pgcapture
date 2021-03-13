@@ -1,6 +1,7 @@
 package sink
 
 import (
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -14,16 +15,16 @@ type Sink interface {
 	Setup() (cp source.Checkpoint, err error)
 	Apply(changes chan source.Change) (committed chan source.Checkpoint)
 	Error() error
-	Stop()
+	Stop() error
 }
 
 type BaseSink struct {
-	CleanFn CleanFn
+	CleanFn   CleanFn
+	cleanOnce sync.Once
 
 	committed chan source.Checkpoint
-
-	state int64
-	err   atomic.Value
+	state     int64
+	err       atomic.Value
 }
 
 func (b *BaseSink) Setup() (cp source.Checkpoint, err error) {
@@ -39,8 +40,10 @@ func (b *BaseSink) apply(changes chan source.Change, applyFn ApplyFn) (committed
 		return nil
 	}
 	b.committed = make(chan source.Checkpoint, 100)
+	atomic.StoreInt64(&b.state, 2)
+
 	go func() {
-		for atomic.LoadInt64(&b.state) == 1 {
+		for atomic.LoadInt64(&b.state) == 2 {
 			select {
 			case change, more := <-changes:
 				if !more {
@@ -54,7 +57,7 @@ func (b *BaseSink) apply(changes chan source.Change, applyFn ApplyFn) (committed
 			}
 		}
 	cleanup:
-		atomic.StoreInt64(&b.state, 3)
+		atomic.StoreInt64(&b.state, 4)
 		go b.Stop()
 		for range changes {
 			// this loop should do nothing and only exit when the input channel is closed
@@ -70,24 +73,31 @@ func (b *BaseSink) Error() error {
 	return nil
 }
 
-func (b *BaseSink) Stop() {
-	switch atomic.SwapInt64(&b.state, 2) {
-	case 0, 3:
-		b.CleanFn()
-		if b.committed != nil {
-			close(b.committed)
-		}
-	case 1:
-		for !atomic.CompareAndSwapInt64(&b.state, 3, 2) {
-			time.Sleep(time.Millisecond * 50)
+func (b *BaseSink) Stop() error {
+	switch atomic.LoadInt64(&b.state) {
+	case 0:
+		b.cleanOnce.Do(b.CleanFn)
+	case 1, 2:
+		for {
 			if atomic.LoadInt64(&b.state) == 2 {
-				return
+				atomic.CompareAndSwapInt64(&b.state, 2, 3)
+				break
 			}
 		}
-		b.CleanFn()
-		if b.committed != nil {
-			close(b.committed)
+		fallthrough
+	case 3:
+		for {
+			if atomic.LoadInt64(&b.state) == 4 {
+				break
+			}
+			time.Sleep(time.Millisecond * 100)
 		}
-	default:
+		fallthrough
+	case 4:
+		b.cleanOnce.Do(func() {
+			b.CleanFn()
+			close(b.committed)
+		})
 	}
+	return b.Error()
 }

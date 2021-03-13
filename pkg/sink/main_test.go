@@ -39,7 +39,10 @@ func TestBaseSink_Stop(t *testing.T) {
 	sink.Setup()
 	changes := make(chan source.Change)
 	committed := sink.Apply(changes)
-	sink.Stop()
+
+	if err := sink.Stop(); err != nil {
+		t.Fatalf("unexpected %v", err)
+	}
 
 	if _, more := <-committed; more {
 		t.Fatal("committed channel should be closed")
@@ -56,9 +59,18 @@ func TestBaseSink_Stop(t *testing.T) {
 		}
 	}
 	close(changes)
+}
 
-	if sink.Error() != nil {
-		t.Fatalf("unexpected %v", sink.Error())
+func TestBaseSink_StopImmediate(t *testing.T) {
+	sink := sink{}
+	sink.Setup()
+	changes := make(chan source.Change)
+	go sink.Apply(changes)
+	if err := sink.Stop(); err != nil {
+		t.Fatalf("unexpected %v", err)
+	}
+	if _, more := <-sink.Cleaned; more {
+		t.Fatal("clean func should be called after Stop()")
 	}
 }
 
@@ -86,13 +98,12 @@ func TestBaseSink_Clean(t *testing.T) {
 		t.Fatal("committed channel should be closed")
 	}
 
-	sink.Stop()
-	if _, more := <-sink.Cleaned; more {
-		t.Fatal("clean func should be called after Stop()")
+	if err := sink.Stop(); err != nil {
+		t.Fatalf("unexpected %v", err)
 	}
 
-	if sink.Error() != nil {
-		t.Fatalf("unexpected %v", sink.Error())
+	if _, more := <-sink.Cleaned; more {
+		t.Fatal("clean func should be called after Stop()")
 	}
 }
 
@@ -109,16 +120,15 @@ func TestBaseSink_Error(t *testing.T) {
 		t.Fatal("committed channel should be closed")
 	}
 
-	sink.Stop()
+	if err := sink.Stop(); err != ErrAny {
+		t.Fatalf("unexpected %v", err)
+	}
+
 	if _, more := <-sink.Cleaned; more {
 		t.Fatal("clean func should be called after Stop()")
 	}
 
 	close(changes)
-
-	if sink.Error() != ErrAny {
-		t.Fatalf("unexpected %v", sink.Error())
-	}
 }
 
 func TestBaseSink_SecondApply(t *testing.T) {
