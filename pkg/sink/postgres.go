@@ -5,7 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
+	"io"
 	"regexp"
 	"time"
 
@@ -22,9 +22,9 @@ import (
 type PGXSink struct {
 	BaseSink
 
-	ConnStr  string
-	LogPath  string
-	SourceID string
+	ConnStr   string
+	SourceID  string
+	LogReader io.Reader
 
 	conn   *pgx.Conn
 	raw    *pgconn.PgConn
@@ -75,8 +75,8 @@ func (p *PGXSink) findCheckpoint(ctx context.Context) (cp source.Checkpoint, err
 	err = p.conn.QueryRow(ctx, "SELECT commit, commit_ts FROM pgcapture.sources WHERE id = $1 AND status IS NULL", p.SourceID).Scan(&str, &pts)
 	if err == pgx.ErrNoRows {
 		err = nil
-		if p.LogPath != "" {
-			str, ts, err = ScanCheckpointFromLog(p.LogPath)
+		if p.LogReader != nil {
+			str, ts, err = ScanCheckpointFromLog(p.LogReader)
 		}
 	}
 	if str != "" {
@@ -268,13 +268,7 @@ func (p *PGXSink) handleCommit(cp source.Checkpoint, commit *pb.Commit) (err err
 	return
 }
 
-func ScanCheckpointFromLog(path string) (lsn, ts string, err error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", "", err
-	}
-	defer f.Close()
-
+func ScanCheckpointFromLog(f io.Reader) (lsn, ts string, err error) {
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -283,7 +277,6 @@ func ScanCheckpointFromLog(path string) (lsn, ts string, err error) {
 		} else if match = LogTxTimeRegex.FindStringSubmatch(line); len(match) > 1 {
 			ts = match[1]
 		}
-		f.SetReadDeadline(time.Now().Add(time.Second))
 	}
 	if lsn == "" || ts == "" {
 		return "", "", fmt.Errorf("lsn not found in log: %w", scanner.Err())

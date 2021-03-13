@@ -212,12 +212,16 @@ func TestPGXSink_ScanCheckpointFromLog(t *testing.T) {
 		var err error
 		for err == nil {
 			_, err = tmp.WriteString("2021-03-01 16:25:03 UTC [2163-1] postgres@postgres FATAL:  the database system is starting up\n")
-			time.Sleep(time.Millisecond * 50)
 		}
 	}()
+	reader, err := os.Open(tmp.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
 
 	sink := newPGXSink()
-	sink.LogPath = tmp.Name()
+	sink.LogReader = reader
 
 	cp, err := sink.Setup()
 	if err != nil {
