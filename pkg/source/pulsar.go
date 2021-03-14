@@ -46,7 +46,7 @@ func (p *PulsarReaderSource) Capture(cp Checkpoint) (changes chan Change, err er
 	p.reader, err = p.client.CreateReader(pulsar.ReaderOptions{
 		Name:                    host,
 		Topic:                   p.PulsarTopic,
-		StartMessageID:          startMessageID(cp),
+		StartMessageID:          pulsar.EarliestMessageID(),
 		StartMessageIDInclusive: true,
 	})
 	if err != nil {
@@ -65,7 +65,7 @@ func (p *PulsarReaderSource) Capture(cp Checkpoint) (changes chan Change, err er
 	} else {
 		p.log.WithFields(logrus.Fields{
 			"RequiredLSN": cp.LSN,
-		}).Info("start reading pulsar topic from latest position")
+		}).Info("start reading pulsar topic from earliest position")
 	}
 
 	var first bool
@@ -237,14 +237,5 @@ func (p *PulsarConsumerSource) unAckID(cp Checkpoint) (id pulsar.MessageID) {
 		delete(p.pending, cp.LSN)
 	}
 	p.mu.Unlock()
-	return
-}
-
-func startMessageID(cp Checkpoint) (sid pulsar.MessageID) {
-	if cp.Time.IsZero() {
-		sid = pulsar.LatestMessageID()
-	} else {
-		sid = pulsar.EarliestMessageID()
-	}
 	return
 }

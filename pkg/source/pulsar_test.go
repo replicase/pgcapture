@@ -34,7 +34,7 @@ func TestPulsarReaderSource(t *testing.T) {
 	// prepend incomplete message into topic
 	incomplete, _ := proto.Marshal(&pb.Message{Type: &pb.Message_Commit{Commit: &pb.Commit{EndLsn: 111}}})
 	if _, err = producer.Send(context.Background(), &pulsar.ProducerMessage{
-		Key:     pglogrepl.LSN(111).String(),
+		Key:     "e" + pglogrepl.LSN(111).String(),
 		Payload: incomplete,
 	}); err != nil {
 		t.Fatal(err)
@@ -43,7 +43,7 @@ func TestPulsarReaderSource(t *testing.T) {
 	for ; lsn < 3; lsn++ {
 		bs, _ := proto.Marshal(&pb.Message{Type: &pb.Message_Begin{Begin: &pb.Begin{FinalLsn: uint64(lsn)}}})
 		if _, err = producer.Send(context.Background(), &pulsar.ProducerMessage{
-			Key:     pglogrepl.LSN(lsn).String(),
+			Key:     "b" + pglogrepl.LSN(lsn).String(),
 			Payload: bs,
 		}); err != nil {
 			t.Fatal(err)
@@ -63,7 +63,7 @@ func TestPulsarReaderSource(t *testing.T) {
 
 	// test from start
 	src := newPulsarReaderSource()
-	changes, err := src.Capture(Checkpoint{Time: now, LSN: uint64(0)})
+	changes, err := src.Capture(Checkpoint{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,6 +78,22 @@ func TestPulsarReaderSource(t *testing.T) {
 			t.Fatalf("unexpected %v", change.Message.String())
 		}
 	}
+
+	// continue to receive latest msg
+	latest, _ := proto.Marshal(&pb.Message{Type: &pb.Message_Begin{Begin: &pb.Begin{FinalLsn: 3}}})
+	if _, err = producer.Send(context.Background(), &pulsar.ProducerMessage{
+		Key:     "b" + pglogrepl.LSN(3).String(),
+		Payload: latest,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	producer.Flush()
+
+	change := <-changes
+	if b := change.Message.GetBegin(); b == nil || b.FinalLsn != 3 {
+		t.Fatalf("unexpected %v", change.Message.String())
+	}
+
 	src.Stop()
 
 	// test from specified time and lsn, and not include specified lsn
@@ -89,40 +105,12 @@ func TestPulsarReaderSource(t *testing.T) {
 	if lsn <= 2 {
 		t.Fatal("unexpected")
 	}
-	for i := 2; i < lsn; i++ {
+	for i := 2; i < lsn+1; i++ {
 		change := <-changes
 		if b := change.Message.GetBegin(); b == nil || b.FinalLsn != uint64(i) {
 			t.Fatalf("unexpected %v", change.Message.String())
 		}
 	}
-	src.Stop()
-
-	// test from latest position, inclusive
-	src = newPulsarReaderSource()
-	changes, err = src.Capture(Checkpoint{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	change := <-changes
-	if b := change.Message.GetBegin(); b == nil || b.FinalLsn != 2 {
-		t.Fatalf("unexpected %v", change.Message.String())
-	}
-
-	// continue to receive latest msg
-	latest, _ := proto.Marshal(&pb.Message{Type: &pb.Message_Begin{Begin: &pb.Begin{FinalLsn: 3}}})
-	if _, err = producer.Send(context.Background(), &pulsar.ProducerMessage{
-		Key:     pglogrepl.LSN(3).String(),
-		Payload: latest,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	producer.Flush()
-
-	change = <-changes
-	if b := change.Message.GetBegin(); b == nil || b.FinalLsn != 3 {
-		t.Fatalf("unexpected %v", change.Message.String())
-	}
-
 	src.Stop()
 }
 
@@ -164,7 +152,7 @@ func TestPulsarConsumerSource(t *testing.T) {
 	for ; lsn < 3; lsn++ {
 		bs, _ := proto.Marshal(&pb.Message{Type: &pb.Message_Begin{Begin: &pb.Begin{FinalLsn: uint64(lsn)}}})
 		if _, err = producer.Send(context.Background(), &pulsar.ProducerMessage{
-			Key:     pglogrepl.LSN(lsn).String(),
+			Key:     "b" + pglogrepl.LSN(lsn).String(),
 			Payload: bs,
 		}); err != nil {
 			t.Fatal(err)
