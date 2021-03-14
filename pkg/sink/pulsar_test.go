@@ -1,7 +1,6 @@
 package sink
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -35,8 +34,6 @@ func TestPulsarSink(t *testing.T) {
 	changes := make(chan source.Change)
 	committed := sink.Apply(changes)
 
-	fmt.Println("@#)(@#*$")
-
 	for j := 0; j < 2; j++ {
 		for i := uint64(1); i < 4; i++ {
 			changes <- source.Change{Checkpoint: source.Checkpoint{LSN: i}, Message: &pb.Message{Type: &pb.Message_Commit{Commit: &pb.Commit{EndLsn: i}}}}
@@ -55,11 +52,9 @@ func TestPulsarSink(t *testing.T) {
 		}
 	}
 	close(changes)
-	fmt.Println("QLPKPKQPDK")
 	if err := sink.Stop(); err != nil {
 		t.Fatal("unexpected", err)
 	}
-	fmt.Println("WOIFJOIWEJFOIJWEIOFJWOEIF")
 
 	if _, more := <-changes; more {
 		t.Fatal("unexpected")

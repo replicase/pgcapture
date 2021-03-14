@@ -30,8 +30,8 @@ type PGXSink struct {
 	conn    *pgx.Conn
 	raw     *pgconn.PgConn
 	schema  *decode.PGXSchemaLoader
-	init    source.Checkpoint
 	log     *logrus.Entry
+	lsn     uint64
 	inTX    bool
 	skip    bool
 	refresh bool
@@ -102,7 +102,10 @@ func (p *PGXSink) findCheckpoint(ctx context.Context) (cp source.Checkpoint, err
 		"RequiredLSN": cp.LSN,
 		"SeekTs":      cp.Time,
 	}).Info("last checkpoint found")
-	p.init = cp
+
+	if cp.LSN != 0 {
+		p.lsn = cp.LSN - 1 // the next begin message will use the same WALStart, therefore -1 here
+	}
 	return cp, nil
 }
 
@@ -112,14 +115,16 @@ func (p *PGXSink) Apply(changes chan source.Change) chan source.Checkpoint {
 		if !first {
 			p.log.WithFields(logrus.Fields{
 				"MessageLSN":  change.Checkpoint.LSN,
-				"SinkLastLSN": p.init.LSN,
+				"SinkLastLSN": p.lsn,
+				"Message":     change.Message.String(),
 			}).Info("applying the first message from source")
 			first = true
 		}
-		if p.init.LSN >= change.Checkpoint.LSN {
+		if p.lsn >= change.Checkpoint.LSN {
 			p.log.WithFields(logrus.Fields{
 				"MessageLSN":  change.Checkpoint.LSN,
-				"SinkLastLSN": p.init.LSN,
+				"SinkLastLSN": p.lsn,
+				"Message":     change.Message.String(),
 			}).Warn("message dropped due to its lsn smaller than the last lsn of sink")
 			return nil
 		}

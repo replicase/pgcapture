@@ -78,8 +78,13 @@ func (p *PulsarReaderSource) Capture(cp Checkpoint) (changes chan Change, err er
 		if err != nil {
 			return
 		}
-		lsn, err = pglogrepl.ParseLSN(msg.Key())
+		lsn, err = pglogrepl.ParseLSN(msg.Key()[1:])
 		if err != nil {
+			return
+		}
+
+		m := &pb.Message{}
+		if err = proto.Unmarshal(msg.Payload(), m); err != nil {
 			return
 		}
 
@@ -87,7 +92,8 @@ func (p *PulsarReaderSource) Capture(cp Checkpoint) (changes chan Change, err er
 			p.log.WithFields(logrus.Fields{
 				"MessageLSN":  uint64(lsn),
 				"RequiredLSN": cp.LSN,
-			}).Info("retrived the first message from pulsar")
+				"Message":     m.String(),
+			}).Info("retrieved the first message from pulsar")
 			first = true
 		}
 
@@ -97,12 +103,8 @@ func (p *PulsarReaderSource) Capture(cp Checkpoint) (changes chan Change, err er
 				"MessageLSN":  uint64(lsn),
 				"RequiredLSN": cp.LSN,
 				"Consistent":  p.consistent,
+				"Message":     m.String(),
 			}).Info("still catching lsn from pulsar")
-			return
-		}
-
-		m := &pb.Message{}
-		if err = proto.Unmarshal(msg.Payload(), m); err != nil {
 			return
 		}
 
@@ -112,6 +114,7 @@ func (p *PulsarReaderSource) Capture(cp Checkpoint) (changes chan Change, err er
 				"MessageLSN":  uint64(lsn),
 				"RequiredLSN": cp.LSN,
 				"Consistent":  p.consistent,
+				"Message":     m.String(),
 			}).Info("still waiting for the first begin message")
 			if !p.consistent {
 				return
@@ -185,7 +188,7 @@ func (p *PulsarConsumerSource) Capture(cp Checkpoint) (changes chan Change, err 
 		if err != nil {
 			return
 		}
-		lsn, err = pglogrepl.ParseLSN(msg.Key())
+		lsn, err = pglogrepl.ParseLSN(msg.Key()[1:])
 		if err != nil {
 			return
 		}
@@ -196,7 +199,10 @@ func (p *PulsarConsumerSource) Capture(cp Checkpoint) (changes chan Change, err 
 		}
 
 		if !first {
-			p.log.WithFields(logrus.Fields{"MessageLSN": uint64(lsn)}).Info("retrieved the first message from pulsar")
+			p.log.WithFields(logrus.Fields{
+				"MessageLSN": uint64(lsn),
+				"Message":    m.String(),
+			}).Info("retrieved the first message from pulsar")
 			first = true
 		}
 

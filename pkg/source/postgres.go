@@ -30,6 +30,7 @@ type PGXSource struct {
 	nextReportTime time.Time
 	ackLsn         uint64
 	log            *logrus.Entry
+	first          bool
 }
 
 func (p *PGXSource) Capture(cp Checkpoint) (changes chan Change, err error) {
@@ -142,8 +143,18 @@ func (p *PGXSource) fetching(ctx context.Context) (change Change, err error) {
 				}
 			}
 			change = Change{
-				Checkpoint: Checkpoint{LSN: uint64(xld.WALStart) + uint64(len(xld.WALData))},
+				// use WALStart as checkpoint instead of WALStart+len(WALData),
+				// because WALStart is the only value guaranteed will only increase, not decrease.
+				// However WALStart will be duplicated on tx boundary
+				Checkpoint: Checkpoint{LSN: uint64(xld.WALStart)},
 				Message:    m,
+			}
+			if !p.first {
+				p.log.WithFields(logrus.Fields{
+					"MessageLSN": change.Checkpoint.LSN,
+					"Message":    m.String(),
+				}).Info("retrieved the first message from postgres")
+				p.first = true
 			}
 		}
 	default:
