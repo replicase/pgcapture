@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"math/rand"
 	"os"
 	"os/signal"
@@ -79,7 +78,14 @@ func main() {
 		panic(err)
 	}
 	gateway := &dblog.Gateway{
-		SourceResolver: &SourceResolver{},
+		SourceResolver: dblog.NewStaticPGXPulsarResolver(map[string]dblog.StaticPGXPulsarURIConfig{
+			example.SrcDB.DB: {
+				PostgresURL:        example.SinkDB.URL(),
+				PulsarURL:          example.PulsarURL,
+				PulsarTopic:        dbSrc.DB,
+				PulsarSubscription: dbSrc.DB,
+			},
+		}),
 		DumpInfoPuller: &dblog.GRPCDumpInfoPuller{Client: pb.NewDBLogControllerClient(controlConn)},
 	}
 	_, gatewayCancel := test.NewGRPCServer(&pb.DBLogGateway_ServiceDesc, example.GatewayAddr, gateway)
@@ -89,19 +95,4 @@ func main() {
 	controlCancel()
 
 	wg.Wait()
-}
-
-type SourceResolver struct {
-}
-
-func (r *SourceResolver) Source(ctx context.Context, uri string) (source.RequeueSource, error) {
-	return &source.PulsarConsumerSource{
-		PulsarOption:       pulsar.ClientOptions{URL: example.PulsarURL},
-		PulsarTopic:        uri,
-		PulsarSubscription: uri,
-	}, nil
-}
-
-func (r *SourceResolver) Dumper(ctx context.Context, uri string) (dblog.SourceDumper, error) {
-	return dblog.NewPGXSourceDumper(ctx, example.SinkDB.URL())
 }
