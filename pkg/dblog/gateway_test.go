@@ -635,6 +635,10 @@ func (d *dumper) LoadDump(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.Chang
 	return d.LoadDumpCB(minLSN, info)
 }
 
+func (d *dumper) Stop() {
+
+}
+
 type sources struct {
 	CaptureCB func(cp source.Checkpoint) (changes chan source.Change, err error)
 	CommitCB  func(cp source.Checkpoint)

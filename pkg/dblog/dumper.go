@@ -13,10 +13,19 @@ import (
 
 type SourceDumper interface {
 	LoadDump(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.Change, error)
+	Stop()
+}
+
+func NewPGXSourceDumper(ctx context.Context, url string) (*PGXSourceDumper, error) {
+	conn, err := pgx.Connect(ctx, url)
+	if err != nil {
+		return nil, err
+	}
+	return &PGXSourceDumper{conn: conn}, nil
 }
 
 type PGXSourceDumper struct {
-	Conn *pgx.Conn
+	conn *pgx.Conn
 }
 
 func (p *PGXSourceDumper) LoadDump(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.Change, error) {
@@ -37,12 +46,16 @@ func (p *PGXSourceDumper) LoadDump(minLSN uint64, info *pb.DumpInfoResponse) ([]
 	}
 }
 
+func (p *PGXSourceDumper) Stop() {
+	p.conn.Close(context.Background())
+}
+
 const DumpQuery = `select * from "%s"."%s" where ctid = any(array(select format('(%%s,%%s)', i, j)::tid from generate_series($1::int,$2::int) as gs(i), generate_series(1,(current_setting('block_size')::int-24)/28) as gs2(j)))`
 
 func (p *PGXSourceDumper) load(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.Change, error) {
 	ctx := context.Background()
 
-	tx, err := p.Conn.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := p.conn.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return nil, err
 	}

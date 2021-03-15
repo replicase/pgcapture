@@ -93,12 +93,7 @@ func (r *SourceResolver) Source(ctx context.Context, uri string) (source.Requeue
 }
 
 func (r *SourceResolver) Dumper(ctx context.Context, uri string) (dblog.SourceDumper, error) {
-	conn, err := pgx.Connect(ctx, "postgres://postgres@127.0.0.1/postgres?sslmode=disable")
-	if err != nil {
-		panic(err)
-	}
-
-	return &dblog.PGXSourceDumper{Conn: conn}, nil
+	return dblog.NewPGXSourceDumper(ctx, "postgres://postgres@127.0.0.1/postgres?sslmode=disable")
 }
 
 type ctrl struct {

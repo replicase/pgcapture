@@ -32,6 +32,7 @@ func (s *Gateway) Capture(server pb.DBLogGateway_CaptureServer) error {
 	if err != nil {
 		return err
 	}
+	defer dumper.Stop()
 
 	return s.capture(init, server, src, dumper)
 }

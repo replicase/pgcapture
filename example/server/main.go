@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar"
-	"github.com/jackc/pgx/v4"
 	"github.com/rueian/pgcapture/example"
 	"github.com/rueian/pgcapture/internal/test"
 	"github.com/rueian/pgcapture/pkg/dblog"
@@ -104,10 +103,5 @@ func (r *SourceResolver) Source(ctx context.Context, uri string) (source.Requeue
 }
 
 func (r *SourceResolver) Dumper(ctx context.Context, uri string) (dblog.SourceDumper, error) {
-	pgConn, err := pgx.Connect(context.Background(), example.SinkDB.URL())
-	if err != nil {
-		panic(err)
-	}
-
-	return &dblog.PGXSourceDumper{Conn: pgConn}, nil
+	return dblog.NewPGXSourceDumper(ctx, example.SinkDB.URL())
 }
