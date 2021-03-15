@@ -29,8 +29,7 @@ func main() {
 	conn.Exec(ctx, fmt.Sprintf("select pg_drop_replication_slot('%s')", TestSlot))
 
 	server := dblog.Gateway{
-		SourceResolver: &PGXSourceResolver{},
-		SourceDumper:   &dblog.PGXSourceDumper{Conn: conn},
+		SourceResolver: &SourceResolver{},
 		DumpInfoPuller: &dblog.GRPCDumpInfoPuller{Client: &ctrl{m: make(chan struct{})}},
 	}
 
@@ -81,16 +80,25 @@ func (l *logging) RecvMsg(m interface{}) error {
 	panic("implement me")
 }
 
-type PGXSourceResolver struct {
+type SourceResolver struct {
 }
 
-func (r *PGXSourceResolver) Resolve(ctx context.Context, uri string) (source.RequeueSource, error) {
+func (r *SourceResolver) Source(ctx context.Context, uri string) (source.RequeueSource, error) {
 	return &source.PGXSource{
 		SetupConnStr: "postgres://postgres@127.0.0.1/postgres?sslmode=disable",
 		ReplConnStr:  "postgres://postgres@127.0.0.1/postgres?replication=database",
 		ReplSlot:     TestSlot,
 		CreateSlot:   true,
 	}, nil
+}
+
+func (r *SourceResolver) Dumper(ctx context.Context, uri string) (dblog.SourceDumper, error) {
+	conn, err := pgx.Connect(ctx, "postgres://postgres@127.0.0.1/postgres?sslmode=disable")
+	if err != nil {
+		panic(err)
+	}
+
+	return &dblog.PGXSourceDumper{Conn: conn}, nil
 }
 
 type ctrl struct {

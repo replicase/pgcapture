@@ -13,7 +13,7 @@ import (
 func TestGateway_CaptureInitError(t *testing.T) {
 	gw := Gateway{
 		SourceResolver: &resolver{
-			ResolveCB: func(ctx context.Context, uri string) (source.RequeueSource, error) {
+			SourceCB: func(ctx context.Context, uri string) (source.RequeueSource, error) {
 				return nil, context.Canceled
 			},
 		},
@@ -44,12 +44,48 @@ func TestGateway_CaptureInitError(t *testing.T) {
 
 	gw = Gateway{
 		SourceResolver: &resolver{
-			ResolveCB: func(ctx context.Context, uri string) (source.RequeueSource, error) {
+			SourceCB: func(ctx context.Context, uri string) (source.RequeueSource, error) {
 				return &sources{
 					CaptureCB: func(cp source.Checkpoint) (changes chan source.Change, err error) {
 						return nil, context.Canceled
 					},
 				}, nil
+			},
+			DumperCB: func(ctx context.Context, uri string) (SourceDumper, error) {
+				return &dumper{
+					LoadDumpCB: func(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.Change, error) {
+						return nil, nil
+					},
+				}, nil
+			},
+		},
+	}
+	if err := gw.Capture(&capture{
+		RecvCB: func() (*pb.CaptureRequest, error) {
+			return &pb.CaptureRequest{Type: &pb.CaptureRequest_Init{Init: &pb.CaptureInit{Uri: URI1}}}, nil
+		},
+	}); err != context.Canceled {
+		t.Fatal("unexpected")
+	}
+
+	gw = Gateway{
+		SourceResolver: &resolver{
+			SourceCB: func(ctx context.Context, uri string) (source.RequeueSource, error) {
+				return &sources{
+					CaptureCB: func(cp source.Checkpoint) (chan source.Change, error) {
+						return nil, nil
+					},
+					RequeueCB: func(checkpoint source.Checkpoint) {
+					},
+					CommitCB: func(cp source.Checkpoint) {
+					},
+					StopCB: func() error {
+						return nil
+					},
+				}, nil
+			},
+			DumperCB: func(ctx context.Context, uri string) (SourceDumper, error) {
+				return nil, context.Canceled
 			},
 		},
 	}
@@ -88,7 +124,7 @@ func TestGateway_Capture(t *testing.T) {
 
 	gw := Gateway{
 		SourceResolver: &resolver{
-			ResolveCB: func(ctx context.Context, uri string) (source.RequeueSource, error) {
+			SourceCB: func(ctx context.Context, uri string) (source.RequeueSource, error) {
 				return &sources{
 					CaptureCB: func(cp source.Checkpoint) (chan source.Change, error) {
 						checkpoints <- cp
@@ -106,15 +142,17 @@ func TestGateway_Capture(t *testing.T) {
 					},
 				}, nil
 			},
-		},
-		SourceDumper: &dumper{
-			LoadDumpCB: func(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.Change, error) {
-				dumpsReq <- loadDumpReq{minLSN: minLSN, info: info}
-				res := <-dumpsRes
-				if res == nil {
-					return nil, errors.New("fake")
-				}
-				return res, nil
+			DumperCB: func(ctx context.Context, uri string) (SourceDumper, error) {
+				return &dumper{
+					LoadDumpCB: func(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.Change, error) {
+						dumpsReq <- loadDumpReq{minLSN: minLSN, info: info}
+						res := <-dumpsRes
+						if res == nil {
+							return nil, errors.New("fake")
+						}
+						return res, nil
+					},
+				}, nil
 			},
 		},
 		DumpInfoPuller: &puller{
@@ -236,7 +274,7 @@ func TestGateway_CaptureSendSourceError(t *testing.T) {
 
 	gw := Gateway{
 		SourceResolver: &resolver{
-			ResolveCB: func(ctx context.Context, uri string) (source.RequeueSource, error) {
+			SourceCB: func(ctx context.Context, uri string) (source.RequeueSource, error) {
 				return &sources{
 					CaptureCB: func(cp source.Checkpoint) (chan source.Change, error) {
 						checkpoints <- cp
@@ -254,11 +292,13 @@ func TestGateway_CaptureSendSourceError(t *testing.T) {
 					},
 				}, nil
 			},
-		},
-		SourceDumper: &dumper{
-			LoadDumpCB: func(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.Change, error) {
-				dumpsReq <- loadDumpReq{minLSN: minLSN, info: info}
-				return <-dumpsRes, nil
+			DumperCB: func(ctx context.Context, uri string) (SourceDumper, error) {
+				return &dumper{
+					LoadDumpCB: func(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.Change, error) {
+						dumpsReq <- loadDumpReq{minLSN: minLSN, info: info}
+						return <-dumpsRes, nil
+					},
+				}, nil
 			},
 		},
 		DumpInfoPuller: &puller{
@@ -325,7 +365,7 @@ func TestGateway_CaptureSendDumpError(t *testing.T) {
 
 	gw := Gateway{
 		SourceResolver: &resolver{
-			ResolveCB: func(ctx context.Context, uri string) (source.RequeueSource, error) {
+			SourceCB: func(ctx context.Context, uri string) (source.RequeueSource, error) {
 				return &sources{
 					CaptureCB: func(cp source.Checkpoint) (chan source.Change, error) {
 						checkpoints <- cp
@@ -343,11 +383,13 @@ func TestGateway_CaptureSendDumpError(t *testing.T) {
 					},
 				}, nil
 			},
-		},
-		SourceDumper: &dumper{
-			LoadDumpCB: func(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.Change, error) {
-				dumpsReq <- loadDumpReq{minLSN: minLSN, info: info}
-				return <-dumpsRes, nil
+			DumperCB: func(ctx context.Context, uri string) (SourceDumper, error) {
+				return &dumper{
+					LoadDumpCB: func(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.Change, error) {
+						dumpsReq <- loadDumpReq{minLSN: minLSN, info: info}
+						return <-dumpsRes, nil
+					},
+				}, nil
 			},
 		},
 		DumpInfoPuller: &puller{
@@ -421,7 +463,7 @@ func TestGateway_CaptureRecvError(t *testing.T) {
 
 	gw := Gateway{
 		SourceResolver: &resolver{
-			ResolveCB: func(ctx context.Context, uri string) (source.RequeueSource, error) {
+			SourceCB: func(ctx context.Context, uri string) (source.RequeueSource, error) {
 				return &sources{
 					CaptureCB: func(cp source.Checkpoint) (chan source.Change, error) {
 						checkpoints <- cp
@@ -439,11 +481,13 @@ func TestGateway_CaptureRecvError(t *testing.T) {
 					},
 				}, nil
 			},
-		},
-		SourceDumper: &dumper{
-			LoadDumpCB: func(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.Change, error) {
-				dumpsReq <- loadDumpReq{minLSN: minLSN, info: info}
-				return <-dumpsRes, nil
+			DumperCB: func(ctx context.Context, uri string) (SourceDumper, error) {
+				return &dumper{
+					LoadDumpCB: func(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.Change, error) {
+						dumpsReq <- loadDumpReq{minLSN: minLSN, info: info}
+						return <-dumpsRes, nil
+					},
+				}, nil
 			},
 		},
 		DumpInfoPuller: &puller{
@@ -530,11 +574,16 @@ func (s *sources) Requeue(checkpoint source.Checkpoint) {
 }
 
 type resolver struct {
-	ResolveCB func(ctx context.Context, uri string) (source.RequeueSource, error)
+	SourceCB func(ctx context.Context, uri string) (source.RequeueSource, error)
+	DumperCB func(ctx context.Context, uri string) (SourceDumper, error)
 }
 
-func (r *resolver) Resolve(ctx context.Context, uri string) (source.RequeueSource, error) {
-	return r.ResolveCB(ctx, uri)
+func (r *resolver) Source(ctx context.Context, uri string) (source.RequeueSource, error) {
+	return r.SourceCB(ctx, uri)
+}
+
+func (r *resolver) Dumper(ctx context.Context, uri string) (SourceDumper, error) {
+	return r.DumperCB(ctx, uri)
 }
 
 type capture struct {

@@ -79,13 +79,8 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	pgConn, err := pgx.Connect(context.Background(), dbSink.URL())
-	if err != nil {
-		panic(err)
-	}
 	gateway := &dblog.Gateway{
-		SourceResolver: &PulsarSourceResolver{},
-		SourceDumper:   &dblog.PGXSourceDumper{Conn: pgConn},
+		SourceResolver: &SourceResolver{},
 		DumpInfoPuller: &dblog.GRPCDumpInfoPuller{Client: pb.NewDBLogControllerClient(controlConn)},
 	}
 	_, gatewayCancel := test.NewGRPCServer(&pb.DBLogGateway_ServiceDesc, example.GatewayAddr, gateway)
@@ -97,13 +92,22 @@ func main() {
 	wg.Wait()
 }
 
-type PulsarSourceResolver struct {
+type SourceResolver struct {
 }
 
-func (r *PulsarSourceResolver) Resolve(ctx context.Context, uri string) (source.RequeueSource, error) {
+func (r *SourceResolver) Source(ctx context.Context, uri string) (source.RequeueSource, error) {
 	return &source.PulsarConsumerSource{
 		PulsarOption:       pulsar.ClientOptions{URL: example.PulsarURL},
 		PulsarTopic:        uri,
 		PulsarSubscription: uri,
 	}, nil
+}
+
+func (r *SourceResolver) Dumper(ctx context.Context, uri string) (dblog.SourceDumper, error) {
+	pgConn, err := pgx.Connect(context.Background(), example.SinkDB.URL())
+	if err != nil {
+		panic(err)
+	}
+
+	return &dblog.PGXSourceDumper{Conn: pgConn}, nil
 }

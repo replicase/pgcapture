@@ -1,21 +1,15 @@
 package dblog
 
 import (
-	"context"
 	"errors"
 
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/source"
 )
 
-type SourceResolver interface {
-	Resolve(ctx context.Context, uri string) (source.RequeueSource, error)
-}
-
 type Gateway struct {
 	pb.UnimplementedDBLogGatewayServer
 	SourceResolver SourceResolver
-	SourceDumper   SourceDumper
 	DumpInfoPuller DumpInfoPuller
 }
 
@@ -30,12 +24,16 @@ func (s *Gateway) Capture(server pb.DBLogGateway_CaptureServer) error {
 		return ErrCaptureInitMessageRequired
 	}
 
-	src, err := s.SourceResolver.Resolve(server.Context(), init.Uri)
+	src, err := s.SourceResolver.Source(server.Context(), init.Uri)
+	if err != nil {
+		return err
+	}
+	dumper, err := s.SourceResolver.Dumper(server.Context(), init.Uri)
 	if err != nil {
 		return err
 	}
 
-	return s.capture(init, server, src)
+	return s.capture(init, server, src, dumper)
 }
 
 func (s *Gateway) acknowledge(server pb.DBLogGateway_CaptureServer, src source.RequeueSource) chan error {
@@ -63,7 +61,7 @@ func (s *Gateway) acknowledge(server pb.DBLogGateway_CaptureServer, src source.R
 	return done
 }
 
-func (s *Gateway) capture(init *pb.CaptureInit, server pb.DBLogGateway_CaptureServer, src source.RequeueSource) error {
+func (s *Gateway) capture(init *pb.CaptureInit, server pb.DBLogGateway_CaptureServer, src source.RequeueSource, dumper SourceDumper) error {
 	changes, err := src.Capture(source.Checkpoint{})
 	if err != nil {
 		return err
@@ -94,7 +92,7 @@ func (s *Gateway) capture(init *pb.CaptureInit, server pb.DBLogGateway_CaptureSe
 			if !more {
 				return nil
 			}
-			dump, err := s.SourceDumper.LoadDump(lsn, info)
+			dump, err := dumper.LoadDump(lsn, info)
 			if err == nil {
 				for _, change := range dump {
 					if err := server.Send(&pb.CaptureMessage{Checkpoint: 0, Change: change}); err != nil {
