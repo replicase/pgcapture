@@ -71,22 +71,18 @@ func (p *PGXSourceDumper) load(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.
 
 func checkLSN(ctx context.Context, tx pgx.Tx, minLSN uint64) (err error) {
 	var str string
-	if err = tx.QueryRow(ctx, "SELECT commit FROM pgcapture.sources WHERE status IS NULL ORDER BY commit DESC LIMIT 1").Scan(&str); err != nil {
-		if err == pgx.ErrNoRows {
-			return ErrLSNMissing
+	var lsn pglogrepl.LSN
+	err = tx.QueryRow(ctx, "SELECT commit FROM pgcapture.sources WHERE status IS NULL ORDER BY commit DESC LIMIT 1").Scan(&str)
+	if err == pgx.ErrNoRows {
+		return ErrLSNMissing
+	}
+	if err == nil {
+		lsn, err = pglogrepl.ParseLSN(str)
+		if err == nil && uint64(lsn) < minLSN {
+			return ErrLSNFallBehind
 		}
-		return err
 	}
-
-	lsn, err := pglogrepl.ParseLSN(str)
-	if err != nil {
-		return err
-	}
-
-	if uint64(lsn) < minLSN {
-		return ErrLSNFallBehind
-	}
-	return nil
+	return err
 }
 
 var ErrMissingTable = errors.New("missing namespace or table")

@@ -530,6 +530,95 @@ func TestGateway_CaptureRecvError(t *testing.T) {
 	<-stopped
 }
 
+func TestGateway_CaptureRecvClose(t *testing.T) {
+	ctx1 := context.Background()
+
+	changes := make(chan source.Change, 1)
+	checkpoints := make(chan source.Checkpoint, 1)
+	requeue := make(chan source.Checkpoint, 1)
+	commit := make(chan source.Checkpoint, 1)
+
+	recv := make(chan *pb.CaptureRequest, 1)
+	send := make(chan *pb.CaptureMessage, 1)
+
+	dumps := make(chan *pb.DumpInfoResponse, 1)
+	dumpAcks := make(chan string, 1)
+
+	dumpsReq := make(chan loadDumpReq, 1)
+	dumpsRes := make(chan []*pb.Change, 1)
+
+	stopped := make(chan struct{})
+
+	gw := Gateway{
+		SourceResolver: &resolver{
+			SourceCB: func(ctx context.Context, uri string) (source.RequeueSource, error) {
+				return &sources{
+					CaptureCB: func(cp source.Checkpoint) (chan source.Change, error) {
+						checkpoints <- cp
+						return changes, nil
+					},
+					RequeueCB: func(checkpoint source.Checkpoint) {
+						requeue <- checkpoint
+					},
+					CommitCB: func(cp source.Checkpoint) {
+						commit <- cp
+					},
+					StopCB: func() error {
+						close(stopped)
+						return nil
+					},
+				}, nil
+			},
+			DumperCB: func(ctx context.Context, uri string) (SourceDumper, error) {
+				return &dumper{
+					LoadDumpCB: func(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.Change, error) {
+						dumpsReq <- loadDumpReq{minLSN: minLSN, info: info}
+						return <-dumpsRes, nil
+					},
+				}, nil
+			},
+		},
+		DumpInfoPuller: &puller{
+			PullCB: func(ctx context.Context, uri string, acks chan string) chan *pb.DumpInfoResponse {
+				if ctx != ctx1 || uri != URI1 {
+					t.Fatal("unexpected")
+				}
+				go func() {
+					for s := range acks {
+						dumpAcks <- s
+					}
+				}()
+				return dumps
+			},
+		},
+	}
+	go func() {
+		if err := gw.Capture(&capture{
+			ctx: ctx1,
+			RecvCB: func() (*pb.CaptureRequest, error) {
+				ret, ok := <-recv
+				if ok {
+					return ret, nil
+				}
+				return nil, context.Canceled
+			},
+			SendCB: func(message *pb.CaptureMessage) error {
+				send <- message
+				return nil
+			},
+		}); err != nil {
+			t.Fatal("unexpected")
+		}
+	}()
+
+	recv <- &pb.CaptureRequest{Type: &pb.CaptureRequest_Init{Init: &pb.CaptureInit{Uri: URI1}}}
+	// get init empty checkpoint by source
+	<-checkpoints
+	close(changes)
+	<-stopped
+	close(recv)
+}
+
 type puller struct {
 	PullCB func(ctx context.Context, uri string, acks chan string) chan *pb.DumpInfoResponse
 }
