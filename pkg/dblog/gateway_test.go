@@ -75,7 +75,7 @@ func TestGateway_CaptureInitError(t *testing.T) {
 					CaptureCB: func(cp source.Checkpoint) (chan source.Change, error) {
 						return nil, nil
 					},
-					RequeueCB: func(checkpoint source.Checkpoint) {
+					RequeueCB: func(cp source.Checkpoint) {
 					},
 					CommitCB: func(cp source.Checkpoint) {
 					},
@@ -130,8 +130,8 @@ func TestGateway_Capture(t *testing.T) {
 						checkpoints <- cp
 						return changes, nil
 					},
-					RequeueCB: func(checkpoint source.Checkpoint) {
-						requeue <- checkpoint
+					RequeueCB: func(cp source.Checkpoint) {
+						requeue <- cp
 					},
 					CommitCB: func(cp source.Checkpoint) {
 						commit <- cp
@@ -280,8 +280,8 @@ func TestGateway_CaptureSendSourceError(t *testing.T) {
 						checkpoints <- cp
 						return changes, nil
 					},
-					RequeueCB: func(checkpoint source.Checkpoint) {
-						requeue <- checkpoint
+					RequeueCB: func(cp source.Checkpoint) {
+						requeue <- cp
 					},
 					CommitCB: func(cp source.Checkpoint) {
 						commit <- cp
@@ -371,8 +371,8 @@ func TestGateway_CaptureSendDumpError(t *testing.T) {
 						checkpoints <- cp
 						return changes, nil
 					},
-					RequeueCB: func(checkpoint source.Checkpoint) {
-						requeue <- checkpoint
+					RequeueCB: func(cp source.Checkpoint) {
+						requeue <- cp
 					},
 					CommitCB: func(cp source.Checkpoint) {
 						commit <- cp
@@ -469,8 +469,8 @@ func TestGateway_CaptureRecvError(t *testing.T) {
 						checkpoints <- cp
 						return changes, nil
 					},
-					RequeueCB: func(checkpoint source.Checkpoint) {
-						requeue <- checkpoint
+					RequeueCB: func(cp source.Checkpoint) {
+						requeue <- cp
 					},
 					CommitCB: func(cp source.Checkpoint) {
 						commit <- cp
@@ -557,8 +557,8 @@ func TestGateway_CaptureRecvClose(t *testing.T) {
 						checkpoints <- cp
 						return changes, nil
 					},
-					RequeueCB: func(checkpoint source.Checkpoint) {
-						requeue <- checkpoint
+					RequeueCB: func(cp source.Checkpoint) {
+						requeue <- cp
 					},
 					CommitCB: func(cp source.Checkpoint) {
 						commit <- cp
@@ -643,7 +643,7 @@ type sources struct {
 	CaptureCB func(cp source.Checkpoint) (changes chan source.Change, err error)
 	CommitCB  func(cp source.Checkpoint)
 	StopCB    func() error
-	RequeueCB func(checkpoint source.Checkpoint)
+	RequeueCB func(cp source.Checkpoint)
 }
 
 func (s *sources) Capture(cp source.Checkpoint) (changes chan source.Change, err error) {
@@ -662,8 +662,8 @@ func (s *sources) Stop() error {
 	return s.StopCB()
 }
 
-func (s *sources) Requeue(checkpoint source.Checkpoint) {
-	s.RequeueCB(checkpoint)
+func (s *sources) Requeue(cp source.Checkpoint) {
+	s.RequeueCB(cp)
 }
 
 type resolver struct {
