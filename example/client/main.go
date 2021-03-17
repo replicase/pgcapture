@@ -4,10 +4,21 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/jackc/pgtype"
 	"github.com/rueian/pgcapture/example"
+	"github.com/rueian/pgcapture/pkg/eventing"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"google.golang.org/grpc"
 )
+
+type T1 struct {
+	ID pgtype.Int4 `pg:"id"`
+	V  pgtype.Int4 `pg:"v"`
+}
+
+func (t *T1) Name() (namespace, table string) {
+	return "public", example.TestTable
+}
 
 func main() {
 	conn, err := grpc.Dial(example.GatewayAddr, grpc.WithInsecure())
@@ -15,26 +26,17 @@ func main() {
 		panic(err)
 	}
 	defer conn.Close()
-	client := pb.NewDBLogGatewayClient(conn)
-	stream, err := client.Capture(context.Background())
+
+	consumer := eventing.NewDBLogConsumer(context.Background(), conn, &pb.CaptureInit{Uri: example.SrcDB.DB})
+	defer consumer.Stop()
+
+	err = consumer.Consume(map[eventing.Model]eventing.ModelHandlerFunc{
+		&T1{}: func(model interface{}, deleted bool) error {
+			fmt.Println(model, deleted)
+			return nil
+		},
+	})
 	if err != nil {
 		panic(err)
-	}
-	if err = stream.Send(&pb.CaptureRequest{Type: &pb.CaptureRequest_Init{Init: &pb.CaptureInit{Uri: example.SrcDB.DB}}}); err != nil {
-		panic(err)
-	}
-	for {
-		msg, err := stream.Recv()
-		if err != nil {
-			return
-		}
-		if err = stream.Send(&pb.CaptureRequest{Type: &pb.CaptureRequest_Ack{Ack: &pb.CaptureAck{Checkpoint: msg.Checkpoint}}}); err != nil {
-			return
-		}
-		if msg.Checkpoint == 0 {
-			fmt.Println("DUMP", msg.Change.String())
-		} else {
-			fmt.Println("LAST", msg.Change.String())
-		}
 	}
 }
