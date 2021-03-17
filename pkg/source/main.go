@@ -115,7 +115,7 @@ type FlushFn func()
 type ReadFn func(ctx context.Context) (Change, error)
 
 func isTimeout(err error) bool {
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+	if errors.Is(err, context.DeadlineExceeded) {
 		return true
 	}
 
