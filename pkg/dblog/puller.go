@@ -5,6 +5,8 @@ import (
 	"errors"
 
 	"github.com/rueian/pgcapture/pkg/pb"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type DumpInfoPuller interface {
@@ -22,7 +24,7 @@ func (p *GRPCDumpInfoPuller) Pull(ctx context.Context, uri string, acks chan str
 		defer close(resp)
 		for {
 			err := p.pulling(ctx, uri, resp, acks)
-			if errors.Is(err, context.Canceled) {
+			if e, ok := status.FromError(err); (ok && e.Code() == codes.Canceled) || errors.Is(err, context.Canceled) {
 				return
 			}
 		}

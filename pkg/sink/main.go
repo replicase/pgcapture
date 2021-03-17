@@ -43,6 +43,7 @@ func (b *BaseSink) apply(changes chan source.Change, applyFn ApplyFn) (committed
 	atomic.StoreInt64(&b.state, 2)
 
 	go func() {
+		ticker := time.NewTicker(time.Second)
 		for atomic.LoadInt64(&b.state) == 2 {
 			select {
 			case change, more := <-changes:
@@ -53,10 +54,11 @@ func (b *BaseSink) apply(changes chan source.Change, applyFn ApplyFn) (committed
 					b.err.Store(err)
 					goto cleanup
 				}
-			default:
+			case <-ticker.C:
 			}
 		}
 	cleanup:
+		ticker.Stop()
 		atomic.StoreInt64(&b.state, 4)
 		go b.Stop()
 		for range changes {
