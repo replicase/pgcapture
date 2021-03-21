@@ -2,12 +2,14 @@ package source
 
 import (
 	"context"
+	"strconv"
+	"testing"
+	"time"
+
 	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/jackc/pglogrepl"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"google.golang.org/protobuf/proto"
-	"testing"
-	"time"
 )
 
 func TestPulsarReaderSource(t *testing.T) {
@@ -148,11 +150,27 @@ func TestPulsarConsumerSource(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// begin, commit message should be ignored
+	bs, _ := proto.Marshal(&pb.Message{Type: &pb.Message_Begin{Begin: &pb.Begin{}}})
+	if _, err = producer.Send(context.Background(), &pulsar.ProducerMessage{
+		Key:     "b" + pglogrepl.LSN(1).String(),
+		Payload: bs,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	bs, _ = proto.Marshal(&pb.Message{Type: &pb.Message_Commit{Commit: &pb.Commit{}}})
+	if _, err = producer.Send(context.Background(), &pulsar.ProducerMessage{
+		Key:     "e" + pglogrepl.LSN(1).String(),
+		Payload: bs,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
 	lsn := 0
 	for ; lsn < 3; lsn++ {
-		bs, _ := proto.Marshal(&pb.Message{Type: &pb.Message_Begin{Begin: &pb.Begin{FinalLsn: uint64(lsn)}}})
+		bs, _ := proto.Marshal(&pb.Message{Type: &pb.Message_Change{Change: &pb.Change{Table: strconv.Itoa(lsn)}}})
 		if _, err = producer.Send(context.Background(), &pulsar.ProducerMessage{
-			Key:     "b" + pglogrepl.LSN(lsn).String(),
+			Key:     "c" + pglogrepl.LSN(lsn).String(),
 			Payload: bs,
 		}); err != nil {
 			t.Fatal(err)
@@ -162,7 +180,7 @@ func TestPulsarConsumerSource(t *testing.T) {
 
 	for i := 0; i < lsn; i++ {
 		change := <-changes
-		if b := change.Message.GetBegin(); b == nil || b.FinalLsn != uint64(i) {
+		if c := change.Message.GetChange(); c == nil || c.Table != strconv.Itoa(i) {
 			t.Fatalf("unexpected %v", change.Message.String())
 		}
 	}
@@ -177,7 +195,7 @@ func TestPulsarConsumerSource(t *testing.T) {
 	}
 	for i := 0; i < lsn; i++ {
 		change := <-changes
-		if b := change.Message.GetBegin(); b == nil || b.FinalLsn != uint64(i) {
+		if c := change.Message.GetChange(); c == nil || c.Table != strconv.Itoa(i) {
 			t.Fatalf("unexpected %v", change.Message.String())
 		}
 		if i == 1 {
@@ -195,7 +213,7 @@ func TestPulsarConsumerSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	change := <-changes
-	if b := change.Message.GetBegin(); b == nil || b.FinalLsn != uint64(1) {
+	if c := change.Message.GetChange(); c == nil || c.Table != strconv.Itoa(1) {
 		t.Fatalf("unexpected %v", change.Message.String())
 	}
 	select {

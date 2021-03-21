@@ -206,6 +206,11 @@ func (p *PulsarConsumerSource) Capture(cp Checkpoint) (changes chan Change, err 
 			first = true
 		}
 
+		if m.GetChange() == nil {
+			p.consumer.Ack(msg)
+			return
+		}
+
 		p.mu.Lock()
 		p.pending[uint64(lsn)] = msg.ID()
 		p.mu.Unlock()
