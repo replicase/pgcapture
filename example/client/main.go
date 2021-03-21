@@ -31,8 +31,8 @@ func main() {
 	defer consumer.Stop()
 
 	err = consumer.Consume(map[eventing.Model]eventing.ModelHandlerFunc{
-		&T1{}: func(model interface{}, deleted bool) error {
-			fmt.Println(model, deleted)
+		&T1{}: func(change eventing.Change) error {
+			fmt.Println(change.New)
 			return nil
 		},
 	})

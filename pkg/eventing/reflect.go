@@ -7,13 +7,21 @@ import (
 	"strings"
 
 	"github.com/jackc/pgtype"
+	"github.com/rueian/pgcapture/pkg/pb"
 )
 
 type Model interface {
 	Name() (namespace, table string)
 }
 
-type ModelHandlerFunc func(model interface{}, deleted bool) error
+type Change struct {
+	Op  pb.Change_Operation
+	LSN uint64
+	New interface{}
+	Old interface{}
+}
+
+type ModelHandlerFunc func(change Change) error
 type ModelHandlers map[Model]ModelHandlerFunc
 
 func reflectModel(model Model) (ref reflection, err error) {

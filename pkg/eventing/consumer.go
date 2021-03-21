@@ -8,10 +8,6 @@ import (
 	"github.com/rueian/pgcapture/pkg/source"
 )
 
-func NewConsumer(s source.RequeueSource) *Consumer {
-	return &Consumer{source: s}
-}
-
 type Consumer struct {
 	source source.RequeueSource
 }
@@ -39,25 +35,12 @@ func (c *Consumer) Consume(mh ModelHandlers) error {
 			if !ok {
 				break
 			}
-			var fields []*pb.Field
-			deleted := m.Change.Op == pb.Change_DELETE
-			if deleted {
-				fields = m.Change.OldTuple
-			} else {
-				fields = m.Change.NewTuple
-			}
-			ptr := reflect.New(ref.typ)
-			val := ptr.Elem()
-			for _, f := range fields {
-				i, ok := ref.idx[f.Name]
-				if !ok {
-					continue
-				}
-				if err := val.Field(i).Addr().Interface().(pgtype.BinaryDecoder).DecodeBinary(ci, f.Datum); err != nil {
-					return err
-				}
-			}
-			if err := ref.hdl(ptr.Interface(), deleted); err != nil {
+			if err := ref.hdl(Change{
+				Op:  m.Change.Op,
+				LSN: change.Checkpoint.LSN,
+				New: makeModel(ref, m.Change.NewTuple),
+				Old: makeModel(ref, m.Change.OldTuple),
+			}); err != nil {
 				c.source.Requeue(change.Checkpoint)
 				continue
 			}
@@ -65,6 +48,24 @@ func (c *Consumer) Consume(mh ModelHandlers) error {
 		c.source.Commit(change.Checkpoint)
 	}
 	return nil
+}
+
+func makeModel(ref reflection, fields []*pb.Field) interface{} {
+	if len(fields) == 0 {
+		return nil
+	}
+	ptr := reflect.New(ref.typ)
+	val := ptr.Elem()
+	for _, f := range fields {
+		i, ok := ref.idx[f.Name]
+		if !ok {
+			continue
+		}
+		if err := val.Field(i).Addr().Interface().(pgtype.BinaryDecoder).DecodeBinary(ci, f.Datum); err != nil {
+			return err
+		}
+	}
+	return ptr.Interface()
 }
 
 func (c *Consumer) Stop() {
