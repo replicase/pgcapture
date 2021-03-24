@@ -1,98 +1,98 @@
 package main
 
 import (
-	"math/rand"
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
 	"os"
+	"os/exec"
 	"os/signal"
 	"sync"
 	"syscall"
-	"time"
 
-	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/rueian/pgcapture/example"
 	"github.com/rueian/pgcapture/internal/test"
 	"github.com/rueian/pgcapture/pkg/dblog"
-	"github.com/rueian/pgcapture/pkg/pb"
-	"github.com/rueian/pgcapture/pkg/sink"
-	"github.com/rueian/pgcapture/pkg/source"
-	"google.golang.org/grpc"
 )
 
-func init() {
-	rand.Seed(time.Now().UnixNano())
-}
-
 func main() {
-	dbSrc, err := test.CreateDB(example.DefaultDB, example.SrcDB)
-	if err != nil {
+	if _, err := test.CreateDB(example.DefaultDB, example.SrcDB); err != nil {
 		panic(err)
 	}
 
-	dbSink, err := test.CreateDB(example.DefaultDB, example.SinkDB)
-	if err != nil {
+	if _, err := test.CreateDB(example.DefaultDB, example.SinkDB); err != nil {
 		panic(err)
 	}
-
-	shutdown := make(chan struct{})
-	go func() {
-		signals := make(chan os.Signal, 1)
-		signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
-		<-signals
-		close(shutdown)
-	}()
 
 	var wg sync.WaitGroup
+	ctx, _ := context.WithCancel(context.Background())
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 
-	// logical replication to pulsar topic
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
-		pgSrc := &source.PGXSource{SetupConnStr: dbSrc.URL(), ReplConnStr: dbSrc.Repl(), ReplSlot: dbSrc.DB, CreateSlot: true}
-		pulsarSink := &sink.PulsarSink{PulsarOption: pulsar.ClientOptions{URL: example.PulsarURL}, PulsarTopic: dbSrc.DB}
-		if err := test.SourceToSink(pgSrc, pulsarSink, shutdown); err != nil {
-			panic(err)
-		}
-	}()
-
-	// apply logical replication to dbSink from pulsar
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
-		pulsarSrc := &source.PulsarReaderSource{PulsarOption: pulsar.ClientOptions{URL: example.PulsarURL}, PulsarTopic: dbSrc.DB}
-		pgSink := &sink.PGXSink{ConnStr: dbSink.URL(), SourceID: dbSrc.DB}
-		if err := test.SourceToSink(pulsarSrc, pgSink, shutdown); err != nil {
-			panic(err)
-		}
-	}()
-
-	// start dblog control server
-	control := &dblog.Controller{Scheduler: dblog.NewMemoryScheduler(time.Millisecond * 100)}
-	controlAddr, controlCancel := test.NewGRPCServer(&pb.DBLogController_ServiceDesc, example.ControlAddr, control)
-	defer controlCancel()
-
-	// start dblog gateway
-	controlConn, err := grpc.Dial(controlAddr.String(), grpc.WithInsecure())
-	if err != nil {
-		panic(err)
+	resolver := map[string]dblog.StaticPGXPulsarURIConfig{
+		example.SrcDB.DB: {
+			PostgresURL:        example.SinkDB.URL(),
+			PulsarURL:          example.PulsarURL,
+			PulsarTopic:        example.SrcDB.DB,
+			PulsarSubscription: example.SrcDB.DB,
+		},
 	}
-	gateway := &dblog.Gateway{
-		SourceResolver: dblog.NewStaticPGXPulsarResolver(map[string]dblog.StaticPGXPulsarURIConfig{
-			example.SrcDB.DB: {
-				PostgresURL:        example.SinkDB.URL(),
-				PulsarURL:          example.PulsarURL,
-				PulsarTopic:        dbSrc.DB,
-				PulsarSubscription: dbSrc.DB,
+	cfg, _ := json.Marshal(resolver)
+
+	for _, cmd := range []cmd{
+		{
+			Name: "pg2pulsar",
+			Flags: map[string]string{
+				"PGConnURL":   example.SrcDB.URL(),
+				"PGReplURL":   example.SrcDB.Repl(),
+				"PulsarURL":   example.PulsarURL,
+				"PulsarTopic": example.SrcDB.DB,
 			},
-		}),
-		DumpInfoPuller: &dblog.GRPCDumpInfoPuller{Client: pb.NewDBLogControllerClient(controlConn)},
+		},
+		{
+			Name: "pulsar2pg",
+			Flags: map[string]string{
+				"PGConnURL":   example.SinkDB.URL(),
+				"PulsarURL":   example.PulsarURL,
+				"PulsarTopic": example.SrcDB.DB,
+			},
+		},
+		{
+			Name: "controller",
+			Flags: map[string]string{
+				"ListenAddr": example.ControlAddr,
+			},
+		},
+		{
+			Name: "gateway",
+			Flags: map[string]string{
+				"ListenAddr":     example.GatewayAddr,
+				"ControllerAddr": example.ControlAddr,
+				"ResolverConfig": string(cfg),
+			},
+		},
+	} {
+		wg.Add(1)
+		go run(ctx, cmd, &wg)
 	}
-	_, gatewayCancel := test.NewGRPCServer(&pb.DBLogGateway_ServiceDesc, example.GatewayAddr, gateway)
-
-	<-shutdown
-	gatewayCancel()
-	controlCancel()
 
 	wg.Wait()
+}
+
+type cmd struct {
+	Name  string
+	Flags map[string]string
+}
+
+func run(ctx context.Context, cmd cmd, wg *sync.WaitGroup) {
+	args := []string{"run", "main.go", cmd.Name}
+	for k, v := range cmd.Flags {
+		args = append(args, fmt.Sprintf("--%s=%s", k, v))
+	}
+	c := exec.CommandContext(ctx, "go", args...)
+	c.Stdout = os.Stdout
+	c.Stderr = os.Stderr
+	log.Println(cmd.Name, c.Run())
+	wg.Done()
 }
