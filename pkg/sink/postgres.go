@@ -35,6 +35,31 @@ type PGXSink struct {
 	inTX    bool
 	skip    bool
 	refresh bool
+	inserts insertBatch
+}
+
+type insertBatch struct {
+	Namespace string
+	Table     string
+	records   [][]*pb.Field
+	offset    int
+}
+
+func (b *insertBatch) ok(m *pb.Change) bool {
+	return b.offset != len(b.records) && b.Table == m.Table && b.Namespace == m.Namespace
+}
+
+func (b *insertBatch) push(m *pb.Change) {
+	b.Table = m.Table
+	b.Namespace = m.Namespace
+	b.records[b.offset] = m.NewTuple
+	b.offset++
+}
+
+func (b *insertBatch) flush() [][]*pb.Field {
+	records := b.records[:b.offset]
+	b.offset = 0
+	return records
 }
 
 func (p *PGXSink) Setup() (cp source.Checkpoint, err error) {
@@ -44,6 +69,7 @@ func (p *PGXSink) Setup() (cp source.Checkpoint, err error) {
 		return cp, err
 	}
 	p.raw = p.conn.PgConn()
+	p.inserts.records = make([][]*pb.Field, 2500)
 
 	var locked bool
 	if err := p.conn.QueryRow(ctx, "select pg_try_advisory_lock(('x' || md5(current_database()))::bit(64)::bigint)").Scan(&locked); err != nil {
@@ -206,21 +232,48 @@ func (p *PGXSink) handleDDL(m *pb.Change) (err error) {
 	return nil
 }
 
-func (p *PGXSink) handleInsert(ctx context.Context, m *pb.Change) (err error) {
-	fields := len(m.NewTuple)
-	vals := make([][]byte, fields)
-	oids := make([]uint32, fields)
-	fmts := make([]int16, fields)
-	for i := 0; i < fields; i++ {
-		field := m.NewTuple[i]
-		vals[i] = field.Datum
-		oids[i] = field.Oid
-		fmts[i] = 1
+func (p *PGXSink) flushInsert(ctx context.Context) (err error) {
+	batch := p.inserts.flush()
+	if len(batch) == 0 {
+		return nil
 	}
-	return p.raw.ExecParams(ctx, sql.InsertQuery(m.Namespace, m.Table, m.NewTuple), vals, oids, fmts, fmts).Read().Err
+	fields := len(batch[0])
+	rets := make([]int16, fields)
+	for i := 0; i < fields; i++ {
+		rets[i] = 1
+	}
+	fmts := make([]int16, fields*len(batch))
+	vals := make([][]byte, fields*len(batch))
+	oids := make([]uint32, fields*len(batch))
+	c := 0
+	for i := 0; i < len(batch); i++ {
+		for j := 0; j < fields; j++ {
+			field := batch[i][j]
+			fmts[c] = 1
+			vals[c] = field.Datum
+			oids[c] = field.Oid
+			c++
+		}
+	}
+
+	return p.raw.ExecParams(ctx, sql.InsertQuery(p.inserts.Namespace, p.inserts.Table, batch[0], len(batch)), vals, oids, fmts, rets).Read().Err
+}
+
+func (p *PGXSink) handleInsert(ctx context.Context, m *pb.Change) (err error) {
+	if !p.inserts.ok(m) {
+		if err = p.flushInsert(ctx); err != nil {
+			return err
+		}
+	}
+	p.inserts.push(m)
+	return nil
 }
 
 func (p *PGXSink) handleDelete(ctx context.Context, m *pb.Change) (err error) {
+	if err = p.flushInsert(ctx); err != nil {
+		return err
+	}
+
 	fields := len(m.OldTuple)
 	vals := make([][]byte, fields)
 	oids := make([]uint32, fields)
@@ -235,6 +288,10 @@ func (p *PGXSink) handleDelete(ctx context.Context, m *pb.Change) (err error) {
 }
 
 func (p *PGXSink) handleUpdate(ctx context.Context, m *pb.Change) (err error) {
+	if err = p.flushInsert(ctx); err != nil {
+		return err
+	}
+
 	var keys []*pb.Field
 	var sets []*pb.Field
 	if m.OldTuple != nil {
@@ -292,6 +349,9 @@ const (
 
 func (p *PGXSink) handleCommit(cp source.Checkpoint, commit *pb.Commit) (err error) {
 	ctx := context.Background()
+	if err = p.flushInsert(ctx); err != nil {
+		return err
+	}
 	if _, err = p.conn.Prepare(ctx, UpdateSourceSQL, UpdateSourceSQL); err != nil {
 		return err
 	}

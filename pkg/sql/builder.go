@@ -58,7 +58,7 @@ func UpdateQuery(namespace, table string, sets, keys []*pb.Field) string {
 	return query.String()
 }
 
-func InsertQuery(namespace, table string, fields []*pb.Field) string {
+func InsertQuery(namespace, table string, fields []*pb.Field, count int) string {
 	var query strings.Builder
 	query.WriteString("insert into \"")
 	query.WriteString(namespace)
@@ -73,13 +73,21 @@ func InsertQuery(namespace, table string, fields []*pb.Field) string {
 			query.WriteString("\",\"")
 		}
 	}
-	for i := range fields {
-		query.WriteString("$" + strconv.Itoa(i+1))
-		if i == len(fields)-1 {
-			query.WriteString(")")
-		} else {
-			query.WriteString(",")
+	i := 1
+	for j := 0; j < count; j++ {
+		for range fields {
+			query.WriteString("$" + strconv.Itoa(i))
+			if i%len(fields) == 0 {
+				query.WriteString(")")
+			} else {
+				query.WriteString(",")
+			}
+			i++
+		}
+		if j < count-1 {
+			query.WriteString(",(")
 		}
 	}
+
 	return query.String()
 }

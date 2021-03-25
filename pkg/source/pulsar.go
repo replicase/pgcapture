@@ -13,6 +13,8 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+var ReceiverQueueSize = 5000
+
 type PulsarReaderSource struct {
 	BaseSource
 
@@ -48,6 +50,7 @@ func (p *PulsarReaderSource) Capture(cp Checkpoint) (changes chan Change, err er
 		Topic:                   p.PulsarTopic,
 		StartMessageID:          pulsar.EarliestMessageID(),
 		StartMessageIDInclusive: true,
+		ReceiverQueueSize:       ReceiverQueueSize,
 	})
 	if err != nil {
 		return nil, err
@@ -146,8 +149,6 @@ type PulsarConsumerSource struct {
 	pending  map[uint64]pulsar.MessageID
 	log      *logrus.Entry
 }
-
-var ReceiverQueueSize = 1000
 
 func (p *PulsarConsumerSource) Capture(cp Checkpoint) (changes chan Change, err error) {
 	host, err := os.Hostname()
