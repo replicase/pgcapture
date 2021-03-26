@@ -49,11 +49,19 @@ func (s *Gateway) acknowledge(server pb.DBLogGateway_CaptureServer, src source.R
 			}
 			if ack := request.GetAck(); ack != nil {
 				// ignore dump changes (Checkpoint == 0), do nothing
-				if ack.Checkpoint != 0 {
+				if ack.Checkpoint.Lsn != 0 {
 					if ack.RequeueReason != "" {
-						src.Requeue(source.Checkpoint{LSN: ack.Checkpoint})
+						src.Requeue(source.Checkpoint{
+							LSN:  ack.Checkpoint.Lsn,
+							Seq:  ack.Checkpoint.Seq,
+							Data: ack.Checkpoint.Data,
+						})
 					} else {
-						src.Commit(source.Checkpoint{LSN: ack.Checkpoint})
+						src.Commit(source.Checkpoint{
+							LSN:  ack.Checkpoint.Lsn,
+							Seq:  ack.Checkpoint.Seq,
+							Data: ack.Checkpoint.Data,
+						})
 					}
 				}
 			}
@@ -82,7 +90,11 @@ func (s *Gateway) capture(init *pb.CaptureInit, server pb.DBLogGateway_CaptureSe
 				return nil
 			}
 			if change := msg.Message.GetChange(); change != nil {
-				if err := server.Send(&pb.CaptureMessage{Checkpoint: msg.Checkpoint.LSN, Change: change}); err != nil {
+				if err := server.Send(&pb.CaptureMessage{Checkpoint: &pb.Checkpoint{
+					Lsn:  msg.Checkpoint.LSN,
+					Seq:  msg.Checkpoint.Seq,
+					Data: msg.Checkpoint.Data,
+				}, Change: change}); err != nil {
 					return err
 				}
 			} else {
@@ -96,7 +108,7 @@ func (s *Gateway) capture(init *pb.CaptureInit, server pb.DBLogGateway_CaptureSe
 			dump, err := dumper.LoadDump(lsn, info)
 			if err == nil {
 				for _, change := range dump {
-					if err := server.Send(&pb.CaptureMessage{Checkpoint: 0, Change: change}); err != nil {
+					if err := server.Send(&pb.CaptureMessage{Checkpoint: &pb.Checkpoint{Lsn: 0}, Change: change}); err != nil {
 						return err
 					}
 				}

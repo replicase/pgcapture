@@ -5,6 +5,12 @@ option go_package = "github.com/rueian/pgcapture/pkg/pb";
 
 import "google/protobuf/struct.proto";
 
+message Checkpoint {
+  uint64 lsn = 1;
+  uint32 seq = 2;
+  bytes data = 3;
+}
+
 message Message {
   oneof type {
     Begin begin = 1;
@@ -66,12 +72,12 @@ message CaptureInit {
 }
 
 message CaptureAck {
-  uint64 checkpoint = 1;
+  Checkpoint checkpoint = 1;
   string requeue_reason = 2;
 }
 
 message CaptureMessage {
-  uint64 checkpoint = 1;
+  Checkpoint checkpoint = 1;
   Change change = 2;
 }
 

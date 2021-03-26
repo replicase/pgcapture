@@ -41,7 +41,7 @@ func TestPGXSink(t *testing.T) {
 	}
 
 	// test empty checkpoint
-	if cp.LSN != 0 || !cp.Time.IsZero() {
+	if cp.LSN != 0 || len(cp.Data) != 0 {
 		t.Fatalf("checkpoint of empty topic should be zero")
 	}
 
@@ -62,22 +62,24 @@ func TestPGXSink(t *testing.T) {
 		ts := now.Unix()*1000000 + int64(now.Nanosecond())/1000 - microsecFromUnixEpochToY2K
 		lsn++
 		changes <- source.Change{
-			Checkpoint: source.Checkpoint{LSN: lsn},
+			Checkpoint: source.Checkpoint{LSN: lsn, Data: []byte(now.Format(time.RFC3339Nano))},
 			Message:    &pb.Message{Type: &pb.Message_Begin{Begin: &pb.Begin{}}},
 		}
 		for _, change := range chs {
+			now = now.Add(time.Second)
 			lsn++
 			changes <- source.Change{
-				Checkpoint: source.Checkpoint{LSN: lsn},
+				Checkpoint: source.Checkpoint{LSN: lsn, Data: []byte(now.Format(time.RFC3339Nano))},
 				Message:    &pb.Message{Type: &pb.Message_Change{Change: change}},
 			}
 		}
+		now = now.Add(time.Second)
 		lsn++
 		changes <- source.Change{
-			Checkpoint: source.Checkpoint{LSN: lsn},
+			Checkpoint: source.Checkpoint{LSN: lsn, Data: []byte(now.Format(time.RFC3339Nano))},
 			Message:    &pb.Message{Type: &pb.Message_Commit{Commit: &pb.Commit{CommitTime: uint64(ts)}}},
 		}
-		if cp := <-committed; cp.LSN != lsn || cp.Time.Equal(now) {
+		if cp := <-committed; cp.LSN != lsn || string(cp.Data) != now.Format(time.RFC3339Nano) {
 			t.Fatalf("unexpected %v %v %v", cp, lsn, now)
 		}
 		if err = sink.Error(); err != nil {
@@ -166,7 +168,7 @@ func TestPGXSink(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cp.LSN != lsn || !cp.Time.Truncate(time.Millisecond).Equal(now.Truncate(time.Millisecond)) {
+	if cp.LSN != lsn || string(cp.Data) != now.Format(time.RFC3339Nano) {
 		t.Fatalf("unexpected %v %v %v", cp, lsn, now)
 	}
 	sink.Stop()
@@ -227,7 +229,7 @@ func TestPGXSink_ScanCheckpointFromLog(t *testing.T) {
 		t.Fatal(err)
 	}
 	lsn, _ := pglogrepl.ParseLSN("AE28/49B135E8")
-	if cp.LSN != uint64(lsn) || cp.Time.Format(time.RFC3339Nano) != "2021-03-01T16:17:48.597172Z" {
+	if cp.LSN != uint64(lsn) || string(cp.Data) != "2021-03-01T16:17:48.597172Z" {
 		t.Fatalf("unexpected %v", cp)
 	}
 	sink.Stop()

@@ -192,18 +192,18 @@ func TestGateway_Capture(t *testing.T) {
 	// if source have changes, send it to client
 	change := &pb.Change{Op: pb.Change_UPDATE}
 	changes <- source.Change{Checkpoint: source.Checkpoint{LSN: 1}, Message: &pb.Message{Type: &pb.Message_Change{Change: change}}}
-	if msg := <-send; msg.Checkpoint != 1 || msg.Change != change {
+	if msg := <-send; msg.Checkpoint.Lsn != 1 || msg.Change != change {
 		t.Fatal("unexpected")
 	}
 
 	// if client ack, ack the source
-	recv <- &pb.CaptureRequest{Type: &pb.CaptureRequest_Ack{Ack: &pb.CaptureAck{Checkpoint: 1}}}
+	recv <- &pb.CaptureRequest{Type: &pb.CaptureRequest_Ack{Ack: &pb.CaptureAck{Checkpoint: &pb.Checkpoint{Lsn: 1}}}}
 	if cp := <-commit; cp.LSN != 1 {
 		t.Fatal("unexpected")
 	}
 
 	// if client requeue, requeue the source
-	recv <- &pb.CaptureRequest{Type: &pb.CaptureRequest_Ack{Ack: &pb.CaptureAck{Checkpoint: 1, RequeueReason: "requeue"}}}
+	recv <- &pb.CaptureRequest{Type: &pb.CaptureRequest_Ack{Ack: &pb.CaptureAck{Checkpoint: &pb.Checkpoint{Lsn: 1}, RequeueReason: "requeue"}}}
 	if cp := <-requeue; cp.LSN != 1 {
 		t.Fatal("unexpected")
 	}
@@ -231,7 +231,7 @@ func TestGateway_Capture(t *testing.T) {
 	loaded := []*pb.Change{{Op: pb.Change_UPDATE}, {Op: pb.Change_UPDATE}, {Op: pb.Change_UPDATE}}
 	dumpsRes <- loaded
 	for _, change := range loaded {
-		if sent := <-send; sent.Checkpoint != 0 || sent.Change != change {
+		if sent := <-send; sent.Checkpoint.Lsn != 0 || sent.Change != change {
 			t.Fatal("unexpected")
 		}
 	}
@@ -337,7 +337,7 @@ func TestGateway_CaptureSendSourceError(t *testing.T) {
 	// if source have changes, send it to client
 	change := &pb.Change{Op: pb.Change_UPDATE}
 	changes <- source.Change{Checkpoint: source.Checkpoint{LSN: 1}, Message: &pb.Message{Type: &pb.Message_Change{Change: change}}}
-	if msg := <-send; msg.Checkpoint != 1 || msg.Change != change {
+	if msg := <-send; msg.Checkpoint.Lsn != 1 || msg.Change != change {
 		t.Fatal("unexpected")
 	}
 
@@ -435,7 +435,7 @@ func TestGateway_CaptureSendDumpError(t *testing.T) {
 	// prepare dump content
 	loaded := []*pb.Change{{Op: pb.Change_UPDATE}}
 	dumpsRes <- loaded
-	if sent := <-send; sent.Checkpoint != 0 || sent.Change != loaded[0] {
+	if sent := <-send; sent.Checkpoint.Lsn != 0 || sent.Change != loaded[0] {
 		t.Fatal("unexpected")
 	}
 

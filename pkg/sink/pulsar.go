@@ -7,8 +7,6 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar"
-	"github.com/jackc/pglogrepl"
-	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/source"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/proto"
@@ -23,7 +21,7 @@ type PulsarSink struct {
 	client   pulsar.Client
 	producer pulsar.Producer
 	log      *logrus.Entry
-	lsn      uint64
+	prev     source.Checkpoint
 }
 
 func (p *PulsarSink) Setup() (cp source.Checkpoint, err error) {
@@ -53,20 +51,11 @@ func (p *PulsarSink) Setup() (cp source.Checkpoint, err error) {
 		msg, err := reader.Next(ctx)
 		cancel()
 		if msg != nil {
-			key := msg.Key()
-			l, err := pglogrepl.ParseLSN(key[1:]) // remove the type prefix
+			cp, err = source.ToCheckpoint(msg)
 			if err != nil {
 				return cp, err
 			}
-			cp.LSN = uint64(l)
-			p.lsn = cp.LSN
-			// if the last msg is a commit,
-			// then the next begin will share the same WALStart and
-			// the the next first change may also share the same WALStart
-			// therefore -1 here to do further check
-			if key[0] == 'e' {
-				p.lsn--
-			}
+			p.prev = cp
 		}
 		if err != nil && err != context.DeadlineExceeded {
 			return cp, err
@@ -78,7 +67,7 @@ func (p *PulsarSink) Setup() (cp source.Checkpoint, err error) {
 		"Topic": p.PulsarTopic,
 	})
 	p.log.WithFields(logrus.Fields{
-		"SinkLastLSN": p.lsn,
+		"SinkLastLSN": p.prev,
 	}).Info("start sending changes to pulsar")
 
 	p.producer, err = p.client.CreateProducer(pulsar.ProducerOptions{
@@ -108,38 +97,22 @@ func (p *PulsarSink) Apply(changes chan source.Change) chan source.Checkpoint {
 	return p.BaseSink.apply(changes, func(change source.Change, committed chan source.Checkpoint) error {
 		if !first {
 			p.log.WithFields(logrus.Fields{
-				"MessageLSN":  change.Checkpoint.LSN,
-				"SinkLastLSN": p.lsn,
+				"MessageLSN":  change.Checkpoint,
+				"SinkLastLSN": p.prev,
 				"Message":     change.Message.String(),
 			}).Info("applying the first message from source")
 			first = true
 		}
 
-		// add type prefix to handle WALStart duplication on tx boundary
-		// also check lsn with the previous msg
-		valid := change.Checkpoint.LSN > p.lsn
-		msgKey := pglogrepl.LSN(change.Checkpoint.LSN).String()
-		switch change.Message.Type.(type) {
-		case *pb.Message_Change:
-			msgKey = "c" + msgKey
-			if valid {
-				p.lsn = change.Checkpoint.LSN
-			}
-		case *pb.Message_Begin:
-			msgKey = "b" + msgKey
-		case *pb.Message_Commit:
-			msgKey = "e" + msgKey
-			if valid {
-				p.lsn = change.Checkpoint.LSN - 1
-			}
-		}
-		if !valid {
+		if !change.Checkpoint.After(p.prev) {
 			p.log.WithFields(logrus.Fields{
-				"MessageLSN":  change.Checkpoint.LSN,
-				"SinkLastLSN": p.lsn,
+				"MessageLSN":  change.Checkpoint,
+				"SinkLastLSN": p.prev,
 				"Message":     change.Message.String(),
 			}).Warn("message dropped due to its lsn smaller than the last lsn of sink")
 			return nil
+		} else {
+			p.prev = change.Checkpoint
 		}
 
 		bs, err := proto.Marshal(change.Message)
@@ -148,12 +121,12 @@ func (p *PulsarSink) Apply(changes chan source.Change) chan source.Checkpoint {
 		}
 
 		p.producer.SendAsync(context.Background(), &pulsar.ProducerMessage{
-			Key:     msgKey, // for topic compaction, not routing policy
+			Key:     change.Checkpoint.ToKey(), // for topic compaction, not routing policy
 			Payload: bs,
 		}, func(id pulsar.MessageID, message *pulsar.ProducerMessage, err error) {
 			if err != nil {
 				p.log.WithFields(logrus.Fields{
-					"MessageLSN":   change.Checkpoint.LSN,
+					"MessageLSN":   change.Checkpoint,
 					"MessageIDHex": hex.EncodeToString(id.Serialize()),
 				}).Errorf("fail to send message to pulsar: %v", err)
 				p.BaseSink.err.Store(err)

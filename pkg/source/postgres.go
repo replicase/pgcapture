@@ -31,6 +31,8 @@ type PGXSource struct {
 	ackLsn         uint64
 	log            *logrus.Entry
 	first          bool
+	prevLsn        uint64
+	nextSeq        uint32
 }
 
 func (p *PGXSource) Capture(cp Checkpoint) (changes chan Change, err error) {
@@ -98,6 +100,7 @@ func (p *PGXSource) Capture(cp Checkpoint) (changes chan Change, err error) {
 		}).Info("start logical replication from the latest position")
 	}
 	p.Commit(Checkpoint{LSN: uint64(requestLSN)})
+	// TODO check will get requestLSN message
 	if err = pglogrepl.StartReplication(context.Background(), p.replConn, p.ReplSlot, requestLSN, pglogrepl.StartReplicationOptions{PluginArgs: decode.PGLogicalParam}); err != nil {
 		return nil, err
 	}
@@ -142,11 +145,19 @@ func (p *PGXSource) fetching(ctx context.Context) (change Change, err error) {
 					}
 				}
 			}
+			// use WALStart as checkpoint instead of WALStart+len(WALData),
+			// because WALStart is the only value guaranteed will only increase, not decrease.
+			// However WALStart will be duplicated, therefore there is a secondary seq field
+			checkpoint := Checkpoint{LSN: uint64(xld.WALStart)}
+			if checkpoint.LSN == p.prevLsn {
+				checkpoint.Seq = p.nextSeq
+				p.nextSeq++
+			} else {
+				p.prevLsn = checkpoint.LSN
+				p.nextSeq = 1
+			}
 			change = Change{
-				// use WALStart as checkpoint instead of WALStart+len(WALData),
-				// because WALStart is the only value guaranteed will only increase, not decrease.
-				// However WALStart will be duplicated on tx boundary
-				Checkpoint: Checkpoint{LSN: uint64(xld.WALStart)},
+				Checkpoint: checkpoint,
 				Message:    m,
 			}
 			if !p.first {
@@ -170,7 +181,6 @@ func (p *PGXSource) Commit(cp Checkpoint) {
 }
 
 func (p *PGXSource) Requeue(cp Checkpoint) {
-
 }
 
 func (p *PGXSource) committedLSN() (lsn pglogrepl.LSN) {

@@ -3,9 +3,10 @@ package source
 import (
 	"context"
 	"errors"
-	"github.com/rueian/pgcapture/pkg/pb"
 	"testing"
 	"time"
+
+	"github.com/rueian/pgcapture/pkg/pb"
 )
 
 type source struct {

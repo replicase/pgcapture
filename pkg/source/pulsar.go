@@ -3,11 +3,9 @@ package source
 import (
 	"context"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar"
-	"github.com/jackc/pglogrepl"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/proto"
@@ -45,10 +43,20 @@ func (p *PulsarReaderSource) Capture(cp Checkpoint) (changes chan Change, err er
 		return nil, err
 	}
 
+	start := pulsar.EarliestMessageID()
+	seekTs := time.Time{}
+	if id, err := pulsar.DeserializeMessageID(cp.Data); err == nil {
+		start = id
+	} else {
+		if ts, err := time.Parse(time.RFC3339Nano, string(cp.Data)); err == nil {
+			seekTs = ts.Add(p.seekOffset)
+		}
+	}
+
 	p.reader, err = p.client.CreateReader(pulsar.ReaderOptions{
 		Name:                    host,
 		Topic:                   p.PulsarTopic,
-		StartMessageID:          pulsar.EarliestMessageID(),
+		StartMessageID:          start,
 		StartMessageIDInclusive: true,
 		ReceiverQueueSize:       ReceiverQueueSize,
 	})
@@ -56,32 +64,32 @@ func (p *PulsarReaderSource) Capture(cp Checkpoint) (changes chan Change, err er
 		return nil, err
 	}
 
-	if !cp.Time.IsZero() {
-		ts := cp.Time.Add(p.seekOffset)
-		if err = p.reader.SeekByTime(ts); err != nil {
+	if !seekTs.IsZero() {
+		if err = p.reader.SeekByTime(seekTs); err != nil {
 			return nil, err
 		}
 		p.log.WithFields(logrus.Fields{
-			"SeekTs":      ts,
+			"SeekTs":      seekTs,
 			"RequiredLSN": cp.LSN,
 		}).Info("start reading pulsar topic from requested timestamp")
 	} else {
 		p.log.WithFields(logrus.Fields{
 			"RequiredLSN": cp.LSN,
-		}).Info("start reading pulsar topic from earliest position")
+			"RequiredMID": start.Serialize(),
+		}).Info("start reading pulsar topic from requested position")
 	}
 
 	var first bool
 
 	return p.BaseSource.capture(func(ctx context.Context) (change Change, err error) {
 		var msg pulsar.Message
-		var lsn pglogrepl.LSN
 
 		msg, err = p.reader.Next(ctx)
 		if err != nil {
 			return
 		}
-		lsn, err = pglogrepl.ParseLSN(msg.Key()[1:])
+
+		checkpoint, err := ToCheckpoint(msg)
 		if err != nil {
 			return
 		}
@@ -93,18 +101,18 @@ func (p *PulsarReaderSource) Capture(cp Checkpoint) (changes chan Change, err er
 
 		if !first {
 			p.log.WithFields(logrus.Fields{
-				"MessageLSN":  uint64(lsn),
-				"RequiredLSN": cp.LSN,
+				"MessageLSN":  checkpoint,
+				"RequiredLSN": cp,
 				"Message":     m.String(),
 			}).Info("retrieved the first message from pulsar")
 			first = true
 		}
 
 		if !p.consistent && cp.LSN != 0 {
-			p.consistent = cp.LSN == uint64(lsn)
+			p.consistent = checkpoint.Equal(cp)
 			p.log.WithFields(logrus.Fields{
-				"MessageLSN":  uint64(lsn),
-				"RequiredLSN": cp.LSN,
+				"MessageLSN":  checkpoint,
+				"RequiredLSN": cp,
 				"Consistent":  p.consistent,
 				"Message":     m.String(),
 			}).Info("still catching lsn from pulsar")
@@ -114,8 +122,8 @@ func (p *PulsarReaderSource) Capture(cp Checkpoint) (changes chan Change, err er
 		if !p.consistent && cp.LSN == 0 {
 			p.consistent = m.GetBegin() != nil
 			p.log.WithFields(logrus.Fields{
-				"MessageLSN":  uint64(lsn),
-				"RequiredLSN": cp.LSN,
+				"MessageLSN":  checkpoint,
+				"RequiredLSN": cp,
 				"Consistent":  p.consistent,
 				"Message":     m.String(),
 			}).Info("still waiting for the first begin message")
@@ -124,7 +132,7 @@ func (p *PulsarReaderSource) Capture(cp Checkpoint) (changes chan Change, err er
 			}
 		}
 
-		change = Change{Checkpoint: Checkpoint{LSN: uint64(lsn)}, Message: m}
+		change = Change{Checkpoint: checkpoint, Message: m}
 		return
 	}, func() {
 		p.reader.Close()
@@ -145,8 +153,6 @@ type PulsarConsumerSource struct {
 
 	client   pulsar.Client
 	consumer pulsar.Consumer
-	mu       sync.Mutex
-	pending  map[uint64]pulsar.MessageID
 	log      *logrus.Entry
 }
 
@@ -178,18 +184,15 @@ func (p *PulsarConsumerSource) Capture(cp Checkpoint) (changes chan Change, err 
 		"Subscription": p.PulsarSubscription,
 	})
 
-	p.pending = make(map[uint64]pulsar.MessageID, ReceiverQueueSize)
-
 	var first bool
 	return p.BaseSource.capture(func(ctx context.Context) (change Change, err error) {
 		var msg pulsar.Message
-		var lsn pglogrepl.LSN
 
 		msg, err = p.consumer.Receive(ctx)
 		if err != nil {
 			return
 		}
-		lsn, err = pglogrepl.ParseLSN(msg.Key()[1:])
+		checkpoint, err := ToCheckpoint(msg)
 		if err != nil {
 			return
 		}
@@ -201,7 +204,7 @@ func (p *PulsarConsumerSource) Capture(cp Checkpoint) (changes chan Change, err 
 
 		if !first {
 			p.log.WithFields(logrus.Fields{
-				"MessageLSN": uint64(lsn),
+				"MessageLSN": checkpoint,
 				"Message":    m.String(),
 			}).Info("retrieved the first message from pulsar")
 			first = true
@@ -212,11 +215,7 @@ func (p *PulsarConsumerSource) Capture(cp Checkpoint) (changes chan Change, err 
 			return
 		}
 
-		p.mu.Lock()
-		p.pending[uint64(lsn)] = msg.ID()
-		p.mu.Unlock()
-
-		change = Change{Checkpoint: Checkpoint{LSN: uint64(lsn)}, Message: m}
+		change = Change{Checkpoint: checkpoint, Message: m}
 		return
 	}, func() {
 		p.consumer.Close()
@@ -225,23 +224,13 @@ func (p *PulsarConsumerSource) Capture(cp Checkpoint) (changes chan Change, err 
 }
 
 func (p *PulsarConsumerSource) Commit(cp Checkpoint) {
-	if id := p.unAckID(cp); id != nil {
-		p.consumer.AckID(id)
+	if mid, err := pulsar.DeserializeMessageID(cp.Data); err == nil {
+		p.consumer.AckID(mid)
 	}
 }
 
 func (p *PulsarConsumerSource) Requeue(cp Checkpoint) {
-	if id := p.unAckID(cp); id != nil {
-		p.consumer.NackID(id)
+	if mid, err := pulsar.DeserializeMessageID(cp.Data); err == nil {
+		p.consumer.NackID(mid)
 	}
-}
-
-func (p *PulsarConsumerSource) unAckID(cp Checkpoint) (id pulsar.MessageID) {
-	var ok bool
-	p.mu.Lock()
-	if id, ok = p.pending[cp.LSN]; ok {
-		delete(p.pending, cp.LSN)
-	}
-	p.mu.Unlock()
-	return
 }

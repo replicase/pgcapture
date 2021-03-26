@@ -51,8 +51,12 @@ func (c *DBLogGRPCConsumer) Capture(cp source.Checkpoint) (changes chan source.C
 				return
 			}
 			changes <- source.Change{
-				Checkpoint: source.Checkpoint{LSN: msg.Checkpoint},
-				Message:    &pb.Message{Type: &pb.Message_Change{Change: msg.Change}},
+				Checkpoint: source.Checkpoint{
+					LSN:  msg.Checkpoint.Lsn,
+					Seq:  msg.Checkpoint.Seq,
+					Data: msg.Checkpoint.Data,
+				},
+				Message: &pb.Message{Type: &pb.Message_Change{Change: msg.Change}},
 			}
 		}
 	}()
@@ -62,7 +66,11 @@ func (c *DBLogGRPCConsumer) Capture(cp source.Checkpoint) (changes chan source.C
 
 func (c *DBLogGRPCConsumer) Commit(cp source.Checkpoint) {
 	if atomic.LoadInt64(&c.state) == 1 {
-		if err := c.stream.Send(&pb.CaptureRequest{Type: &pb.CaptureRequest_Ack{Ack: &pb.CaptureAck{Checkpoint: cp.LSN}}}); err != nil {
+		if err := c.stream.Send(&pb.CaptureRequest{Type: &pb.CaptureRequest_Ack{Ack: &pb.CaptureAck{Checkpoint: &pb.Checkpoint{
+			Lsn:  cp.LSN,
+			Seq:  cp.Seq,
+			Data: cp.Data,
+		}}}}); err != nil {
 			c.err.Store(err)
 			c.Stop()
 		}
@@ -71,7 +79,11 @@ func (c *DBLogGRPCConsumer) Commit(cp source.Checkpoint) {
 
 func (c *DBLogGRPCConsumer) Requeue(cp source.Checkpoint) {
 	if atomic.LoadInt64(&c.state) == 1 {
-		if err := c.stream.Send(&pb.CaptureRequest{Type: &pb.CaptureRequest_Ack{Ack: &pb.CaptureAck{Checkpoint: cp.LSN, RequeueReason: "requeue"}}}); err != nil {
+		if err := c.stream.Send(&pb.CaptureRequest{Type: &pb.CaptureRequest_Ack{Ack: &pb.CaptureAck{Checkpoint: &pb.Checkpoint{
+			Lsn:  cp.LSN,
+			Seq:  cp.Seq,
+			Data: cp.Data,
+		}, RequeueReason: "requeue"}}}); err != nil {
 			c.err.Store(err)
 			c.Stop()
 		}

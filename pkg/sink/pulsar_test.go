@@ -27,7 +27,7 @@ func TestPulsarSink(t *testing.T) {
 	}
 
 	// test empty checkpoint
-	if cp.LSN != 0 || !cp.Time.IsZero() {
+	if cp.LSN != 0 || len(cp.Data) != 0 {
 		t.Fatalf("checkpoint of empty topic should be zero")
 	}
 

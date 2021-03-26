@@ -31,7 +31,7 @@ type PGXSink struct {
 	raw     *pgconn.PgConn
 	schema  *decode.PGXSchemaLoader
 	log     *logrus.Entry
-	lsn     uint64
+	prev    source.Checkpoint
 	inTX    bool
 	skip    bool
 	refresh bool
@@ -102,8 +102,9 @@ func (p *PGXSink) Setup() (cp source.Checkpoint, err error) {
 
 func (p *PGXSink) findCheckpoint(ctx context.Context) (cp source.Checkpoint, err error) {
 	var str, ts string
-	var pts pgtype.Timestamptz
-	err = p.conn.QueryRow(ctx, "SELECT commit, commit_ts FROM pgcapture.sources WHERE id = $1 AND status IS NULL", p.SourceID).Scan(&str, &pts)
+	var mid []byte
+	var seq uint32
+	err = p.conn.QueryRow(ctx, "SELECT commit, seq, mid FROM pgcapture.sources WHERE id = $1", p.SourceID).Scan(&str, &seq, &mid)
 	if err == pgx.ErrNoRows {
 		err = nil
 		if p.LogReader != nil {
@@ -115,22 +116,30 @@ func (p *PGXSink) findCheckpoint(ctx context.Context) (cp source.Checkpoint, err
 		var l pglogrepl.LSN
 		l, err = pglogrepl.ParseLSN(str)
 		cp.LSN = uint64(l)
+		cp.Seq = seq
 	}
-	if ts != "" {
-		cp.Time, err = time.Parse("2006-01-02 15:04:05.999999999Z07", ts)
-	} else {
-		cp.Time = pts.Time
+	if len(mid) != 0 {
+		cp.Data = mid
+		p.log.WithFields(logrus.Fields{
+			"RequiredLSN": cp.LSN,
+			"Mid":         mid,
+		}).Info("last checkpoint found")
+	} else if len(ts) != 0 {
+		var pts time.Time
+		if pts, err = time.Parse("2006-01-02 15:04:05.999999999Z07", ts); err == nil {
+			cp.Data = []byte(pts.Format(time.RFC3339Nano))
+			p.log.WithFields(logrus.Fields{
+				"RequiredLSN": cp.LSN,
+				"SeekTs":      pts,
+			}).Info("last checkpoint found")
+		}
 	}
 	if err != nil {
 		return cp, err
 	}
-	p.log.WithFields(logrus.Fields{
-		"RequiredLSN": cp.LSN,
-		"SeekTs":      cp.Time,
-	}).Info("last checkpoint found")
 
 	if cp.LSN != 0 {
-		p.lsn = cp.LSN - 1 // the next begin message will use the same WALStart, therefore -1 here
+		p.prev = cp
 	}
 	return cp, nil
 }
@@ -140,16 +149,16 @@ func (p *PGXSink) Apply(changes chan source.Change) chan source.Checkpoint {
 	return p.BaseSink.apply(changes, func(change source.Change, committed chan source.Checkpoint) (err error) {
 		if !first {
 			p.log.WithFields(logrus.Fields{
-				"MessageLSN":  change.Checkpoint.LSN,
-				"SinkLastLSN": p.lsn,
+				"MessageLSN":  change.Checkpoint,
+				"SinkLastLSN": p.prev,
 				"Message":     change.Message.String(),
 			}).Info("applying the first message from source")
 			first = true
 		}
-		if p.lsn >= change.Checkpoint.LSN {
+		if !change.Checkpoint.After(p.prev) {
 			p.log.WithFields(logrus.Fields{
-				"MessageLSN":  change.Checkpoint.LSN,
-				"SinkLastLSN": p.lsn,
+				"MessageLSN":  change.Checkpoint,
+				"SinkLastLSN": p.prev,
 				"Message":     change.Message.String(),
 			}).Warn("message dropped due to its lsn smaller than the last lsn of sink")
 			return nil
@@ -344,7 +353,7 @@ func (p *PGXSink) handleUpdate(ctx context.Context, m *pb.Change) (err error) {
 }
 
 const (
-	UpdateSourceSQL = "insert into pgcapture.sources(id,commit,commit_ts) values ($1,$2,$3) on conflict (id) do update set commit=EXCLUDED.commit,commit_ts=EXCLUDED.commit_ts,apply_ts=now()"
+	UpdateSourceSQL = "insert into pgcapture.sources(id,commit,seq,mid,commit_ts) values ($1,$2,$3,$4,$5) on conflict (id) do update set commit=EXCLUDED.commit,seq=EXCLUDED.seq,mid=EXCLUDED.mid,commit_ts=EXCLUDED.commit_ts,apply_ts=now()"
 )
 
 func (p *PGXSink) handleCommit(cp source.Checkpoint, commit *pb.Commit) (err error) {
@@ -355,7 +364,7 @@ func (p *PGXSink) handleCommit(cp source.Checkpoint, commit *pb.Commit) (err err
 	if _, err = p.conn.Prepare(ctx, UpdateSourceSQL, UpdateSourceSQL); err != nil {
 		return err
 	}
-	if _, err = p.conn.Exec(ctx, UpdateSourceSQL, pgText(p.SourceID), pgInt8(int64(cp.LSN)), pgTz(commit.CommitTime)); err != nil {
+	if _, err = p.conn.Exec(ctx, UpdateSourceSQL, pgText(p.SourceID), pgInt8(int64(cp.LSN)), pgInt4(int32(cp.Seq)), cp.Data, pgTz(commit.CommitTime)); err != nil {
 		return err
 	}
 	if _, err = p.conn.Exec(ctx, "commit"); err != nil {
@@ -393,6 +402,10 @@ func pgText(t string) pgtype.Text {
 
 func pgInt8(i int64) pgtype.Int8 {
 	return pgtype.Int8{Int: i, Status: pgtype.Present}
+}
+
+func pgInt4(i int32) pgtype.Int4 {
+	return pgtype.Int4{Int: i, Status: pgtype.Present}
 }
 
 func pgTz(ts uint64) pgtype.Timestamptz {
