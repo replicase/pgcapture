@@ -180,7 +180,7 @@ func (p *PGXSource) Commit(cp Checkpoint) {
 	}
 }
 
-func (p *PGXSource) Requeue(cp Checkpoint) {
+func (p *PGXSource) Requeue(cp Checkpoint, reason string) {
 }
 
 func (p *PGXSource) committedLSN() (lsn pglogrepl.LSN) {

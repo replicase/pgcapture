@@ -41,7 +41,7 @@ func (c *Consumer) Consume(mh ModelHandlers) error {
 				New: makeModel(ref, m.Change.NewTuple),
 				Old: makeModel(ref, m.Change.OldTuple),
 			}); err != nil {
-				c.source.Requeue(change.Checkpoint)
+				c.source.Requeue(change.Checkpoint, err.Error())
 				continue
 			}
 		}

@@ -55,7 +55,7 @@ func (s *Gateway) acknowledge(server pb.DBLogGateway_CaptureServer, src source.R
 							LSN:  ack.Checkpoint.Lsn,
 							Seq:  ack.Checkpoint.Seq,
 							Data: ack.Checkpoint.Data,
-						})
+						}, ack.RequeueReason)
 					} else {
 						src.Commit(source.Checkpoint{
 							LSN:  ack.Checkpoint.Lsn,

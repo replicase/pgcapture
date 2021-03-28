@@ -204,7 +204,7 @@ func TestPulsarConsumerSource(t *testing.T) {
 			t.Fatalf("unexpected %v", change.Message.String())
 		}
 		if i == 1 {
-			src.Requeue(change.Checkpoint)
+			src.Requeue(change.Checkpoint, "")
 		} else {
 			src.Commit(change.Checkpoint)
 		}

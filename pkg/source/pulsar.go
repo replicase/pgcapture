@@ -229,7 +229,7 @@ func (p *PulsarConsumerSource) Commit(cp Checkpoint) {
 	}
 }
 
-func (p *PulsarConsumerSource) Requeue(cp Checkpoint) {
+func (p *PulsarConsumerSource) Requeue(cp Checkpoint, reason string) {
 	if mid, err := pulsar.DeserializeMessageID(cp.Data); err == nil {
 		p.consumer.NackID(mid)
 	}

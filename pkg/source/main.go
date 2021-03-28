@@ -72,7 +72,7 @@ type Source interface {
 
 type RequeueSource interface {
 	Source
-	Requeue(cp Checkpoint)
+	Requeue(cp Checkpoint, reason string)
 }
 
 type BaseSource struct {

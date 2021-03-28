@@ -662,7 +662,7 @@ func (s *sources) Stop() error {
 	return s.StopCB()
 }
 
-func (s *sources) Requeue(cp source.Checkpoint) {
+func (s *sources) Requeue(cp source.Checkpoint, reason string) {
 	s.RequeueCB(cp)
 }
 

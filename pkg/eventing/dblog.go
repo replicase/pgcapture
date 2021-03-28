@@ -77,13 +77,13 @@ func (c *DBLogGRPCConsumer) Commit(cp source.Checkpoint) {
 	}
 }
 
-func (c *DBLogGRPCConsumer) Requeue(cp source.Checkpoint) {
+func (c *DBLogGRPCConsumer) Requeue(cp source.Checkpoint, reason string) {
 	if atomic.LoadInt64(&c.state) == 1 {
 		if err := c.stream.Send(&pb.CaptureRequest{Type: &pb.CaptureRequest_Ack{Ack: &pb.CaptureAck{Checkpoint: &pb.Checkpoint{
 			Lsn:  cp.LSN,
 			Seq:  cp.Seq,
 			Data: cp.Data,
-		}, RequeueReason: "requeue"}}}); err != nil {
+		}, RequeueReason: reason}}}); err != nil {
 			c.err.Store(err)
 			c.Stop()
 		}
