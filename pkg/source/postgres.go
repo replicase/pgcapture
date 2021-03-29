@@ -85,23 +85,23 @@ func (p *PGXSource) Capture(cp Checkpoint) (changes chan Change, err error) {
 		"DBName":   ident.DBName,
 	}).Info("retrieved current info of source database")
 
-	var requestLSN pglogrepl.LSN
 	if cp.LSN != 0 {
-		requestLSN = pglogrepl.LSN(cp.LSN)
+		p.prevLsn = cp.LSN
+		p.nextSeq = cp.Seq + 1
 		p.log.WithFields(logrus.Fields{
 			"ReplSlot": p.ReplSlot,
-			"FromLSN":  requestLSN,
+			"FromLSN":  p.prevLsn,
 		}).Info("start logical replication from requested position")
 	} else {
-		requestLSN = ident.XLogPos
+		p.prevLsn = uint64(ident.XLogPos)
+		p.nextSeq = 0
 		p.log.WithFields(logrus.Fields{
 			"ReplSlot": p.ReplSlot,
-			"FromLSN":  requestLSN,
+			"FromLSN":  p.prevLsn,
 		}).Info("start logical replication from the latest position")
 	}
-	p.Commit(Checkpoint{LSN: uint64(requestLSN)})
-	// TODO check will get requestLSN message
-	if err = pglogrepl.StartReplication(context.Background(), p.replConn, p.ReplSlot, requestLSN, pglogrepl.StartReplicationOptions{PluginArgs: decode.PGLogicalParam}); err != nil {
+	p.Commit(Checkpoint{LSN: p.prevLsn})
+	if err = pglogrepl.StartReplication(context.Background(), p.replConn, p.ReplSlot, pglogrepl.LSN(p.prevLsn), pglogrepl.StartReplicationOptions{PluginArgs: decode.PGLogicalParam}); err != nil {
 		return nil, err
 	}
 
@@ -148,7 +148,7 @@ func (p *PGXSource) fetching(ctx context.Context) (change Change, err error) {
 			// use WALStart as checkpoint instead of WALStart+len(WALData),
 			// because WALStart is the only value guaranteed will only increase, not decrease.
 			// However WALStart will be duplicated, therefore there is a secondary seq field
-			checkpoint := Checkpoint{LSN: uint64(xld.WALStart)}
+			checkpoint := Checkpoint{LSN: uint64(xld.WALStart), Seq: 0}
 			if checkpoint.LSN == p.prevLsn {
 				checkpoint.Seq = p.nextSeq
 				p.nextSeq++
