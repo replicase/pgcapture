@@ -29,7 +29,7 @@ type PGXSourceDumper struct {
 }
 
 func (p *PGXSourceDumper) LoadDump(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.Change, error) {
-	if info.Namespace == "" || info.Table == "" {
+	if info.Schema == "" || info.Table == "" {
 		return nil, ErrMissingTable
 	}
 
@@ -65,7 +65,7 @@ func (p *PGXSourceDumper) load(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.
 		return nil, err
 	}
 
-	rows, err := tx.Query(ctx, fmt.Sprintf(DumpQuery, info.Namespace, info.Table), info.PageBegin, info.PageEnd)
+	rows, err := tx.Query(ctx, fmt.Sprintf(DumpQuery, info.Schema, info.Table), info.PageBegin, info.PageEnd)
 	if err != nil {
 		return nil, err
 	}
@@ -73,9 +73,9 @@ func (p *PGXSourceDumper) load(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.
 	var changes []*pb.Change
 	for rows.Next() {
 		values := rows.RawValues()
-		change := &pb.Change{Op: pb.Change_UPDATE, Namespace: info.Namespace, Table: info.Table}
+		change := &pb.Change{Op: pb.Change_UPDATE, Schema: info.Schema, Table: info.Table}
 		for i, fd := range rows.FieldDescriptions() {
-			change.NewTuple = append(change.NewTuple, &pb.Field{Name: string(fd.Name), Oid: fd.DataTypeOID, Datum: values[i]})
+			change.New = append(change.New, &pb.Field{Name: string(fd.Name), Oid: fd.DataTypeOID, Datum: values[i]})
 		}
 		changes = append(changes, change)
 	}
@@ -98,6 +98,6 @@ func checkLSN(ctx context.Context, tx pgx.Tx, minLSN uint64) (err error) {
 	return err
 }
 
-var ErrMissingTable = errors.New("missing namespace or table")
+var ErrMissingTable = errors.New("missing Schema or table")
 var ErrLSNFallBehind = errors.New("lsn fall behind")
 var ErrLSNMissing = errors.New("missing lsn record")

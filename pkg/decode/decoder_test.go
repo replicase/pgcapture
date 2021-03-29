@@ -6,25 +6,25 @@ import (
 )
 
 func TestIsDDL(t *testing.T) {
-	if !IsDDL(&pb.Change{Namespace: ExtensionNamespace, Table: ExtensionDDLLogs}) {
+	if !IsDDL(&pb.Change{Schema: ExtensionSchema, Table: ExtensionDDLLogs}) {
 		t.Error("unexpected")
 	}
-	if IsDDL(&pb.Change{Namespace: ExtensionNamespace, Table: "other"}) {
+	if IsDDL(&pb.Change{Schema: ExtensionSchema, Table: "other"}) {
 		t.Error("unexpected")
 	}
-	if IsDDL(&pb.Change{Namespace: "other", Table: ExtensionDDLLogs}) {
+	if IsDDL(&pb.Change{Schema: "other", Table: ExtensionDDLLogs}) {
 		t.Error("unexpected")
 	}
 }
 
 func TestIgnore(t *testing.T) {
-	if !Ignore(&pb.Change{Namespace: ExtensionNamespace, Table: ExtensionSources}) {
+	if !Ignore(&pb.Change{Schema: ExtensionSchema, Table: ExtensionSources}) {
 		t.Error("unexpected")
 	}
-	if Ignore(&pb.Change{Namespace: ExtensionNamespace, Table: "other"}) {
+	if Ignore(&pb.Change{Schema: ExtensionSchema, Table: "other"}) {
 		t.Error("unexpected")
 	}
-	if Ignore(&pb.Change{Namespace: "other", Table: ExtensionSources}) {
+	if Ignore(&pb.Change{Schema: "other", Table: ExtensionSources}) {
 		t.Error("unexpected")
 	}
 }

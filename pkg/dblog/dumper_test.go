@@ -34,7 +34,7 @@ func TestPGXSourceDumper(t *testing.T) {
 	if _, err := dumper.LoadDump(0, &pb.DumpInfoResponse{}); err != ErrMissingTable {
 		t.Fatal(err)
 	}
-	if _, err := dumper.LoadDump(0, &pb.DumpInfoResponse{Namespace: "public", Table: "t1"}); err != ErrLSNMissing {
+	if _, err := dumper.LoadDump(0, &pb.DumpInfoResponse{Schema: "public", Table: "t1"}); err != ErrLSNMissing {
 		t.Fatal(err)
 	}
 
@@ -46,7 +46,7 @@ func TestPGXSourceDumper(t *testing.T) {
 		conn.Exec(ctx, "UPDATE pgcapture.sources SET commit=$2 WHERE id = $1", "t1", pglogrepl.LSN(100).String())
 		close(catchup)
 	}()
-	if _, err := dumper.LoadDump(100, &pb.DumpInfoResponse{Namespace: "public", Table: "t1"}); err != nil {
+	if _, err := dumper.LoadDump(100, &pb.DumpInfoResponse{Schema: "public", Table: "t1"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, more := <-catchup; more {
@@ -60,12 +60,12 @@ func TestPGXSourceDumper(t *testing.T) {
 
 	seq := int32(1)
 	for i := uint32(0); i < uint32(pages); i += 5 {
-		changes, err := dumper.LoadDump(100, &pb.DumpInfoResponse{Namespace: "public", Table: "t1", PageBegin: i, PageEnd: i + 4})
+		changes, err := dumper.LoadDump(100, &pb.DumpInfoResponse{Schema: "public", Table: "t1", PageBegin: i, PageEnd: i + 4})
 		if err != nil {
 			t.Fatal(err)
 		}
 		for _, change := range changes {
-			if change.Namespace != "public" {
+			if change.Schema != "public" {
 				t.Fatal("unexpected")
 			}
 			if change.Table != "t1" {
@@ -74,20 +74,20 @@ func TestPGXSourceDumper(t *testing.T) {
 			if change.Op != pb.Change_UPDATE {
 				t.Fatal("unexpected")
 			}
-			if change.OldTuple != nil {
+			if change.Old != nil {
 				t.Fatal("unexpected")
 			}
-			if len(change.NewTuple) != 1 {
+			if len(change.New) != 1 {
 				t.Fatal("unexpected")
 			}
-			if change.NewTuple[0].Name != "id" {
+			if change.New[0].Name != "id" {
 				t.Fatal("unexpected")
 			}
-			if change.NewTuple[0].Oid != 23 {
+			if change.New[0].Oid != 23 {
 				t.Fatal("unexpected")
 			}
 			var id pgtype.Int4
-			if err := id.DecodeBinary(conn.ConnInfo(), change.NewTuple[0].Datum); err != nil {
+			if err := id.DecodeBinary(conn.ConnInfo(), change.New[0].Datum); err != nil {
 				t.Fatal(err)
 			}
 			if id.Int != seq {

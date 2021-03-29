@@ -39,20 +39,20 @@ type PGXSink struct {
 }
 
 type insertBatch struct {
-	Namespace string
-	Table     string
-	records   [][]*pb.Field
-	offset    int
+	Schema  string
+	Table   string
+	records [][]*pb.Field
+	offset  int
 }
 
 func (b *insertBatch) ok(m *pb.Change) bool {
-	return b.offset != len(b.records) && b.Table == m.Table && b.Namespace == m.Namespace
+	return b.offset != len(b.records) && b.Table == m.Table && b.Schema == m.Schema
 }
 
 func (b *insertBatch) push(m *pb.Change) {
 	b.Table = m.Table
-	b.Namespace = m.Namespace
-	b.records[b.offset] = m.NewTuple
+	b.Schema = m.Schema
+	b.records[b.offset] = m.New
 	b.offset++
 }
 
@@ -230,7 +230,7 @@ func (p *PGXSink) handleChange(m *pb.Change) (err error) {
 }
 
 func (p *PGXSink) handleDDL(m *pb.Change) (err error) {
-	for _, field := range m.NewTuple {
+	for _, field := range m.New {
 		switch field.Name {
 		case "query":
 			_, err = p.conn.Exec(context.Background(), string(field.Datum))
@@ -265,7 +265,7 @@ func (p *PGXSink) flushInsert(ctx context.Context) (err error) {
 		}
 	}
 
-	return p.raw.ExecParams(ctx, sql.InsertQuery(p.inserts.Namespace, p.inserts.Table, batch[0], len(batch)), vals, oids, fmts, rets).Read().Err
+	return p.raw.ExecParams(ctx, sql.InsertQuery(p.inserts.Schema, p.inserts.Table, batch[0], len(batch)), vals, oids, fmts, rets).Read().Err
 }
 
 func (p *PGXSink) handleInsert(ctx context.Context, m *pb.Change) (err error) {
@@ -283,17 +283,17 @@ func (p *PGXSink) handleDelete(ctx context.Context, m *pb.Change) (err error) {
 		return err
 	}
 
-	fields := len(m.OldTuple)
+	fields := len(m.Old)
 	vals := make([][]byte, fields)
 	oids := make([]uint32, fields)
 	fmts := make([]int16, fields)
 	for i := 0; i < fields; i++ {
-		field := m.OldTuple[i]
+		field := m.Old[i]
 		vals[i] = field.Datum
 		oids[i] = field.Oid
 		fmts[i] = 1
 	}
-	return p.raw.ExecParams(ctx, sql.DeleteQuery(m.Namespace, m.Table, m.OldTuple), vals, oids, fmts, fmts).Read().Err
+	return p.raw.ExecParams(ctx, sql.DeleteQuery(m.Schema, m.Table, m.Old), vals, oids, fmts, fmts).Read().Err
 }
 
 func (p *PGXSink) handleUpdate(ctx context.Context, m *pb.Change) (err error) {
@@ -303,18 +303,18 @@ func (p *PGXSink) handleUpdate(ctx context.Context, m *pb.Change) (err error) {
 
 	var keys []*pb.Field
 	var sets []*pb.Field
-	if m.OldTuple != nil {
-		keys = m.OldTuple
-		sets = m.NewTuple
+	if m.Old != nil {
+		keys = m.Old
+		sets = m.New
 	} else {
-		kf, err := p.schema.GetTableKey(m.Namespace, m.Table)
+		kf, err := p.schema.GetTableKey(m.Schema, m.Table)
 		if err != nil {
 			return err
 		}
 		keys = make([]*pb.Field, 0, len(kf))
-		sets = make([]*pb.Field, 0, len(m.NewTuple)-len(kf))
+		sets = make([]*pb.Field, 0, len(m.New)-len(kf))
 	nextField:
-		for _, f := range m.NewTuple {
+		for _, f := range m.New {
 			for _, k := range kf {
 				if k == f.Name {
 					keys = append(keys, f)
@@ -349,7 +349,7 @@ func (p *PGXSink) handleUpdate(ctx context.Context, m *pb.Change) (err error) {
 		fmts[j] = 1
 	}
 
-	return p.raw.ExecParams(ctx, sql.UpdateQuery(m.Namespace, m.Table, sets, keys), vals, oids, fmts, fmts).Read().Err
+	return p.raw.ExecParams(ctx, sql.UpdateQuery(m.Schema, m.Table, sets, keys), vals, oids, fmts, fmts).Read().Err
 }
 
 const (

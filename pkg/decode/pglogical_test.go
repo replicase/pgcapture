@@ -38,8 +38,8 @@ func TestPGLogicalDecoder(t *testing.T) {
 	now := time.Now()
 	changes := []*change{
 		{
-			Expect: &pb.Change{Op: pb.Change_INSERT, Namespace: "public", Table: "t",
-				NewTuple: []*pb.Field{
+			Expect: &pb.Change{Op: pb.Change_INSERT, Schema: "public", Table: "t",
+				New: []*pb.Field{
 					{Name: "id", Oid: 20, Datum: b(Int8(1))},
 					{Name: "uid", Oid: 2950, Datum: b(UUID("08d6af78-550c-4071-80be-2fece2db0474"))},
 					{Name: "txt", Oid: 25, Datum: b(Text(nT(5)))},
@@ -50,8 +50,8 @@ func TestPGLogicalDecoder(t *testing.T) {
 			},
 		},
 		{
-			Expect: &pb.Change{Op: pb.Change_INSERT, Namespace: "public", Table: "t",
-				NewTuple: []*pb.Field{
+			Expect: &pb.Change{Op: pb.Change_INSERT, Schema: "public", Table: "t",
+				New: []*pb.Field{
 					{Name: "id", Oid: 20, Datum: b(Int8(2))},
 					{Name: "uid", Oid: 2950, Datum: b(UUID("3e89ee8c-3657-4103-99a7-680292a0c22c"))},
 					{Name: "txt", Oid: 25, Datum: b(Text(nT(5)))},
@@ -62,8 +62,8 @@ func TestPGLogicalDecoder(t *testing.T) {
 			},
 		},
 		{
-			Expect: &pb.Change{Op: pb.Change_UPDATE, Namespace: "public", Table: "t",
-				NewTuple: []*pb.Field{
+			Expect: &pb.Change{Op: pb.Change_UPDATE, Schema: "public", Table: "t",
+				New: []*pb.Field{
 					{Name: "id", Oid: 20, Datum: b(Int8(1))},
 					{Name: "uid", Oid: 2950, Datum: b(UUID("782b2492-3e7c-431b-9238-c1136ea57190"))},
 					{Name: "txt", Oid: 25, Datum: b(pgtype.Text{Status: pgtype.Null})},
@@ -73,29 +73,29 @@ func TestPGLogicalDecoder(t *testing.T) {
 			},
 		},
 		{
-			Expect: &pb.Change{Op: pb.Change_UPDATE, Namespace: "public", Table: "t",
-				NewTuple: []*pb.Field{
+			Expect: &pb.Change{Op: pb.Change_UPDATE, Schema: "public", Table: "t",
+				New: []*pb.Field{
 					{Name: "id", Oid: 20, Datum: b(Int8(3))},
 					{Name: "uid", Oid: 2950, Datum: b(UUID("f0d3ad8e-709f-4f67-9860-e149c671d82a"))},
 					{Name: "txt", Oid: 25, Datum: b(Text(nT(5)))},
 					{Name: "js", Oid: 3802, Datum: b(JSON(`{"a": {"b": {"c": {"d": null}}}}`))},
 					{Name: "ts", Oid: 1184, Datum: b(Tstz(now.Add(time.Second)))},
 				},
-				OldTuple: []*pb.Field{
+				Old: []*pb.Field{
 					{Name: "id", Oid: 20, Datum: b(Int8(2))},
 				},
 			},
 		},
 		{
-			Expect: &pb.Change{Op: pb.Change_DELETE, Namespace: "public", Table: "t",
-				OldTuple: []*pb.Field{
+			Expect: &pb.Change{Op: pb.Change_DELETE, Schema: "public", Table: "t",
+				Old: []*pb.Field{
 					{Name: "id", Oid: 20, Datum: b(Int8(3))},
 				},
 			},
 		},
 		{
-			Expect: &pb.Change{Op: pb.Change_DELETE, Namespace: "public", Table: "t",
-				OldTuple: []*pb.Field{
+			Expect: &pb.Change{Op: pb.Change_DELETE, Schema: "public", Table: "t",
+				Old: []*pb.Field{
 					{Name: "id", Oid: 20, Datum: b(Int8(1))},
 				},
 			},
@@ -183,7 +183,7 @@ func (c *change) Apply(ctx context.Context, conn *pgx.Conn) (err error) {
 	fmts := make([]int16, 6)
 	oids := make([]uint32, 6)
 
-	for i, t := range c.Expect.NewTuple {
+	for i, t := range c.Expect.New {
 		vals[i] = t.Datum
 		oids[i] = t.Oid
 		fmts[i] = 1
@@ -193,18 +193,18 @@ func (c *change) Apply(ctx context.Context, conn *pgx.Conn) (err error) {
 	case pb.Change_INSERT:
 		_, err = conn.PgConn().ExecParams(ctx, "insert into t values ($1,$2,$3,$4,$5,$6)", vals, oids, fmts, fmts).Close()
 	case pb.Change_UPDATE:
-		if c.Expect.OldTuple != nil {
-			vals[5] = c.Expect.OldTuple[0].Datum
-			oids[5] = c.Expect.OldTuple[0].Oid
+		if c.Expect.Old != nil {
+			vals[5] = c.Expect.Old[0].Datum
+			oids[5] = c.Expect.Old[0].Oid
 		} else {
-			vals[5] = c.Expect.NewTuple[0].Datum
-			oids[5] = c.Expect.NewTuple[0].Oid
+			vals[5] = c.Expect.New[0].Datum
+			oids[5] = c.Expect.New[0].Oid
 		}
 		fmts[5] = 1
 		_, err = conn.PgConn().ExecParams(ctx, "update t set id=$1,uid=$2,txt=$3,js=$4,ts=$5 where id=$6", vals, oids, fmts, fmts).Close()
 	case pb.Change_DELETE:
-		vals[0] = c.Expect.OldTuple[0].Datum
-		oids[0] = c.Expect.OldTuple[0].Oid
+		vals[0] = c.Expect.Old[0].Datum
+		oids[0] = c.Expect.Old[0].Oid
 		fmts[0] = 1
 		_, err = conn.PgConn().ExecParams(ctx, "delete from t where id=$1", vals[:1], oids[:1], fmts[:1], fmts[:1]).Close()
 	}

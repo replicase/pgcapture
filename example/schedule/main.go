@@ -24,7 +24,7 @@ func main() {
 
 	dumps := make([]*pb.DumpInfoResponse, pages)
 	for i := uint32(0); i < uint32(pages); i++ {
-		dumps[i] = &pb.DumpInfoResponse{Namespace: "public", Table: example.TestTable, PageBegin: i, PageEnd: i}
+		dumps[i] = &pb.DumpInfoResponse{Schema: "public", Table: example.TestTable, PageBegin: i, PageEnd: i}
 	}
 	if _, err = client.Schedule(context.Background(), &pb.ScheduleRequest{Uri: example.TestDBSrc, Dumps: dumps}); err != nil {
 		panic(err)

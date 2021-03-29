@@ -3,9 +3,9 @@ package decode
 import "github.com/rueian/pgcapture/pkg/pb"
 
 const (
-	ExtensionNamespace = "pgcapture"
-	ExtensionDDLLogs   = "ddl_logs"
-	ExtensionSources   = "sources"
+	ExtensionSchema  = "pgcapture"
+	ExtensionDDLLogs = "ddl_logs"
+	ExtensionSources = "sources"
 )
 
 type Decoder interface {
@@ -13,9 +13,9 @@ type Decoder interface {
 }
 
 func IsDDL(m *pb.Change) bool {
-	return m.Namespace == ExtensionNamespace && m.Table == ExtensionDDLLogs
+	return m.Schema == ExtensionSchema && m.Table == ExtensionDDLLogs
 }
 
 func Ignore(m *pb.Change) bool {
-	return m.Namespace == ExtensionNamespace && m.Table == ExtensionSources
+	return m.Schema == ExtensionSchema && m.Table == ExtensionSources
 }

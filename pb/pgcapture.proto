@@ -38,10 +38,10 @@ message Change {
     DELETE = 2;
   }
   Operation op = 1;
-  string namespace = 2;
+  string schema = 2;
   string table = 3;
-  repeated Field new_tuple = 4;
-  repeated Field old_tuple = 5;
+  repeated Field new = 4;
+  repeated Field old = 5;
 }
 
 message Field {
@@ -87,7 +87,7 @@ message DumpInfoRequest {
 }
 
 message DumpInfoResponse {
-  string namespace = 1;
+  string schema = 1;
   string table = 2;
   uint32 page_begin = 3;
   uint32 page_end = 4;

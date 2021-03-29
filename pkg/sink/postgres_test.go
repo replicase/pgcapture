@@ -88,17 +88,17 @@ func TestPGXSink(t *testing.T) {
 	}
 
 	doTx([]*pb.Change{{
-		Op:        pb.Change_INSERT,
-		Namespace: decode.ExtensionNamespace,
-		Table:     decode.ExtensionDDLLogs,
-		NewTuple:  []*pb.Field{{Name: "query", Datum: []byte(`create table t3 (f1 int, f2 int, f3 text, primary key(f1, f2))`)}},
+		Op:     pb.Change_INSERT,
+		Schema: decode.ExtensionSchema,
+		Table:  decode.ExtensionDDLLogs,
+		New:    []*pb.Field{{Name: "query", Datum: []byte(`create table t3 (f1 int, f2 int, f3 text, primary key(f1, f2))`)}},
 	}})
 
 	doTx([]*pb.Change{{
-		Op:        pb.Change_INSERT,
-		Namespace: "public",
-		Table:     "t3",
-		NewTuple: []*pb.Field{
+		Op:     pb.Change_INSERT,
+		Schema: "public",
+		Table:  "t3",
+		New: []*pb.Field{
 			{Name: "f1", Oid: 23, Datum: []byte{0, 0, 0, 1}},
 			{Name: "f2", Oid: 23, Datum: []byte{0, 0, 0, 1}},
 			{Name: "f3", Oid: 25, Datum: []byte{'A'}},
@@ -106,10 +106,10 @@ func TestPGXSink(t *testing.T) {
 	}})
 
 	doTx([]*pb.Change{{
-		Op:        pb.Change_UPDATE,
-		Namespace: "public",
-		Table:     "t3",
-		NewTuple: []*pb.Field{
+		Op:     pb.Change_UPDATE,
+		Schema: "public",
+		Table:  "t3",
+		New: []*pb.Field{
 			{Name: "f1", Oid: 23, Datum: []byte{0, 0, 0, 1}},
 			{Name: "f2", Oid: 23, Datum: []byte{0, 0, 0, 1}},
 			{Name: "f3", Oid: 25, Datum: []byte{'B'}},
@@ -118,15 +118,15 @@ func TestPGXSink(t *testing.T) {
 
 	// update with key changes
 	doTx([]*pb.Change{{
-		Op:        pb.Change_UPDATE,
-		Namespace: "public",
-		Table:     "t3",
-		NewTuple: []*pb.Field{
+		Op:     pb.Change_UPDATE,
+		Schema: "public",
+		Table:  "t3",
+		New: []*pb.Field{
 			{Name: "f1", Oid: 23, Datum: []byte{0, 0, 0, 2}},
 			{Name: "f2", Oid: 23, Datum: []byte{0, 0, 0, 3}},
 			{Name: "f3", Oid: 25, Datum: []byte{'B'}},
 		},
-		OldTuple: []*pb.Field{
+		Old: []*pb.Field{
 			{Name: "f1", Oid: 23, Datum: []byte{0, 0, 0, 1}},
 			{Name: "f2", Oid: 23, Datum: []byte{0, 0, 0, 1}},
 		},
@@ -134,15 +134,15 @@ func TestPGXSink(t *testing.T) {
 
 	// handle select create case
 	doTx([]*pb.Change{{
-		Op:        pb.Change_INSERT,
-		Namespace: decode.ExtensionNamespace,
-		Table:     decode.ExtensionDDLLogs,
-		NewTuple:  []*pb.Field{{Name: "query", Datum: []byte(`select * into t4 from t3`)}, {Name: "tags", Datum: []byte(`{SELECT}`)}},
+		Op:     pb.Change_INSERT,
+		Schema: decode.ExtensionSchema,
+		Table:  decode.ExtensionDDLLogs,
+		New:    []*pb.Field{{Name: "query", Datum: []byte(`select * into t4 from t3`)}, {Name: "tags", Datum: []byte(`{SELECT}`)}},
 	}, { // the data change after select create should be ignored
-		Op:        pb.Change_INSERT,
-		Namespace: "public",
-		Table:     "t3",
-		NewTuple: []*pb.Field{
+		Op:     pb.Change_INSERT,
+		Schema: "public",
+		Table:  "t3",
+		New: []*pb.Field{
 			{Name: "f1", Oid: 23, Datum: []byte{0, 0, 0, 2}},
 			{Name: "f2", Oid: 23, Datum: []byte{0, 0, 0, 3}},
 			{Name: "f3", Oid: 25, Datum: []byte{'B'}},
@@ -150,10 +150,10 @@ func TestPGXSink(t *testing.T) {
 	}})
 
 	doTx([]*pb.Change{{
-		Op:        pb.Change_DELETE,
-		Namespace: "public",
-		Table:     "t3",
-		OldTuple: []*pb.Field{
+		Op:     pb.Change_DELETE,
+		Schema: "public",
+		Table:  "t3",
+		Old: []*pb.Field{
 			{Name: "f1", Oid: 23, Datum: []byte{0, 0, 0, 2}},
 			{Name: "f2", Oid: 23, Datum: []byte{0, 0, 0, 3}},
 		},

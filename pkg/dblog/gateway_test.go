@@ -221,7 +221,7 @@ func TestGateway_Capture(t *testing.T) {
 	}
 
 	// if dump puller has dump
-	dump := &pb.DumpInfoResponse{Namespace: "public", Table: "t1", PageBegin: 0, PageEnd: 0}
+	dump := &pb.DumpInfoResponse{Schema: "public", Table: "t1", PageBegin: 0, PageEnd: 0}
 	dumps <- dump
 	if req := <-dumpsReq; req.minLSN != 1 || req.info != dump {
 		t.Fatal("unexpected")
@@ -426,7 +426,7 @@ func TestGateway_CaptureSendDumpError(t *testing.T) {
 	<-checkpoints
 
 	// if dump puller has dump
-	dump := &pb.DumpInfoResponse{Namespace: "public", Table: "t1", PageBegin: 0, PageEnd: 0}
+	dump := &pb.DumpInfoResponse{Schema: "public", Table: "t1", PageBegin: 0, PageEnd: 0}
 	dumps <- dump
 	if req := <-dumpsReq; req.minLSN != 0 || req.info != dump {
 		t.Fatal("unexpected")

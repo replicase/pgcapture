@@ -60,11 +60,11 @@ func (p *PGLogicalDecoder) Decode(in []byte) (m *pb.Message, err error) {
 			return nil, errors.New("relation not found")
 		}
 
-		c := &pb.Change{Namespace: rel.NspName, Table: rel.RelName, Op: OpMap[in[0]]}
-		c.OldTuple = p.makePBTuple(rel, r.Old, true)
-		c.NewTuple = p.makePBTuple(rel, r.New, false)
+		c := &pb.Change{Schema: rel.NspName, Table: rel.RelName, Op: OpMap[in[0]]}
+		c.Old = p.makePBTuple(rel, r.Old, true)
+		c.New = p.makePBTuple(rel, r.New, false)
 
-		if len(c.OldTuple) != 0 || len(c.NewTuple) != 0 {
+		if len(c.Old) != 0 || len(c.New) != 0 {
 			return &pb.Message{Type: &pb.Message_Change{Change: c}}, nil
 		}
 	default:

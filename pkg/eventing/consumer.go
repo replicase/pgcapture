@@ -31,15 +31,15 @@ func (c *Consumer) Consume(mh ModelHandlers) error {
 	for change := range changes {
 		switch m := change.Message.Type.(type) {
 		case *pb.Message_Change:
-			ref, ok := refs[ModelName(m.Change.Namespace, m.Change.Table)]
+			ref, ok := refs[ModelName(m.Change.Schema, m.Change.Table)]
 			if !ok {
 				break
 			}
 			if err := ref.hdl(Change{
 				Op:  m.Change.Op,
 				LSN: change.Checkpoint.LSN,
-				New: makeModel(ref, m.Change.NewTuple),
-				Old: makeModel(ref, m.Change.OldTuple),
+				New: makeModel(ref, m.Change.New),
+				Old: makeModel(ref, m.Change.Old),
 			}); err != nil {
 				c.source.Requeue(change.Checkpoint, err.Error())
 				continue
