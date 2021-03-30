@@ -60,7 +60,7 @@ func TestPGXSource_Capture(t *testing.T) {
 			Check: func(tx *TxTest) {
 				tx.Tx = readTx(t, changes, 1)
 				change := tx.Tx.Changes[0].Message.GetChange()
-				expect := &pb.Change{Op: pb.Change_INSERT, Schema: "public", Table: "t1", New: []*pb.Field{{Name: "id1", Oid: 20, Datum: []byte{0, 0, 0, 0, 0, 0, 0, 1}}}}
+				expect := &pb.Change{Op: pb.Change_INSERT, Schema: "public", Table: "t1", New: []*pb.Field{{Name: "id1", Oid: 20, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 0, 0, 0, 0, 1}}}}}
 				if !proto.Equal(change, expect) {
 					t.Fatalf("unexpected %v", change.String())
 				}
@@ -80,7 +80,7 @@ func TestPGXSource_Capture(t *testing.T) {
 			Check: func(tx *TxTest) {
 				tx.Tx = readTx(t, changes, 1)
 				change := tx.Tx.Changes[0].Message.GetChange()
-				expect := &pb.Change{Op: pb.Change_INSERT, Schema: "public", Table: "t2", New: []*pb.Field{{Name: "id2", Oid: 25, Datum: []byte("id2")}}}
+				expect := &pb.Change{Op: pb.Change_INSERT, Schema: "public", Table: "t2", New: []*pb.Field{{Name: "id2", Oid: 25, Value: &pb.Field_Binary{Binary: []byte("id2")}}}}
 				if !proto.Equal(change, expect) {
 					t.Fatalf("unexpected %v", change.String())
 				}
@@ -192,5 +192,5 @@ func expectedDDL(change *pb.Change, sql string) bool {
 	return change.Schema == decode.ExtensionSchema &&
 		change.Table == decode.ExtensionDDLLogs &&
 		change.New[1].Name == "query" &&
-		bytes.Equal(change.New[1].Datum, []byte(sql))
+		bytes.Equal(change.New[1].GetBinary(), []byte(sql))
 }

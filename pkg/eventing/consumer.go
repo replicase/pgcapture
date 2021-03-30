@@ -56,12 +56,18 @@ func makeModel(ref reflection, fields []*pb.Field) interface{} {
 	}
 	ptr := reflect.New(ref.typ)
 	val := ptr.Elem()
+	var err error
 	for _, f := range fields {
 		i, ok := ref.idx[f.Name]
 		if !ok {
 			continue
 		}
-		if err := val.Field(i).Addr().Interface().(pgtype.BinaryDecoder).DecodeBinary(ci, f.Datum); err != nil {
+		if binary := f.GetBinary(); binary != nil {
+			err = val.Field(i).Addr().Interface().(pgtype.BinaryDecoder).DecodeBinary(ci, binary)
+		} else {
+			err = val.Field(i).Addr().Interface().(pgtype.TextDecoder).DecodeText(ci, []byte(f.GetText()))
+		}
+		if err != nil {
 			return err
 		}
 	}

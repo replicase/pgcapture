@@ -91,7 +91,7 @@ func TestPGXSink(t *testing.T) {
 		Op:     pb.Change_INSERT,
 		Schema: decode.ExtensionSchema,
 		Table:  decode.ExtensionDDLLogs,
-		New:    []*pb.Field{{Name: "query", Datum: []byte(`create table t3 (f1 int, f2 int, f3 text, primary key(f1, f2))`)}},
+		New:    []*pb.Field{{Name: "query", Value: &pb.Field_Binary{Binary: []byte(`create table t3 (f1 int, f2 int, f3 text, primary key(f1, f2))`)}}},
 	}})
 
 	doTx([]*pb.Change{{
@@ -99,9 +99,9 @@ func TestPGXSink(t *testing.T) {
 		Schema: "public",
 		Table:  "t3",
 		New: []*pb.Field{
-			{Name: "f1", Oid: 23, Datum: []byte{0, 0, 0, 1}},
-			{Name: "f2", Oid: 23, Datum: []byte{0, 0, 0, 1}},
-			{Name: "f3", Oid: 25, Datum: []byte{'A'}},
+			{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 1}}},
+			{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 1}}},
+			{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'A'}}},
 		},
 	}})
 
@@ -110,9 +110,9 @@ func TestPGXSink(t *testing.T) {
 		Schema: "public",
 		Table:  "t3",
 		New: []*pb.Field{
-			{Name: "f1", Oid: 23, Datum: []byte{0, 0, 0, 1}},
-			{Name: "f2", Oid: 23, Datum: []byte{0, 0, 0, 1}},
-			{Name: "f3", Oid: 25, Datum: []byte{'B'}},
+			{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 1}}},
+			{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 1}}},
+			{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'B'}}},
 		},
 	}})
 
@@ -122,13 +122,13 @@ func TestPGXSink(t *testing.T) {
 		Schema: "public",
 		Table:  "t3",
 		New: []*pb.Field{
-			{Name: "f1", Oid: 23, Datum: []byte{0, 0, 0, 2}},
-			{Name: "f2", Oid: 23, Datum: []byte{0, 0, 0, 3}},
-			{Name: "f3", Oid: 25, Datum: []byte{'B'}},
+			{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 2}}},
+			{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 3}}},
+			{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'B'}}},
 		},
 		Old: []*pb.Field{
-			{Name: "f1", Oid: 23, Datum: []byte{0, 0, 0, 1}},
-			{Name: "f2", Oid: 23, Datum: []byte{0, 0, 0, 1}},
+			{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 1}}},
+			{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 1}}},
 		},
 	}})
 
@@ -137,15 +137,15 @@ func TestPGXSink(t *testing.T) {
 		Op:     pb.Change_INSERT,
 		Schema: decode.ExtensionSchema,
 		Table:  decode.ExtensionDDLLogs,
-		New:    []*pb.Field{{Name: "query", Datum: []byte(`select * into t4 from t3`)}, {Name: "tags", Datum: []byte(`{SELECT}`)}},
+		New:    []*pb.Field{{Name: "query", Value: &pb.Field_Binary{Binary: []byte(`select * into t4 from t3`)}}, {Name: "tags", Value: &pb.Field_Binary{Binary: []byte(`{SELECT}`)}}},
 	}, { // the data change after select create should be ignored
 		Op:     pb.Change_INSERT,
 		Schema: "public",
 		Table:  "t3",
 		New: []*pb.Field{
-			{Name: "f1", Oid: 23, Datum: []byte{0, 0, 0, 2}},
-			{Name: "f2", Oid: 23, Datum: []byte{0, 0, 0, 3}},
-			{Name: "f3", Oid: 25, Datum: []byte{'B'}},
+			{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 2}}},
+			{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 3}}},
+			{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'B'}}},
 		},
 	}})
 
@@ -154,8 +154,8 @@ func TestPGXSink(t *testing.T) {
 		Schema: "public",
 		Table:  "t3",
 		Old: []*pb.Field{
-			{Name: "f1", Oid: 23, Datum: []byte{0, 0, 0, 2}},
-			{Name: "f2", Oid: 23, Datum: []byte{0, 0, 0, 3}},
+			{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 2}}},
+			{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 3}}},
 		},
 	}})
 

@@ -87,7 +87,7 @@ func TestPGXSourceDumper(t *testing.T) {
 				t.Fatal("unexpected")
 			}
 			var id pgtype.Int4
-			if err := id.DecodeBinary(conn.ConnInfo(), change.New[0].Datum); err != nil {
+			if err := id.DecodeBinary(conn.ConnInfo(), change.New[0].GetBinary()); err != nil {
 				t.Fatal(err)
 			}
 			if id.Int != seq {

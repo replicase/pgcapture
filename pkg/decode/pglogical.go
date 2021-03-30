@@ -89,7 +89,9 @@ func (p *PGLogicalDecoder) makePBTuple(rel Relation, src []Field, noNull bool) (
 		}
 		switch s.Format {
 		case 'n', 'b':
-			fields = append(fields, &pb.Field{Name: rel.Fields[i], Oid: oid, Datum: s.Datum})
+			fields = append(fields, &pb.Field{Name: rel.Fields[i], Oid: oid, Value: &pb.Field_Binary{Binary: s.Datum}})
+		case 't':
+			fields = append(fields, &pb.Field{Name: rel.Fields[i], Oid: oid, Value: &pb.Field_Text{Text: string(s.Datum)}})
 		case 'u':
 			continue // unchanged toast field should be exclude
 		}
@@ -179,7 +181,7 @@ func readTuple(reader *BytesReader) (fields []Field, err error) {
 			return nil, err
 		}
 		switch fields[i].Format {
-		case 'b':
+		case 'b', 't':
 			fields[i].Datum, err = reader.Bytes32()
 		case 'n', 'u':
 			continue

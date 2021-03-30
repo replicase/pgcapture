@@ -75,7 +75,11 @@ func (p *PGXSourceDumper) load(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.
 		values := rows.RawValues()
 		change := &pb.Change{Op: pb.Change_UPDATE, Schema: info.Schema, Table: info.Table}
 		for i, fd := range rows.FieldDescriptions() {
-			change.New = append(change.New, &pb.Field{Name: string(fd.Name), Oid: fd.DataTypeOID, Datum: values[i]})
+			if fd.Format == 0 {
+				change.New = append(change.New, &pb.Field{Name: string(fd.Name), Oid: fd.DataTypeOID, Value: &pb.Field_Text{Text: string(values[i])}})
+			} else {
+				change.New = append(change.New, &pb.Field{Name: string(fd.Name), Oid: fd.DataTypeOID, Value: &pb.Field_Binary{Binary: values[i]}})
+			}
 		}
 		changes = append(changes, change)
 	}

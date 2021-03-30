@@ -47,7 +47,10 @@ message Change {
 message Field {
   string name = 1;
   uint32 oid = 2;
-  bytes datum = 3;
+  oneof value {
+    bytes binary = 3;
+    string text = 4;
+  }
 }
 
 service DBLogGateway {

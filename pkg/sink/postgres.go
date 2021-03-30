@@ -233,9 +233,9 @@ func (p *PGXSink) handleDDL(m *pb.Change) (err error) {
 	for _, field := range m.New {
 		switch field.Name {
 		case "query":
-			_, err = p.conn.Exec(context.Background(), string(field.Datum))
+			_, err = p.conn.Exec(context.Background(), string(field.GetBinary()))
 		case "tags":
-			p.skip = TableLoadDDLRegex.Match(field.Datum)
+			p.skip = TableLoadDDLRegex.Match(field.GetBinary())
 		}
 	}
 	return nil
@@ -258,8 +258,13 @@ func (p *PGXSink) flushInsert(ctx context.Context) (err error) {
 	for i := 0; i < len(batch); i++ {
 		for j := 0; j < fields; j++ {
 			field := batch[i][j]
-			fmts[c] = 1
-			vals[c] = field.Datum
+			if binary := field.GetBinary(); binary != nil {
+				fmts[c] = 1
+				vals[c] = binary
+			} else {
+				fmts[c] = 0
+				vals[c] = []byte(field.GetText())
+			}
 			oids[c] = field.Oid
 			c++
 		}
@@ -289,9 +294,15 @@ func (p *PGXSink) handleDelete(ctx context.Context, m *pb.Change) (err error) {
 	fmts := make([]int16, fields)
 	for i := 0; i < fields; i++ {
 		field := m.Old[i]
-		vals[i] = field.Datum
+		if binary := field.GetBinary(); binary != nil {
+			fmts[i] = 1
+			vals[i] = binary
+		} else {
+			fmts[i] = 0
+			vals[i] = []byte(field.GetText())
+		}
 		oids[i] = field.Oid
-		fmts[i] = 1
+
 	}
 	return p.raw.ExecParams(ctx, sql.DeleteQuery(m.Schema, m.Table, m.Old), vals, oids, fmts, fmts).Read().Err
 }
@@ -336,17 +347,28 @@ func (p *PGXSink) handleUpdate(ctx context.Context, m *pb.Change) (err error) {
 	var j int
 	for ; j < len(sets); j++ {
 		field := sets[j]
-		vals[j] = field.Datum
+		if binary := field.GetBinary(); binary != nil {
+			fmts[j] = 1
+			vals[j] = binary
+		} else {
+			fmts[j] = 0
+			vals[j] = []byte(field.GetText())
+		}
 		oids[j] = field.Oid
-		fmts[j] = 1
+
 	}
 
 	for i := 0; i < len(keys); i++ {
 		j = i + j
 		field := keys[i]
-		vals[j] = field.Datum
+		if binary := field.GetBinary(); binary != nil {
+			fmts[j] = 1
+			vals[j] = binary
+		} else {
+			fmts[j] = 0
+			vals[j] = []byte(field.GetText())
+		}
 		oids[j] = field.Oid
-		fmts[j] = 1
 	}
 
 	return p.raw.ExecParams(ctx, sql.UpdateQuery(m.Schema, m.Table, sets, keys), vals, oids, fmts, fmts).Read().Err
