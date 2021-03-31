@@ -34,8 +34,8 @@ type PGXSink struct {
 	prev    source.Checkpoint
 	inTX    bool
 	skip    bool
-	refresh bool
 	inserts insertBatch
+	prevDDL string
 }
 
 type insertBatch struct {
@@ -180,8 +180,9 @@ func (p *PGXSink) Apply(changes chan source.Change) chan source.Checkpoint {
 				return nil
 			}
 			if decode.IsDDL(msg.Change) {
-				p.refresh = true
-				err = p.handleDDL(msg.Change)
+				if err = p.handleDDL(msg.Change); err == nil {
+					err = p.schema.RefreshKeys()
+				}
 			} else {
 				err = p.handleChange(msg.Change)
 			}
@@ -196,10 +197,7 @@ func (p *PGXSink) Apply(changes chan source.Change) chan source.Checkpoint {
 			committed <- change.Checkpoint
 			p.inTX = false
 			p.skip = false
-			if p.refresh {
-				err = p.schema.RefreshKeys()
-				p.refresh = false
-			}
+			p.prevDDL = ""
 		}
 		if err != nil {
 			p.log.WithFields(logrus.Fields{
@@ -233,9 +231,13 @@ func (p *PGXSink) handleDDL(m *pb.Change) (err error) {
 	for _, field := range m.New {
 		switch field.Name {
 		case "query":
-			_, err = p.conn.Exec(context.Background(), string(field.GetBinary()))
+			ddl := string(field.GetBinary())
+			if p.prevDDL != ddl {
+				_, err = p.conn.Exec(context.Background(), ddl)
+			}
+			p.prevDDL = ddl
 		case "tags":
-			p.skip = TableLoadDDLRegex.Match(field.GetBinary())
+			p.skip = DMLInDDLRegex.Match(field.GetBinary())
 		}
 	}
 	return nil
@@ -414,10 +416,10 @@ func ScanCheckpointFromLog(f io.Reader) (lsn, ts string, err error) {
 }
 
 var (
-	ErrIncompleteTx   = errors.New("receive incomplete transaction")
-	LogLSNRegex       = regexp.MustCompile(`(?:consistent recovery state reached at|redo done at) ([0-9A-F]{2,8}\/[0-9A-F]{2,8})`)
-	LogTxTimeRegex    = regexp.MustCompile(`last completed transaction was at log time (.*)\.?$`)
-	TableLoadDDLRegex = regexp.MustCompile(`(CREATE TABLE AS|SELECT)`)
+	ErrIncompleteTx = errors.New("receive incomplete transaction")
+	LogLSNRegex     = regexp.MustCompile(`(?:consistent recovery state reached at|redo done at) ([0-9A-F]{2,8}\/[0-9A-F]{2,8})`)
+	LogTxTimeRegex  = regexp.MustCompile(`last completed transaction was at log time (.*)\.?$`)
+	DMLInDDLRegex   = regexp.MustCompile(`(CREATE TABLE AS|SELECT|INSERT|UPDATE|DELETE)`)
 )
 
 func pgText(t string) pgtype.Text {
