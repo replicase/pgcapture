@@ -1,6 +1,7 @@
 package decode
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 
@@ -24,6 +25,8 @@ var OpMap = map[byte]pb.Change_Operation{
 	'U': pb.Change_UPDATE,
 	'D': pb.Change_DELETE,
 }
+
+var StringEnd = []byte{0}
 
 func NewPGLogicalDecoder(schema *PGXSchemaLoader) *PGLogicalDecoder {
 	return &PGLogicalDecoder{
@@ -88,7 +91,7 @@ func (p *PGLogicalDecoder) makePBTuple(rel Relation, src []Field, noNull bool) (
 			continue
 		}
 		switch s.Format {
-		case 'n', 'b':
+		case 'b', 'n':
 			fields = append(fields, &pb.Field{Name: rel.Fields[i], Oid: oid, Value: &pb.Field_Binary{Binary: s.Datum}})
 		case 't':
 			fields = append(fields, &pb.Field{Name: rel.Fields[i], Oid: oid, Value: &pb.Field_Text{Text: string(s.Datum)}})
@@ -181,10 +184,13 @@ func readTuple(reader *BytesReader) (fields []Field, err error) {
 			return nil, err
 		}
 		switch fields[i].Format {
-		case 'b', 't':
+		case 'b':
 			fields[i].Datum, err = reader.Bytes32()
 		case 'n', 'u':
 			continue
+		case 't':
+			fields[i].Datum, err = reader.Bytes32()
+			fields[i].Datum = bytes.TrimSuffix(fields[i].Datum, StringEnd)
 		default:
 			return nil, errors.New("unsupported data format: " + string(fields[i].Format))
 		}

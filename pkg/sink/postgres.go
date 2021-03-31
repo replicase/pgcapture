@@ -261,11 +261,12 @@ func (p *PGXSink) flushInsert(ctx context.Context) (err error) {
 			if binary := field.GetBinary(); binary != nil {
 				fmts[c] = 1
 				vals[c] = binary
+				oids[c] = field.Oid
 			} else {
 				fmts[c] = 0
 				vals[c] = []byte(field.GetText())
+				oids[c] = 0
 			}
-			oids[c] = field.Oid
 			c++
 		}
 	}
@@ -297,12 +298,12 @@ func (p *PGXSink) handleDelete(ctx context.Context, m *pb.Change) (err error) {
 		if binary := field.GetBinary(); binary != nil {
 			fmts[i] = 1
 			vals[i] = binary
+			oids[i] = field.Oid
 		} else {
 			fmts[i] = 0
 			vals[i] = []byte(field.GetText())
+			oids[i] = 0
 		}
-		oids[i] = field.Oid
-
 	}
 	return p.raw.ExecParams(ctx, sql.DeleteQuery(m.Schema, m.Table, m.Old), vals, oids, fmts, fmts).Read().Err
 }
@@ -350,12 +351,12 @@ func (p *PGXSink) handleUpdate(ctx context.Context, m *pb.Change) (err error) {
 		if binary := field.GetBinary(); binary != nil {
 			fmts[j] = 1
 			vals[j] = binary
+			oids[j] = field.Oid
 		} else {
 			fmts[j] = 0
 			vals[j] = []byte(field.GetText())
+			oids[j] = 0
 		}
-		oids[j] = field.Oid
-
 	}
 
 	for i := 0; i < len(keys); i++ {
@@ -364,11 +365,12 @@ func (p *PGXSink) handleUpdate(ctx context.Context, m *pb.Change) (err error) {
 		if binary := field.GetBinary(); binary != nil {
 			fmts[j] = 1
 			vals[j] = binary
+			oids[j] = field.Oid
 		} else {
 			fmts[j] = 0
 			vals[j] = []byte(field.GetText())
+			oids[j] = 0
 		}
-		oids[j] = field.Oid
 	}
 
 	return p.raw.ExecParams(ctx, sql.UpdateQuery(m.Schema, m.Table, sets, keys), vals, oids, fmts, fmts).Read().Err
