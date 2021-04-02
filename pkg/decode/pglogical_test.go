@@ -66,7 +66,7 @@ func TestPGLogicalDecoder(t *testing.T) {
 				New: []*pb.Field{
 					{Name: "id", Oid: 20, Value: &pb.Field_Binary{Binary: b(Int8(1))}},
 					{Name: "uid", Oid: 2950, Value: &pb.Field_Binary{Binary: b(UUID("782b2492-3e7c-431b-9238-c1136ea57190"))}},
-					{Name: "txt", Oid: 25, Value: &pb.Field_Binary{Binary: b(pgtype.Text{Status: pgtype.Null})}},
+					{Name: "txt", Oid: 25, Value: nil},
 					{Name: "js", Oid: 3802, Value: &pb.Field_Binary{Binary: b(JSON(`{"a": {"b": {"c": {"d": null}}}}`))}},
 					{Name: "ts", Oid: 1184, Value: &pb.Field_Binary{Binary: b(Tstz(now.Add(time.Second)))}},
 				},

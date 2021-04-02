@@ -281,7 +281,10 @@ func (p *PGXSink) performDDL(single bool, ddl string) (err error) {
 			return err
 		}
 	}
-	return err
+	if err == nil {
+		err = p.schema.RefreshKeys()
+	}
+	return
 }
 
 func (p *PGXSink) flushInsert(ctx context.Context) (err error) {

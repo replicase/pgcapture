@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pglogrepl"
+	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4"
 	"github.com/rueian/pgcapture/pkg/decode"
 	"github.com/rueian/pgcapture/pkg/pb"
@@ -91,7 +92,10 @@ func TestPGXSink(t *testing.T) {
 		Op:     pb.Change_INSERT,
 		Schema: decode.ExtensionSchema,
 		Table:  decode.ExtensionDDLLogs,
-		New:    []*pb.Field{{Name: "query", Value: &pb.Field_Binary{Binary: []byte(`create table t3 (f1 int, f2 int, f3 text, primary key(f1, f2))`)}}},
+		New: []*pb.Field{
+			{Name: "query", Value: &pb.Field_Binary{Binary: []byte(`create table t3 (f1 int, f2 int, f3 text, primary key(f1, f2))`)}},
+			{Name: "tags", Value: &pb.Field_Binary{Binary: tags("CREATE TABLE")}},
+		},
 	}})
 
 	doTx([]*pb.Change{{
@@ -137,7 +141,7 @@ func TestPGXSink(t *testing.T) {
 		Op:     pb.Change_INSERT,
 		Schema: decode.ExtensionSchema,
 		Table:  decode.ExtensionDDLLogs,
-		New:    []*pb.Field{{Name: "query", Value: &pb.Field_Binary{Binary: []byte(`select * into t4 from t3`)}}, {Name: "tags", Value: &pb.Field_Binary{Binary: []byte(`{SELECT}`)}}},
+		New:    []*pb.Field{{Name: "query", Value: &pb.Field_Binary{Binary: []byte(`select * into t4 from t3`)}}, {Name: "tags", Value: &pb.Field_Binary{Binary: tags("SELECT INTO")}}},
 	}, { // the data change after select create should be ignored
 		Op:     pb.Change_INSERT,
 		Schema: "public",
@@ -172,6 +176,13 @@ func TestPGXSink(t *testing.T) {
 		t.Fatalf("unexpected %v %v %v", cp, lsn, now)
 	}
 	sink.Stop()
+}
+
+func tags(v ...string) []byte {
+	t := pgtype.TextArray{}
+	t.Set(v)
+	buf, _ := t.EncodeBinary(pgtype.NewConnInfo(), nil)
+	return buf
 }
 
 func TestPGXSink_DuplicatedSink(t *testing.T) {
