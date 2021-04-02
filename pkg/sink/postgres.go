@@ -176,12 +176,17 @@ func (p *PGXSink) Apply(changes chan source.Change) chan source.Checkpoint {
 				err = ErrIncompleteTx
 				break
 			}
-			if p.skip {
-				return nil
-			}
 			if decode.IsDDL(msg.Change) {
 				err = p.handleDDL(msg.Change)
 			} else {
+				if p.skip {
+					p.log.WithFields(logrus.Fields{
+						"MessageLSN":  change.Checkpoint,
+						"SinkLastLSN": p.prev,
+						"Message":     change.Message.String(),
+					}).Warn("message skipped due to previous commands mixed with DML and DDL")
+					return nil
+				}
 				err = p.handleChange(msg.Change)
 			}
 		case *pb.Message_Commit:
