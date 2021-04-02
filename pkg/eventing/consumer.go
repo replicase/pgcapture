@@ -62,8 +62,10 @@ func makeModel(ref reflection, fields []*pb.Field) interface{} {
 		if !ok {
 			continue
 		}
-		if binary := f.GetBinary(); binary != nil {
-			err = val.Field(i).Addr().Interface().(pgtype.BinaryDecoder).DecodeBinary(ci, binary)
+		if f.Value == nil {
+			// do nothing
+		} else if value, ok := f.Value.(*pb.Field_Binary); ok {
+			err = val.Field(i).Addr().Interface().(pgtype.BinaryDecoder).DecodeBinary(ci, value.Binary)
 		} else {
 			err = val.Field(i).Addr().Interface().(pgtype.TextDecoder).DecodeText(ci, []byte(f.GetText()))
 		}

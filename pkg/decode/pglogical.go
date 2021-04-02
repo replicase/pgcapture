@@ -91,8 +91,10 @@ func (p *PGLogicalDecoder) makePBTuple(rel Relation, src []Field, noNull bool) (
 			continue
 		}
 		switch s.Format {
-		case 'b', 'n':
+		case 'b':
 			fields = append(fields, &pb.Field{Name: rel.Fields[i], Oid: oid, Value: &pb.Field_Binary{Binary: s.Datum}})
+		case 'n':
+			fields = append(fields, &pb.Field{Name: rel.Fields[i], Oid: oid, Value: nil})
 		case 't':
 			fields = append(fields, &pb.Field{Name: rel.Fields[i], Oid: oid, Value: &pb.Field_Text{Text: string(s.Datum)}})
 		case 'u':

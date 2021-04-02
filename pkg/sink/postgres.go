@@ -301,9 +301,13 @@ func (p *PGXSink) flushInsert(ctx context.Context) (err error) {
 	for i := 0; i < len(batch); i++ {
 		for j := 0; j < fields; j++ {
 			field := batch[i][j]
-			if binary := field.GetBinary(); binary != nil {
+			if field.Value == nil {
 				fmts[c] = 1
-				vals[c] = binary
+				vals[c] = nil
+				oids[c] = field.Oid
+			} else if value, ok := field.Value.(*pb.Field_Binary); ok {
+				fmts[c] = 1
+				vals[c] = value.Binary
 				oids[c] = field.Oid
 			} else {
 				fmts[c] = 0
@@ -338,9 +342,13 @@ func (p *PGXSink) handleDelete(ctx context.Context, m *pb.Change) (err error) {
 	fmts := make([]int16, fields)
 	for i := 0; i < fields; i++ {
 		field := m.Old[i]
-		if binary := field.GetBinary(); binary != nil {
+		if field.Value == nil {
 			fmts[i] = 1
-			vals[i] = binary
+			vals[i] = nil
+			oids[i] = field.Oid
+		} else if value, ok := field.Value.(*pb.Field_Binary); ok {
+			fmts[i] = 1
+			vals[i] = value.Binary
 			oids[i] = field.Oid
 		} else {
 			fmts[i] = 0
@@ -391,9 +399,13 @@ func (p *PGXSink) handleUpdate(ctx context.Context, m *pb.Change) (err error) {
 	var j int
 	for ; j < len(sets); j++ {
 		field := sets[j]
-		if binary := field.GetBinary(); binary != nil {
+		if field.Value == nil {
 			fmts[j] = 1
-			vals[j] = binary
+			vals[j] = nil
+			oids[j] = field.Oid
+		} else if value, ok := field.Value.(*pb.Field_Binary); ok {
+			fmts[j] = 1
+			vals[j] = value.Binary
 			oids[j] = field.Oid
 		} else {
 			fmts[j] = 0
@@ -405,9 +417,13 @@ func (p *PGXSink) handleUpdate(ctx context.Context, m *pb.Change) (err error) {
 	for i := 0; i < len(keys); i++ {
 		j = i + j
 		field := keys[i]
-		if binary := field.GetBinary(); binary != nil {
+		if field.Value == nil {
 			fmts[j] = 1
-			vals[j] = binary
+			vals[j] = nil
+			oids[j] = field.Oid
+		} else if value, ok := field.Value.(*pb.Field_Binary); ok {
+			fmts[j] = 1
+			vals[j] = value.Binary
 			oids[j] = field.Oid
 		} else {
 			fmts[j] = 0
