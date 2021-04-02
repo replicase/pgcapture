@@ -180,9 +180,7 @@ func (p *PGXSink) Apply(changes chan source.Change) chan source.Checkpoint {
 				return nil
 			}
 			if decode.IsDDL(msg.Change) {
-				if err = p.handleDDL(msg.Change); err == nil {
-					err = p.schema.RefreshKeys()
-				}
+				err = p.handleDDL(msg.Change)
 			} else {
 				err = p.handleChange(msg.Change)
 			}
@@ -228,19 +226,62 @@ func (p *PGXSink) handleChange(m *pb.Change) (err error) {
 }
 
 func (p *PGXSink) handleDDL(m *pb.Change) (err error) {
-	for _, field := range m.New {
+	command, single, hasDML := p.parseDDL(m.New)
+	if p.prevDDL != command {
+		err = p.performDDL(single, command)
+	}
+	p.skip = hasDML
+	p.prevDDL = command
+	return err
+}
+
+func (p *PGXSink) parseDDL(fields []*pb.Field) (command string, single, hasDML bool) {
+	tags := pgtype.TextArray{}
+
+	for _, field := range fields {
 		switch field.Name {
 		case "query":
-			ddl := string(field.GetBinary())
-			if p.prevDDL != ddl {
-				_, err = p.conn.Exec(context.Background(), ddl)
-			}
-			p.prevDDL = ddl
+			command = string(field.GetBinary())
 		case "tags":
-			p.skip = DMLInDDLRegex.Match(field.GetBinary())
+			_ = tags.DecodeBinary(p.conn.ConnInfo(), field.GetBinary())
+			for _, tag := range tags.Elements {
+				if DMLInDDLRegex.MatchString(tag.String) || TableDMLRegex.MatchString(tag.String) {
+					hasDML = true
+				}
+			}
+			single = len(tags.Elements) < 2
 		}
 	}
-	return nil
+
+	// remove proceeding dml commands, they were already present in previous change messages
+	for _, tag := range tags.Elements {
+		if !DMLInDDLRegex.MatchString(tag.String) {
+			re := regexp.MustCompile(tag.String)
+			if match := re.FindStringIndex(command); match != nil {
+				command = command[match[0]:]
+			}
+			break
+		}
+	}
+
+	return
+}
+
+func (p *PGXSink) performDDL(single bool, ddl string) (err error) {
+	ctx := context.Background()
+	if single {
+		// if the ddl contains only one command tag, than do not run it into begin/commit block
+		// because command like "CREATE INDEX CONCURRENTLY" can't be run inside transaction
+		if _, err = p.conn.Exec(ctx, "commit"); err != nil {
+			return err
+		}
+	}
+	if _, err = p.conn.Exec(ctx, ddl); err == nil && single {
+		if _, err = p.conn.Exec(ctx, "begin"); err != nil {
+			return err
+		}
+	}
+	return err
 }
 
 func (p *PGXSink) flushInsert(ctx context.Context) (err error) {
@@ -419,7 +460,8 @@ var (
 	ErrIncompleteTx = errors.New("receive incomplete transaction")
 	LogLSNRegex     = regexp.MustCompile(`(?:consistent recovery state reached at|redo done at) ([0-9A-F]{2,8}\/[0-9A-F]{2,8})`)
 	LogTxTimeRegex  = regexp.MustCompile(`last completed transaction was at log time (.*)\.?$`)
-	DMLInDDLRegex   = regexp.MustCompile(`(CREATE TABLE AS|SELECT|INSERT|UPDATE|DELETE)`)
+	TableDMLRegex   = regexp.MustCompile(`(CREATE TABLE AS|SELECT)`)
+	DMLInDDLRegex   = regexp.MustCompile(`(INSERT|UPDATE|DELETE)`)
 )
 
 func pgText(t string) pgtype.Text {
