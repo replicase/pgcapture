@@ -145,7 +145,7 @@ func TestPGXSink(t *testing.T) {
 	}, { // the data change after select create should be ignored
 		Op:     pb.Change_INSERT,
 		Schema: "public",
-		Table:  "t3",
+		Table:  "t4",
 		New: []*pb.Field{
 			{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 2}}},
 			{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 3}}},

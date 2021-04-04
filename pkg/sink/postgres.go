@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"regexp"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4"
+	pg_query "github.com/pganalyze/pg_query_go/v2"
 	"github.com/rueian/pgcapture/pkg/decode"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/source"
@@ -33,9 +35,9 @@ type PGXSink struct {
 	log     *logrus.Entry
 	prev    source.Checkpoint
 	inTX    bool
-	skip    bool
+	skip    map[string]bool
 	inserts insertBatch
-	prevDDL string
+	prevDDL uint32
 }
 
 type insertBatch struct {
@@ -179,7 +181,7 @@ func (p *PGXSink) Apply(changes chan source.Change) chan source.Checkpoint {
 			if decode.IsDDL(msg.Change) {
 				err = p.handleDDL(msg.Change)
 			} else {
-				if p.skip {
+				if len(p.skip) != 0 && p.skip[fmt.Sprintf("%s.%s", msg.Change.Schema, msg.Change.Table)] {
 					p.log.WithFields(logrus.Fields{
 						"MessageLSN":  change.Checkpoint,
 						"SinkLastLSN": p.prev,
@@ -199,8 +201,8 @@ func (p *PGXSink) Apply(changes chan source.Change) chan source.Checkpoint {
 			}
 			committed <- change.Checkpoint
 			p.inTX = false
-			p.skip = false
-			p.prevDDL = ""
+			p.skip = nil
+			p.prevDDL = 0
 		}
 		if err != nil {
 			p.log.WithFields(logrus.Fields{
@@ -231,41 +233,69 @@ func (p *PGXSink) handleChange(m *pb.Change) (err error) {
 }
 
 func (p *PGXSink) handleDDL(m *pb.Change) (err error) {
-	command, single, hasDML := p.parseDDL(m.New)
-	if p.prevDDL != command {
+	command, relations, single, err := p.parseDDL(m.New)
+	if err != nil {
+		return err
+	}
+
+	checksum := crc32.ChecksumIEEE([]byte(command))
+	if p.prevDDL != checksum {
+		p.skip = relations
 		err = p.performDDL(single, command)
 	}
-	p.skip = hasDML
-	p.prevDDL = command
+	p.prevDDL = checksum
+
 	return err
 }
 
-func (p *PGXSink) parseDDL(fields []*pb.Field) (command string, single, hasDML bool) {
-	tags := pgtype.TextArray{}
-
+func (p *PGXSink) parseDDL(fields []*pb.Field) (command string, relations map[string]bool, single bool, err error) {
 	for _, field := range fields {
 		switch field.Name {
 		case "query":
 			command = string(field.GetBinary())
-		case "tags":
-			_ = tags.DecodeBinary(p.conn.ConnInfo(), field.GetBinary())
-			for _, tag := range tags.Elements {
-				if DMLInDDLRegex.MatchString(tag.String) || TableDMLRegex.MatchString(tag.String) {
-					hasDML = true
-				}
-			}
-			single = len(tags.Elements) < 2
+			goto parse
 		}
 	}
 
+parse:
+	tree, err := pg_query.Parse(command)
+	if err != nil {
+		return "", nil, false, err
+	}
+
 	// remove proceeding dml commands, they were already present in previous change messages
-	for _, tag := range tags.Elements {
-		if !DMLInDDLRegex.MatchString(tag.String) {
-			re := regexp.MustCompile(tag.String)
-			if match := re.FindStringIndex(command); match != nil {
-				command = command[match[0]:]
-			}
+	for i, stmt := range tree.Stmts {
+		if stmt.Stmt.GetInsertStmt() == nil && stmt.Stmt.GetUpdateStmt() == nil && stmt.Stmt.GetDeleteStmt() == nil {
+			command = command[stmt.StmtLocation:]
+			single = i == len(tree.Stmts)-1
 			break
+		}
+	}
+
+	// record relations appeared in the statement, following change messages should be ignore if duplicated with them
+	relations = make(map[string]bool)
+	for _, stmt := range tree.Stmts {
+		var relation *pg_query.RangeVar
+		switch node := stmt.Stmt.Node.(type) {
+		case *pg_query.Node_InsertStmt:
+			relation = node.InsertStmt.Relation
+		case *pg_query.Node_UpdateStmt:
+			relation = node.UpdateStmt.Relation
+		case *pg_query.Node_DeleteStmt:
+			relation = node.DeleteStmt.Relation
+		case *pg_query.Node_CreateTableAsStmt:
+			relation = node.CreateTableAsStmt.Into.Rel
+		case *pg_query.Node_SelectStmt:
+			if node.SelectStmt.IntoClause != nil {
+				relation = node.SelectStmt.IntoClause.Rel
+			}
+		default:
+			continue
+		}
+		if relation.Schemaname == "" {
+			relations[fmt.Sprintf("public.%s", relation.Relname)] = true
+		} else {
+			relations[fmt.Sprintf("%s.%s", relation.Schemaname, relation.Relname)] = true
 		}
 	}
 
@@ -484,8 +514,6 @@ var (
 	ErrIncompleteTx = errors.New("receive incomplete transaction")
 	LogLSNRegex     = regexp.MustCompile(`(?:consistent recovery state reached at|redo done at) ([0-9A-F]{2,8}\/[0-9A-F]{2,8})`)
 	LogTxTimeRegex  = regexp.MustCompile(`last completed transaction was at log time (.*)\.?$`)
-	TableDMLRegex   = regexp.MustCompile(`(CREATE TABLE AS|SELECT)`)
-	DMLInDDLRegex   = regexp.MustCompile(`(INSERT|UPDATE|DELETE)`)
 )
 
 func pgText(t string) pgtype.Text {
