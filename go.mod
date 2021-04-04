@@ -2,6 +2,8 @@ module github.com/rueian/pgcapture
 
 go 1.15
 
+replace github.com/pganalyze/pg_query_go/v2 v2.0.2 => github.com/rueian/pg_query_go/v2 v2.0.3-0.20210404160231-00fbdb47649c
+
 require (
 	github.com/apache/pulsar-client-go v0.4.1-0.20210326154808-4d6c15114b9b
 	github.com/golang/protobuf v1.5.2

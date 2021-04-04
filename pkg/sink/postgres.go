@@ -283,6 +283,12 @@ parse:
 			relation = node.UpdateStmt.Relation
 		case *pg_query.Node_DeleteStmt:
 			relation = node.DeleteStmt.Relation
+		case *pg_query.Node_CreateTableAsStmt:
+			relation = node.CreateTableAsStmt.Into.Rel
+		case *pg_query.Node_SelectStmt:
+			if node.SelectStmt.IntoClause != nil {
+				relation = node.SelectStmt.IntoClause.Rel
+			}
 		default:
 			continue
 		}
@@ -508,8 +514,6 @@ var (
 	ErrIncompleteTx = errors.New("receive incomplete transaction")
 	LogLSNRegex     = regexp.MustCompile(`(?:consistent recovery state reached at|redo done at) ([0-9A-F]{2,8}\/[0-9A-F]{2,8})`)
 	LogTxTimeRegex  = regexp.MustCompile(`last completed transaction was at log time (.*)\.?$`)
-	TableDMLRegex   = regexp.MustCompile(`(CREATE TABLE AS|SELECT)`)
-	DMLInDDLRegex   = regexp.MustCompile(`(INSERT|UPDATE|DELETE)`)
 )
 
 func pgText(t string) pgtype.Text {
