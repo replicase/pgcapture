@@ -289,7 +289,8 @@ parse:
 			if node.SelectStmt.IntoClause != nil {
 				relation = node.SelectStmt.IntoClause.Rel
 			}
-		default:
+		}
+		if relation == nil {
 			continue
 		}
 		if relation.Schemaname == "" {
