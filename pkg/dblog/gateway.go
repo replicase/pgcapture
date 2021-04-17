@@ -2,6 +2,7 @@ package dblog
 
 import (
 	"errors"
+	"regexp"
 
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/source"
@@ -83,13 +84,18 @@ func (s *Gateway) capture(init *pb.CaptureInit, server pb.DBLogGateway_CaptureSe
 	dumps := s.DumpInfoPuller.Pull(server.Context(), init.Uri, acks)
 	lsn := uint64(0)
 
+	filter, err := tableRegexFromInit(init)
+	if err != nil {
+		return err
+	}
+
 	for {
 		select {
 		case msg, more := <-changes:
 			if !more {
 				return nil
 			}
-			if change := msg.Message.GetChange(); change != nil {
+			if change := msg.Message.GetChange(); change != nil && (filter == nil || filter.MatchString(change.Table)) {
 				if err := server.Send(&pb.CaptureMessage{Checkpoint: &pb.Checkpoint{
 					Lsn:  msg.Checkpoint.LSN,
 					Seq:  msg.Checkpoint.Seq,
@@ -108,8 +114,10 @@ func (s *Gateway) capture(init *pb.CaptureInit, server pb.DBLogGateway_CaptureSe
 			dump, err := dumper.LoadDump(lsn, info)
 			if err == nil {
 				for _, change := range dump {
-					if err := server.Send(&pb.CaptureMessage{Checkpoint: &pb.Checkpoint{Lsn: 0}, Change: change}); err != nil {
-						return err
+					if filter == nil || filter.MatchString(change.Table) {
+						if err := server.Send(&pb.CaptureMessage{Checkpoint: &pb.Checkpoint{Lsn: 0}, Change: change}); err != nil {
+							return err
+						}
 					}
 				}
 				acks <- ""
@@ -120,6 +128,18 @@ func (s *Gateway) capture(init *pb.CaptureInit, server pb.DBLogGateway_CaptureSe
 			return err
 		}
 	}
+}
+
+const TableRegexOption = "TableRegex"
+
+func tableRegexFromInit(init *pb.CaptureInit) (*regexp.Regexp, error) {
+	if init.Parameters == nil || init.Parameters.Fields == nil {
+		return nil, nil
+	}
+	if regex, ok := init.Parameters.Fields[TableRegexOption]; ok {
+		return regexp.Compile(regex.GetStringValue())
+	}
+	return nil, nil
 }
 
 var (

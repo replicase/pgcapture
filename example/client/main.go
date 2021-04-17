@@ -6,9 +6,11 @@ import (
 
 	"github.com/jackc/pgtype"
 	"github.com/rueian/pgcapture/example"
+	"github.com/rueian/pgcapture/pkg/dblog"
 	"github.com/rueian/pgcapture/pkg/eventing"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 type T1 struct {
@@ -27,7 +29,17 @@ func main() {
 	}
 	defer conn.Close()
 
-	consumer := eventing.NewDBLogConsumer(context.Background(), conn, &pb.CaptureInit{Uri: example.SrcDB.DB})
+	parameters, err := structpb.NewStruct(map[string]interface{}{
+		dblog.TableRegexOption: example.TestTable,
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	consumer := eventing.NewDBLogConsumer(context.Background(), conn, &pb.CaptureInit{
+		Uri:        example.SrcDB.DB,
+		Parameters: parameters,
+	})
 	defer consumer.Stop()
 
 	err = consumer.Consume(map[eventing.Model]eventing.ModelHandlerFunc{
