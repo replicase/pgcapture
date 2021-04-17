@@ -104,7 +104,11 @@ func (s *Gateway) capture(init *pb.CaptureInit, server pb.DBLogGateway_CaptureSe
 					return err
 				}
 			} else {
-				src.Commit(source.Checkpoint{LSN: msg.Checkpoint.LSN})
+				src.Commit(source.Checkpoint{
+					LSN:  msg.Checkpoint.LSN,
+					Seq:  msg.Checkpoint.Seq,
+					Data: msg.Checkpoint.Data,
+				})
 			}
 			lsn = msg.Checkpoint.LSN
 		case info, more := <-dumps:
