@@ -58,7 +58,7 @@ service DBLogGateway {
 }
 
 service DBLogController {
-  rpc PullDumpInfo(stream DumpInfoRequest) returns(stream DumpInfoResponse);
+  rpc PullDumpInfo(stream DumpInfoRequest) returns (stream DumpInfoResponse);
   rpc Schedule(ScheduleRequest) returns (ScheduleResponse);
 }
 
@@ -103,4 +103,15 @@ message ScheduleRequest {
 
 message ScheduleResponse {
 
+}
+
+service Agent {
+  rpc Configure(AgentConfigRequest) returns (AgentConfigResponse) {}
+}
+
+message AgentConfigRequest {
+  google.protobuf.Struct parameters = 1;
+}
+message AgentConfigResponse {
+  google.protobuf.Struct report = 1;
 }

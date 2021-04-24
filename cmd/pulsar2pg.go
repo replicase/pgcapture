@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"io"
 	"os"
 
 	"github.com/apache/pulsar-client-go/pulsar"
@@ -32,11 +31,12 @@ var pulsar2pg = &cobra.Command{
 	Use:   "pulsar2pg",
 	Short: "Apply logical replication logs to a PostgreSQL from a Pulsar Topic",
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
-		var pgLog io.Reader
+		var pgLog *os.File
 		if SinkPGLogPath != "" {
 			if pgLog, err = os.Open(SinkPGLogPath); err != nil {
 				return err
 			}
+			defer pgLog.Close()
 		}
 		pulsarSrc := &source.PulsarReaderSource{PulsarOption: pulsar.ClientOptions{URL: SourcePulsarURL}, PulsarTopic: SourcePulsarTopic}
 		pgSink := &sink.PGXSink{ConnStr: SinkPGConnURL, SourceID: SourcePulsarTopic, LogReader: pgLog}
