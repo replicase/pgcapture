@@ -10,10 +10,14 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/rueian/pgcapture/example"
 	"github.com/rueian/pgcapture/internal/test"
 	"github.com/rueian/pgcapture/pkg/dblog"
+	"github.com/rueian/pgcapture/pkg/pb"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 func main() {
@@ -42,20 +46,15 @@ func main() {
 
 	for _, cmd := range []cmd{
 		{
-			Name: "pg2pulsar",
+			Name: "agent",
 			Flags: map[string]string{
-				"PGConnURL":   example.SrcDB.URL(),
-				"PGReplURL":   example.SrcDB.Repl(),
-				"PulsarURL":   example.PulsarURL,
-				"PulsarTopic": example.SrcDB.DB,
+				"ListenAddr": example.AgentAddr1,
 			},
 		},
 		{
-			Name: "pulsar2pg",
+			Name: "agent",
 			Flags: map[string]string{
-				"PGConnURL":   example.SinkDB.URL(),
-				"PulsarURL":   example.PulsarURL,
-				"PulsarTopic": example.SrcDB.DB,
+				"ListenAddr": example.AgentAddr2,
 			},
 		},
 		{
@@ -77,6 +76,48 @@ func main() {
 		go run(ctx, cmd, &wg)
 	}
 
+	var conn1, conn2 *grpc.ClientConn
+	var agent1, agent2 pb.AgentClient
+
+	conn1, err := grpc.Dial(example.AgentAddr1, grpc.WithBlock(), grpc.WithInsecure())
+	if err != nil {
+		log.Println(err)
+		goto wait
+	}
+	conn2, err = grpc.Dial(example.AgentAddr2, grpc.WithBlock(), grpc.WithInsecure())
+	if err != nil {
+		log.Println(err)
+		goto wait
+	}
+
+	agent1 = pb.NewAgentClient(conn1)
+	agent2 = pb.NewAgentClient(conn2)
+
+	for {
+		time.Sleep(time.Second)
+		params, _ := structpb.NewStruct(map[string]interface{}{
+			"Command":     "pg2pulsar",
+			"PGConnURL":   example.SrcDB.URL(),
+			"PGReplURL":   example.SrcDB.Repl(),
+			"PulsarURL":   example.PulsarURL,
+			"PulsarTopic": example.SrcDB.DB,
+		})
+		if _, err := agent1.Configure(ctx, &pb.AgentConfigRequest{Parameters: params}); err != nil {
+			log.Println(err)
+			goto wait
+		}
+		params, _ = structpb.NewStruct(map[string]interface{}{
+			"Command":     "pulsar2pg",
+			"PGConnURL":   example.SinkDB.URL(),
+			"PulsarURL":   example.PulsarURL,
+			"PulsarTopic": example.SrcDB.DB,
+		})
+		if _, err := agent2.Configure(ctx, &pb.AgentConfigRequest{Parameters: params}); err != nil {
+			log.Println(err)
+			goto wait
+		}
+	}
+wait:
 	wg.Wait()
 }
 

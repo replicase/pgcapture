@@ -92,17 +92,16 @@ func (a *Agent) pulsar2pg(params *structpb.Struct) (*pb.AgentConfigResponse, err
 		return nil, err
 	}
 
-	var pgLog *os.File
+	pgSink := &sink.PGXSink{ConnStr: v["PGConnURL"], SourceID: v["PulsarTopic"], LogReader: nil}
 	if v, err := extract(params, "PGLogPath"); err == nil {
-		pgLog, err = os.Open(v["PGLogPath"])
+		pgLog, err := os.Open(v["PGLogPath"])
 		if err != nil {
 			return nil, err
 		}
 		defer pgLog.Close()
+		pgSink.LogReader = pgLog
 	}
-
 	pulsarSrc := &source.PulsarReaderSource{PulsarOption: pulsar.ClientOptions{URL: v["PulsarURL"]}, PulsarTopic: v["PulsarTopic"]}
-	pgSink := &sink.PGXSink{ConnStr: v["PGConnURL"], SourceID: v["PulsarTopic"], LogReader: pgLog}
 	if err = a.sourceToSink(pulsarSrc, pgSink); err != nil {
 		return nil, err
 	}

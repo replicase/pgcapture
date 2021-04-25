@@ -8,6 +8,8 @@ const (
 	TestTable   = "test"
 	TestDBSrc   = "db_src"
 	TestDBSink  = "db_sink"
+	AgentAddr1  = "localhost:8888"
+	AgentAddr2  = "localhost:8889"
 	ControlAddr = "localhost:10000"
 	GatewayAddr = "localhost:10001"
 )
