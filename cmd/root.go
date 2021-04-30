@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/rueian/pgcapture/pkg/sink"
@@ -74,4 +75,11 @@ func serveGRPC(desc *grpc.ServiceDesc, addr string, impl interface{}) (err error
 	}()
 
 	return server.Serve(lis)
+}
+
+func trimSlot(topic string) string {
+	topic = strings.TrimPrefix(topic, "persistent://public/")
+	topic = strings.ReplaceAll(topic, "/", "_")
+	topic = strings.ReplaceAll(topic, "-", "_")
+	return topic
 }

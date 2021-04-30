@@ -31,7 +31,7 @@ var pulsar2pg = &cobra.Command{
 	Use:   "pulsar2pg",
 	Short: "Apply logical replication logs to a PostgreSQL from a Pulsar Topic",
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
-		pgSink := &sink.PGXSink{ConnStr: SinkPGConnURL, SourceID: SourcePulsarTopic, LogReader: nil}
+		pgSink := &sink.PGXSink{ConnStr: SinkPGConnURL, SourceID: trimSlot(SourcePulsarTopic), LogReader: nil}
 		if SinkPGLogPath != "" {
 			pgLog, err := os.Open(SinkPGLogPath)
 			if err != nil {
