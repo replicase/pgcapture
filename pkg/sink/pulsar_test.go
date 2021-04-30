@@ -34,21 +34,10 @@ func TestPulsarSink(t *testing.T) {
 	changes := make(chan source.Change)
 	committed := sink.Apply(changes)
 
-	for j := 0; j < 2; j++ {
-		for i := uint64(1); i < 4; i++ {
-			changes <- source.Change{Checkpoint: source.Checkpoint{LSN: i}, Message: &pb.Message{Type: &pb.Message_Commit{Commit: &pb.Commit{EndLsn: i}}}}
-			if j == 0 {
-				if cp := <-committed; cp.LSN != i {
-					t.Fatalf("unexpected %v", i)
-				}
-			} else {
-				// duplicated changes should be ignored
-				select {
-				case cp := <-committed:
-					t.Fatalf("unexpected %v", cp)
-				case <-time.NewTimer(time.Millisecond * 5).C:
-				}
-			}
+	for i := uint64(1); i < 4; i++ {
+		changes <- source.Change{Checkpoint: source.Checkpoint{LSN: i}, Message: &pb.Message{Type: &pb.Message_Commit{Commit: &pb.Commit{EndLsn: i}}}}
+		if cp := <-committed; cp.LSN != i {
+			t.Fatalf("unexpected %v", i)
 		}
 	}
 	close(changes)

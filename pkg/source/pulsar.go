@@ -101,7 +101,7 @@ func (p *PulsarReaderSource) Capture(cp Checkpoint) (changes chan Change, err er
 
 		if !first {
 			p.log.WithFields(logrus.Fields{
-				"MessageLSN":  checkpoint,
+				"MessageLSN":  checkpoint.LSN,
 				"RequiredLSN": cp,
 				"Message":     m.String(),
 			}).Info("retrieved the first message from pulsar")
@@ -111,7 +111,7 @@ func (p *PulsarReaderSource) Capture(cp Checkpoint) (changes chan Change, err er
 		if !p.consistent && cp.LSN != 0 {
 			p.consistent = checkpoint.Equal(cp) || checkpoint.After(cp)
 			p.log.WithFields(logrus.Fields{
-				"MessageLSN":  checkpoint,
+				"MessageLSN":  checkpoint.LSN,
 				"RequiredLSN": cp,
 				"Consistent":  p.consistent,
 				"Message":     m.String(),
@@ -122,7 +122,7 @@ func (p *PulsarReaderSource) Capture(cp Checkpoint) (changes chan Change, err er
 		if !p.consistent && cp.LSN == 0 {
 			p.consistent = m.GetBegin() != nil
 			p.log.WithFields(logrus.Fields{
-				"MessageLSN":  checkpoint,
+				"MessageLSN":  checkpoint.LSN,
 				"RequiredLSN": cp,
 				"Consistent":  p.consistent,
 				"Message":     m.String(),
@@ -204,7 +204,7 @@ func (p *PulsarConsumerSource) Capture(cp Checkpoint) (changes chan Change, err 
 
 		if !first {
 			p.log.WithFields(logrus.Fields{
-				"MessageLSN": checkpoint,
+				"MessageLSN": checkpoint.LSN,
 				"Message":    m.String(),
 			}).Info("retrieved the first message from pulsar")
 			first = true

@@ -18,10 +18,11 @@ type PulsarSink struct {
 	PulsarOption pulsar.ClientOptions
 	PulsarTopic  string
 
-	client   pulsar.Client
-	producer pulsar.Producer
-	log      *logrus.Entry
-	prev     source.Checkpoint
+	client     pulsar.Client
+	producer   pulsar.Producer
+	log        *logrus.Entry
+	prev       source.Checkpoint
+	consistent bool
 }
 
 func (p *PulsarSink) Setup() (cp source.Checkpoint, err error) {
@@ -67,7 +68,7 @@ func (p *PulsarSink) Setup() (cp source.Checkpoint, err error) {
 		"Topic": p.PulsarTopic,
 	})
 	p.log.WithFields(logrus.Fields{
-		"SinkLastLSN": p.prev,
+		"SinkLastLSN": p.prev.LSN,
 	}).Info("start sending changes to pulsar")
 
 	p.producer, err = p.client.CreateProducer(pulsar.ProducerOptions{
@@ -97,22 +98,21 @@ func (p *PulsarSink) Apply(changes chan source.Change) chan source.Checkpoint {
 	return p.BaseSink.apply(changes, func(change source.Change, committed chan source.Checkpoint) error {
 		if !first {
 			p.log.WithFields(logrus.Fields{
-				"MessageLSN":  change.Checkpoint,
+				"MessageLSN":  change.Checkpoint.LSN,
 				"SinkLastLSN": p.prev,
 				"Message":     change.Message.String(),
 			}).Info("applying the first message from source")
 			first = true
 		}
 
-		if !change.Checkpoint.After(p.prev) {
+		p.consistent = p.consistent || change.Checkpoint.After(p.prev)
+		if !p.consistent {
 			p.log.WithFields(logrus.Fields{
-				"MessageLSN":  change.Checkpoint,
+				"MessageLSN":  change.Checkpoint.LSN,
 				"SinkLastLSN": p.prev,
 				"Message":     change.Message.String(),
 			}).Warn("message dropped due to its lsn smaller than the last lsn of sink")
 			return nil
-		} else {
-			p.prev = change.Checkpoint
 		}
 
 		bs, err := proto.Marshal(change.Message)
@@ -126,7 +126,7 @@ func (p *PulsarSink) Apply(changes chan source.Change) chan source.Checkpoint {
 		}, func(id pulsar.MessageID, message *pulsar.ProducerMessage, err error) {
 			if err != nil {
 				p.log.WithFields(logrus.Fields{
-					"MessageLSN":   change.Checkpoint,
+					"MessageLSN":   change.Checkpoint.LSN,
 					"MessageIDHex": hex.EncodeToString(id.Serialize()),
 				}).Errorf("fail to send message to pulsar: %v", err)
 				p.BaseSink.err.Store(err)
