@@ -109,7 +109,7 @@ func (p *PulsarReaderSource) Capture(cp Checkpoint) (changes chan Change, err er
 		}
 
 		if !p.consistent && cp.LSN != 0 {
-			p.consistent = checkpoint.Equal(cp)
+			p.consistent = checkpoint.Equal(cp) || checkpoint.After(cp)
 			p.log.WithFields(logrus.Fields{
 				"MessageLSN":  checkpoint,
 				"RequiredLSN": cp,
