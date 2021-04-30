@@ -58,7 +58,7 @@ func UpdateQuery(namespace, table string, sets, keys []*pb.Field) string {
 	return query.String()
 }
 
-func InsertQuery(namespace, table string, fields []*pb.Field, count int) string {
+func InsertQuery(namespace, table string, keys []string, fields []*pb.Field, count int) string {
 	var query strings.Builder
 	query.WriteString("insert into \"")
 	query.WriteString(namespace)
@@ -87,6 +87,12 @@ func InsertQuery(namespace, table string, fields []*pb.Field, count int) string 
 		if j < count-1 {
 			query.WriteString(",(")
 		}
+	}
+
+	if len(keys) != 0 {
+		query.WriteString(" ON CONFLICT (")
+		query.WriteString(strings.Join(keys, ","))
+		query.WriteString(") DO NOTHING")
 	}
 
 	return query.String()

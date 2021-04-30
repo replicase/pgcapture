@@ -29,15 +29,16 @@ type PGXSink struct {
 	SourceID  string
 	LogReader io.Reader
 
-	conn    *pgx.Conn
-	raw     *pgconn.PgConn
-	schema  *decode.PGXSchemaLoader
-	log     *logrus.Entry
-	prev    source.Checkpoint
-	inTX    bool
-	skip    map[string]bool
-	inserts insertBatch
-	prevDDL uint32
+	conn       *pgx.Conn
+	raw        *pgconn.PgConn
+	schema     *decode.PGXSchemaLoader
+	log        *logrus.Entry
+	prev       source.Checkpoint
+	consistent bool
+	inTX       bool
+	skip       map[string]bool
+	inserts    insertBatch
+	prevDDL    uint32
 }
 
 type insertBatch struct {
@@ -151,15 +152,16 @@ func (p *PGXSink) Apply(changes chan source.Change) chan source.Checkpoint {
 	return p.BaseSink.apply(changes, func(change source.Change, committed chan source.Checkpoint) (err error) {
 		if !first {
 			p.log.WithFields(logrus.Fields{
-				"MessageLSN":  change.Checkpoint,
+				"MessageLSN":  change.Checkpoint.LSN,
 				"SinkLastLSN": p.prev,
 				"Message":     change.Message.String(),
 			}).Info("applying the first message from source")
 			first = true
 		}
-		if !change.Checkpoint.After(p.prev) {
+		p.consistent = p.consistent || change.Checkpoint.After(p.prev)
+		if !p.consistent {
 			p.log.WithFields(logrus.Fields{
-				"MessageLSN":  change.Checkpoint,
+				"MessageLSN":  change.Checkpoint.LSN,
 				"SinkLastLSN": p.prev,
 				"Message":     change.Message.String(),
 			}).Warn("message dropped due to its lsn smaller than the last lsn of sink")
@@ -183,7 +185,7 @@ func (p *PGXSink) Apply(changes chan source.Change) chan source.Checkpoint {
 			} else {
 				if len(p.skip) != 0 && p.skip[fmt.Sprintf("%s.%s", msg.Change.Schema, msg.Change.Table)] {
 					p.log.WithFields(logrus.Fields{
-						"MessageLSN":  change.Checkpoint,
+						"MessageLSN":  change.Checkpoint.LSN,
 						"SinkLastLSN": p.prev,
 						"Message":     change.Message.String(),
 					}).Warn("message skipped due to previous commands mixed with DML and DDL")
@@ -357,7 +359,12 @@ func (p *PGXSink) flushInsert(ctx context.Context) (err error) {
 		}
 	}
 
-	return p.raw.ExecParams(ctx, sql.InsertQuery(p.inserts.Schema, p.inserts.Table, batch[0], len(batch)), vals, oids, fmts, rets).Read().Err
+	keys, err := p.schema.GetTableKey(p.inserts.Schema, p.inserts.Table)
+	if err != nil {
+		return err
+	}
+
+	return p.raw.ExecParams(ctx, sql.InsertQuery(p.inserts.Schema, p.inserts.Table, keys, batch[0], len(batch)), vals, oids, fmts, rets).Read().Err
 }
 
 func (p *PGXSink) handleInsert(ctx context.Context, m *pb.Change) (err error) {
