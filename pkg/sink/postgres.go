@@ -8,6 +8,7 @@ import (
 	"hash/crc32"
 	"io"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgconn"
@@ -153,7 +154,7 @@ func (p *PGXSink) Apply(changes chan source.Change) chan source.Checkpoint {
 		if !first {
 			p.log.WithFields(logrus.Fields{
 				"MessageLSN":  change.Checkpoint.LSN,
-				"SinkLastLSN": p.prev,
+				"SinkLastLSN": p.prev.LSN,
 				"Message":     change.Message.String(),
 			}).Info("applying the first message from source")
 			first = true
@@ -162,7 +163,7 @@ func (p *PGXSink) Apply(changes chan source.Change) chan source.Checkpoint {
 		if !p.consistent {
 			p.log.WithFields(logrus.Fields{
 				"MessageLSN":  change.Checkpoint.LSN,
-				"SinkLastLSN": p.prev,
+				"SinkLastLSN": p.prev.LSN,
 				"Message":     change.Message.String(),
 			}).Warn("message dropped due to its lsn smaller than the last lsn of sink")
 			return nil
@@ -186,7 +187,7 @@ func (p *PGXSink) Apply(changes chan source.Change) chan source.Checkpoint {
 				if len(p.skip) != 0 && p.skip[fmt.Sprintf("%s.%s", msg.Change.Schema, msg.Change.Table)] {
 					p.log.WithFields(logrus.Fields{
 						"MessageLSN":  change.Checkpoint.LSN,
-						"SinkLastLSN": p.prev,
+						"SinkLastLSN": p.prev.LSN,
 						"Message":     change.Message.String(),
 					}).Warn("message skipped due to previous commands mixed with DML and DDL")
 					return nil
@@ -235,22 +236,25 @@ func (p *PGXSink) handleChange(m *pb.Change) (err error) {
 }
 
 func (p *PGXSink) handleDDL(m *pb.Change) (err error) {
-	command, relations, single, err := p.parseDDL(m.New)
+	command, relations, count, err := p.parseDDL(m.New)
 	if err != nil {
 		return err
+	}
+	if count == 0 {
+		return nil
 	}
 
 	checksum := crc32.ChecksumIEEE([]byte(command))
 	if p.prevDDL != checksum {
 		p.skip = relations
-		err = p.performDDL(single, command)
+		err = p.performDDL(count, command)
 	}
 	p.prevDDL = checksum
 
 	return err
 }
 
-func (p *PGXSink) parseDDL(fields []*pb.Field) (command string, relations map[string]bool, single bool, err error) {
+func (p *PGXSink) parseDDL(fields []*pb.Field) (command string, relations map[string]bool, count int, err error) {
 	for _, field := range fields {
 		switch field.Name {
 		case "query":
@@ -262,21 +266,24 @@ func (p *PGXSink) parseDDL(fields []*pb.Field) (command string, relations map[st
 parse:
 	tree, err := pg_query.Parse(command)
 	if err != nil {
-		return "", nil, false, err
+		return "", nil, 0, err
 	}
 
-	// remove proceeding dml commands, they were already present in previous change messages
-	for i, stmt := range tree.Stmts {
-		if stmt.Stmt.GetInsertStmt() == nil && stmt.Stmt.GetUpdateStmt() == nil && stmt.Stmt.GetDeleteStmt() == nil {
-			command = command[stmt.StmtLocation:]
-			single = i == len(tree.Stmts)-1
-			break
+	var stmts []*pg_query.RawStmt
+	// remove preceding dml commands, they were already present in previous change messages
+	// remove refresh materialized view stmt, otherwise they will block logical replication
+	preceding := true
+	for _, stmt := range tree.Stmts {
+		preceding = preceding && (stmt.Stmt.GetInsertStmt() != nil || stmt.Stmt.GetUpdateStmt() != nil || stmt.Stmt.GetDeleteStmt() != nil)
+		if preceding || stmt.Stmt.GetRefreshMatViewStmt() != nil {
+			continue
 		}
+		stmts = append(stmts, stmt)
 	}
 
 	// record relations appeared in the statement, following change messages should be ignore if duplicated with them
 	relations = make(map[string]bool)
-	for _, stmt := range tree.Stmts {
+	for _, stmt := range stmts {
 		var relation *pg_query.RangeVar
 		switch node := stmt.Stmt.Node.(type) {
 		case *pg_query.Node_InsertStmt:
@@ -302,19 +309,29 @@ parse:
 		}
 	}
 
-	return
+	sb := strings.Builder{}
+	for _, stmt := range stmts {
+		if stmt.StmtLen == 0 {
+			sb.WriteString(command[stmt.StmtLocation:])
+		} else {
+			sb.WriteString(command[stmt.StmtLocation : stmt.StmtLocation+stmt.StmtLen])
+		}
+		sb.WriteString(";")
+	}
+
+	return sb.String(), relations, len(stmts), nil
 }
 
-func (p *PGXSink) performDDL(single bool, ddl string) (err error) {
+func (p *PGXSink) performDDL(count int, ddl string) (err error) {
 	ctx := context.Background()
-	if single {
+	if count == 1 {
 		// if the ddl contains only one command tag, than do not run it into begin/commit block
 		// because command like "CREATE INDEX CONCURRENTLY" can't be run inside transaction
 		if _, err = p.conn.Exec(ctx, "commit"); err != nil {
 			return err
 		}
 	}
-	if _, err = p.conn.Exec(ctx, ddl); err == nil && single {
+	if _, err = p.conn.Exec(ctx, ddl); err == nil && count == 1 {
 		if _, err = p.conn.Exec(ctx, "begin"); err != nil {
 			return err
 		}
