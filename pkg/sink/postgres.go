@@ -31,16 +31,15 @@ type PGXSink struct {
 	SourceID  string
 	LogReader io.Reader
 
-	conn       *pgx.Conn
-	raw        *pgconn.PgConn
-	schema     *decode.PGXSchemaLoader
-	log        *logrus.Entry
-	prev       source.Checkpoint
-	consistent bool
-	inTX       bool
-	skip       map[string]bool
-	inserts    insertBatch
-	prevDDL    uint32
+	conn    *pgx.Conn
+	raw     *pgconn.PgConn
+	schema  *decode.PGXSchemaLoader
+	log     *logrus.Entry
+	prev    source.Checkpoint
+	inTX    bool
+	skip    map[string]bool
+	inserts insertBatch
+	prevDDL uint32
 }
 
 type insertBatch struct {
@@ -160,26 +159,25 @@ func (p *PGXSink) Apply(changes chan source.Change) chan source.Checkpoint {
 			}).Info("applying the first message from source")
 			first = true
 		}
-		p.consistent = p.consistent || change.Checkpoint.After(p.prev)
-		if !p.consistent {
-			p.log.WithFields(logrus.Fields{
-				"MessageLSN":  change.Checkpoint.LSN,
-				"SinkLastLSN": p.prev.LSN,
-				"Message":     change.Message.String(),
-			}).Warn("message dropped due to its lsn smaller than the last lsn of sink")
-			return nil
-		}
 		switch msg := change.Message.Type.(type) {
 		case *pb.Message_Begin:
 			if p.inTX {
-				err = ErrIncompleteTx
-				break
+				p.log.WithFields(logrus.Fields{
+					"MessageLSN": change.Checkpoint.LSN,
+					"MidHex":     hex.EncodeToString(change.Checkpoint.Data),
+				}).Warn("receive incomplete transaction: begin")
+				if err = p.rollback(); err != nil {
+					break
+				}
 			}
 			err = p.handleBegin(msg.Begin)
 			p.inTX = true
 		case *pb.Message_Change:
 			if !p.inTX {
-				err = ErrIncompleteTx
+				p.log.WithFields(logrus.Fields{
+					"MessageLSN": change.Checkpoint.LSN,
+					"MidHex":     hex.EncodeToString(change.Checkpoint.Data),
+				}).Warn("receive incomplete transaction: change")
 				break
 			}
 			if decode.IsDDL(msg.Change) {
@@ -187,9 +185,9 @@ func (p *PGXSink) Apply(changes chan source.Change) chan source.Checkpoint {
 			} else {
 				if len(p.skip) != 0 && p.skip[fmt.Sprintf("%s.%s", msg.Change.Schema, msg.Change.Table)] {
 					p.log.WithFields(logrus.Fields{
-						"MessageLSN":  change.Checkpoint.LSN,
-						"SinkLastLSN": p.prev.LSN,
-						"Message":     change.Message.String(),
+						"MessageLSN": change.Checkpoint.LSN,
+						"MidHex":     hex.EncodeToString(change.Checkpoint.Data),
+						"Message":    change.Message.String(),
 					}).Warn("message skipped due to previous commands mixed with DML and DDL")
 					return nil
 				}
@@ -197,11 +195,14 @@ func (p *PGXSink) Apply(changes chan source.Change) chan source.Checkpoint {
 			}
 		case *pb.Message_Commit:
 			if !p.inTX {
-				err = ErrIncompleteTx
-				break
-			}
-			if err = p.handleCommit(change.Checkpoint, msg.Commit); err != nil {
-				break
+				p.log.WithFields(logrus.Fields{
+					"MessageLSN": change.Checkpoint.LSN,
+					"MidHex":     hex.EncodeToString(change.Checkpoint.Data),
+				}).Warn("receive incomplete transaction: commit")
+			} else {
+				if err = p.handleCommit(change.Checkpoint, msg.Commit); err != nil {
+					break
+				}
 			}
 			committed <- change.Checkpoint
 			p.inTX = false
@@ -211,6 +212,7 @@ func (p *PGXSink) Apply(changes chan source.Change) chan source.Checkpoint {
 		if err != nil {
 			p.log.WithFields(logrus.Fields{
 				"MessageLSN": change.Checkpoint.LSN,
+				"MidHex":     hex.EncodeToString(change.Checkpoint.Data),
 				"Message":    change.Message.String(),
 			}).Errorf("fail to apply message: %v", err)
 		}
@@ -220,6 +222,11 @@ func (p *PGXSink) Apply(changes chan source.Change) chan source.Checkpoint {
 
 func (p *PGXSink) handleBegin(m *pb.Begin) (err error) {
 	_, err = p.conn.Exec(context.Background(), "begin")
+	return
+}
+
+func (p *PGXSink) rollback() (err error) {
+	_, err = p.conn.Exec(context.Background(), "rollback")
 	return
 }
 
@@ -537,9 +544,8 @@ func ScanCheckpointFromLog(f io.Reader) (lsn, ts string, err error) {
 }
 
 var (
-	ErrIncompleteTx = errors.New("receive incomplete transaction")
-	LogLSNRegex     = regexp.MustCompile(`(?:consistent recovery state reached at|redo done at) ([0-9A-F]{2,8}\/[0-9A-F]{2,8})`)
-	LogTxTimeRegex  = regexp.MustCompile(`last completed transaction was at log time (.*)\.?$`)
+	LogLSNRegex    = regexp.MustCompile(`(?:consistent recovery state reached at|redo done at) ([0-9A-F]{2,8}\/[0-9A-F]{2,8})`)
+	LogTxTimeRegex = regexp.MustCompile(`last completed transaction was at log time (.*)\.?$`)
 )
 
 func pgText(t string) pgtype.Text {

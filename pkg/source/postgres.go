@@ -81,7 +81,7 @@ func (p *PGXSource) Capture(cp Checkpoint) (changes chan Change, err error) {
 	p.log.WithFields(logrus.Fields{
 		"SystemID": ident.SystemID,
 		"Timeline": ident.Timeline,
-		"XLogPos":  ident.XLogPos,
+		"XLogPos":  int64(ident.XLogPos),
 		"DBName":   ident.DBName,
 	}).Info("retrieved current info of source database")
 
