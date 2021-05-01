@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/sink"
 	"github.com/rueian/pgcapture/pkg/source"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/types/known/structpb"
 )
@@ -28,6 +30,9 @@ var agent = &cobra.Command{
 	Use:   "agent",
 	Short: "run as a agent accepting remote config",
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
+		logrus.WithFields(logrus.Fields{
+			"AgentListenAddr": AgentListenAddr,
+		}).Info("starting agent")
 		return serveGRPC(&pb.Agent_ServiceDesc, AgentListenAddr, &Agent{})
 	},
 }
@@ -78,6 +83,12 @@ func (a *Agent) pg2pulsar(params *structpb.Struct) (*pb.AgentConfigResponse, err
 	}
 	pgSrc := &source.PGXSource{SetupConnStr: v["PGConnURL"], ReplConnStr: v["PGReplURL"], ReplSlot: trimSlot(v["PulsarTopic"]), CreateSlot: true}
 	pulsarSink := &sink.PulsarSink{PulsarOption: pulsar.ClientOptions{URL: v["PulsarURL"]}, PulsarTopic: v["PulsarTopic"]}
+
+	logrus.WithFields(logrus.Fields{
+		"PulsarURL":   v["PulsarURL"],
+		"PulsarTopic": v["PulsarTopic"],
+	}).Info("start pg2pulsar")
+
 	if err := a.sourceToSink(pgSrc, pulsarSink); err != nil {
 		return nil, err
 	}
@@ -101,6 +112,13 @@ func (a *Agent) pulsar2pg(params *structpb.Struct) (*pb.AgentConfigResponse, err
 		defer pgLog.Close()
 		pgSink.LogReader = pgLog
 	}
+
+	logrus.WithFields(logrus.Fields{
+		"PulsarURL":   v["PulsarURL"],
+		"PulsarTopic": v["PulsarTopic"],
+		"PGLogPath":   v["PGLogPath"],
+	}).Info("start pulsar2pg")
+
 	pulsarSrc := &source.PulsarReaderSource{PulsarOption: pulsar.ClientOptions{URL: v["PulsarURL"]}, PulsarTopic: v["PulsarTopic"]}
 	if err = a.sourceToSink(pulsarSrc, pgSink); err != nil {
 		return nil, err
@@ -126,14 +144,28 @@ func (a *Agent) sourceToSink(src source.Source, sk sink.Sink) (err error) {
 		for cp := range checkpoints {
 			src.Commit(cp)
 		}
-		a.mu.Lock()
-		defer a.mu.Unlock()
-
+	}()
+	go func() {
+		check := func() bool {
+			a.mu.Lock()
+			defer a.mu.Unlock()
+			a.sinkErr = sk.Error()
+			a.sourceErr = src.Error()
+			if a.sinkErr != nil {
+				a.params = nil
+				logrus.Errorf("sink error: %v", a.sinkErr)
+			}
+			if a.sourceErr != nil {
+				a.params = nil
+				logrus.Errorf("source error: %v", a.sourceErr)
+			}
+			return a.sinkErr == nil && a.sourceErr == nil
+		}
+		for check() {
+			time.Sleep(time.Second)
+		}
 		sk.Stop()
 		src.Stop()
-		a.params = nil
-		a.sinkErr = sk.Error()
-		a.sourceErr = src.Error()
 	}()
 
 	a.sinkErr = nil
