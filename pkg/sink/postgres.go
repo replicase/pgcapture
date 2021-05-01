@@ -3,6 +3,7 @@ package sink
 import (
 	"bufio"
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"hash/crc32"
@@ -126,7 +127,7 @@ func (p *PGXSink) findCheckpoint(ctx context.Context) (cp source.Checkpoint, err
 		cp.Data = mid
 		p.log.WithFields(logrus.Fields{
 			"RequiredLSN": cp.LSN,
-			"Mid":         mid,
+			"MidHex":      hex.EncodeToString(mid),
 		}).Info("last checkpoint found")
 	} else if len(ts) != 0 {
 		var pts time.Time

@@ -87,7 +87,7 @@ func (p *PGLogicalDecoder) makePBTuple(rel Relation, src []Field, noNull bool) (
 		}
 		oid, err := p.schema.GetTypeOID(rel.NspName, rel.RelName, rel.Fields[i])
 		if err != nil {
-			p.log.Warnf("field data dropped: %v", err)
+			// TODO: add optional logging, because it will generate a lot of logs when refreshing materialized view
 			continue
 		}
 		switch s.Format {

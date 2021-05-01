@@ -99,7 +99,7 @@ func (p *PulsarSink) Apply(changes chan source.Change) chan source.Checkpoint {
 		if !first {
 			p.log.WithFields(logrus.Fields{
 				"MessageLSN":  change.Checkpoint.LSN,
-				"SinkLastLSN": p.prev,
+				"SinkLastLSN": p.prev.LSN,
 				"Message":     change.Message.String(),
 			}).Info("applying the first message from source")
 			first = true
@@ -109,7 +109,7 @@ func (p *PulsarSink) Apply(changes chan source.Change) chan source.Checkpoint {
 		if !p.consistent {
 			p.log.WithFields(logrus.Fields{
 				"MessageLSN":  change.Checkpoint.LSN,
-				"SinkLastLSN": p.prev,
+				"SinkLastLSN": p.prev.LSN,
 				"Message":     change.Message.String(),
 			}).Warn("message dropped due to its lsn smaller than the last lsn of sink")
 			return nil

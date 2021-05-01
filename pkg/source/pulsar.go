@@ -2,6 +2,7 @@ package source
 
 import (
 	"context"
+	"encoding/hex"
 	"os"
 	"time"
 
@@ -74,8 +75,8 @@ func (p *PulsarReaderSource) Capture(cp Checkpoint) (changes chan Change, err er
 		}).Info("start reading pulsar topic from requested timestamp")
 	} else {
 		p.log.WithFields(logrus.Fields{
-			"RequiredLSN": cp.LSN,
-			"RequiredMID": start.Serialize(),
+			"RequiredLSN":    cp.LSN,
+			"RequiredMIDHex": hex.EncodeToString(start.Serialize()),
 		}).Info("start reading pulsar topic from requested position")
 	}
 
