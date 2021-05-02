@@ -40,6 +40,13 @@ func TestPGXSourceDumper(t *testing.T) {
 
 	conn.Exec(ctx, "INSERT INTO pgcapture.sources (id,commit) VALUES ($1,$2)", "t1", pglogrepl.LSN(0).String())
 
+	if _, err := dumper.LoadDump(0, &pb.DumpInfoResponse{Schema: "any", Table: "any"}); err != ErrMissingTable {
+		t.Fatal(err)
+	}
+	if _, err := dumper.LoadDump(0, &pb.DumpInfoResponse{Schema: "public", Table: "any"}); err != ErrMissingTable {
+		t.Fatal(err)
+	}
+
 	catchup := make(chan struct{})
 	go func() {
 		time.Sleep(time.Millisecond * 50)

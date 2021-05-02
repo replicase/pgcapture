@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgconn"
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v4"
 	"github.com/rueian/pgcapture/pkg/pb"
@@ -67,6 +68,9 @@ func (p *PGXSourceDumper) load(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.
 
 	rows, err := tx.Query(ctx, fmt.Sprintf(DumpQuery, info.Schema, info.Table), info.PageBegin, info.PageEnd)
 	if err != nil {
+		if pge, ok := err.(*pgconn.PgError); ok && pge.Code == "42P01" {
+			return nil, ErrMissingTable
+		}
 		return nil, err
 	}
 

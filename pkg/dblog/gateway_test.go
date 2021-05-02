@@ -150,6 +150,9 @@ func TestGateway_Capture(t *testing.T) {
 						if res == nil {
 							return nil, errors.New("fake")
 						}
+						if len(res) != 0 && res[0].Schema == "ErrMissingTable" {
+							return nil, ErrMissingTable
+						}
 						return res, nil
 					},
 				}, nil
@@ -246,6 +249,16 @@ func TestGateway_Capture(t *testing.T) {
 	}
 	dumpsRes <- nil
 	if reason := <-dumpAcks; reason != "fake" {
+		t.Fatal("unexpected")
+	}
+
+	// if dump ErrMissingTable, ack dump
+	dumps <- dump
+	if req := <-dumpsReq; req.minLSN != 1 || req.info != dump {
+		t.Fatal("unexpected")
+	}
+	dumpsRes <- []*pb.Change{{Schema: "ErrMissingTable"}}
+	if reason := <-dumpAcks; reason != "" {
 		t.Fatal("unexpected")
 	}
 

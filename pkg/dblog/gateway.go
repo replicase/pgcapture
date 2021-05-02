@@ -116,7 +116,7 @@ func (s *Gateway) capture(init *pb.CaptureInit, server pb.DBLogGateway_CaptureSe
 				return nil
 			}
 			dump, err := dumper.LoadDump(lsn, info)
-			if err == nil {
+			if err == nil || err == ErrMissingTable {
 				for _, change := range dump {
 					if filter == nil || filter.MatchString(change.Table) {
 						if err := server.Send(&pb.CaptureMessage{Checkpoint: &pb.Checkpoint{Lsn: 0}, Change: change}); err != nil {
