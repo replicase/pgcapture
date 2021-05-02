@@ -34,9 +34,9 @@ func main() {
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 
-	resolver := map[string]dblog.StaticPGXPulsarURIConfig{
+	resolver := map[string]dblog.StaticAgentPulsarURIConfig{
 		example.SrcDB.DB: {
-			PostgresURL:        example.SinkDB.URL(),
+			AgentURL:           example.AgentAddr2,
 			PulsarURL:          example.PulsarURL,
 			PulsarTopic:        example.SrcDB.DB,
 			PulsarSubscription: example.SrcDB.DB,

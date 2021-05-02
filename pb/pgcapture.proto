@@ -107,6 +107,16 @@ message ScheduleResponse {
 
 service Agent {
   rpc Configure(AgentConfigRequest) returns (AgentConfigResponse) {}
+  rpc Dump(AgentDumpRequest) returns (AgentDumpResponse) {}
+}
+
+message AgentDumpRequest {
+  uint64 min_lsn = 1;
+  DumpInfoResponse info = 2;
+}
+
+message AgentDumpResponse {
+  repeated Change change = 1;
 }
 
 message AgentConfigRequest {

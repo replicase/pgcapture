@@ -4,17 +4,62 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v4"
 	"github.com/rueian/pgcapture/pkg/pb"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type SourceDumper interface {
 	LoadDump(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.Change, error)
 	Stop()
+}
+
+func NewAgentSourceDumper(ctx context.Context, url string) (*AgentSource, error) {
+	conn, err := grpc.DialContext(ctx, url, grpc.WithInsecure())
+	if err != nil {
+		return nil, err
+	}
+	return &AgentSource{
+		conn:   conn,
+		client: pb.NewAgentClient(conn),
+	}, nil
+}
+
+type AgentSource struct {
+	conn   *grpc.ClientConn
+	client pb.AgentClient
+}
+
+func (a *AgentSource) LoadDump(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.Change, error) {
+	resp, err := a.client.Dump(context.Background(), &pb.AgentDumpRequest{
+		MinLsn: minLSN,
+		Info:   info,
+	})
+	if err != nil {
+		if s, ok := status.FromError(err); ok {
+			switch s.Code() {
+			case codes.NotFound:
+				return nil, ErrMissingTable
+			case codes.Unavailable:
+				return nil, ErrLSNMissing
+			case codes.FailedPrecondition:
+				return nil, ErrLSNFallBehind
+			}
+		}
+		return nil, err
+	}
+	return resp.Change, nil
+}
+
+func (a *AgentSource) Stop() {
+	a.conn.Close()
 }
 
 func NewPGXSourceDumper(ctx context.Context, url string) (*PGXSourceDumper, error) {
@@ -27,6 +72,7 @@ func NewPGXSourceDumper(ctx context.Context, url string) (*PGXSourceDumper, erro
 
 type PGXSourceDumper struct {
 	conn *pgx.Conn
+	mu   sync.Mutex
 }
 
 func (p *PGXSourceDumper) LoadDump(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.Change, error) {
@@ -35,7 +81,9 @@ func (p *PGXSourceDumper) LoadDump(minLSN uint64, info *pb.DumpInfoResponse) ([]
 	}
 
 	for {
+		p.mu.Lock()
 		changes, err := p.load(minLSN, info)
+		p.mu.Unlock()
 		if err == ErrLSNFallBehind {
 			time.Sleep(time.Millisecond * 100)
 			continue
@@ -48,7 +96,9 @@ func (p *PGXSourceDumper) LoadDump(minLSN uint64, info *pb.DumpInfoResponse) ([]
 }
 
 func (p *PGXSourceDumper) Stop() {
+	p.mu.Lock()
 	p.conn.Close(context.Background())
+	p.mu.Unlock()
 }
 
 const DumpQuery = `select * from "%s"."%s" where ctid = any(array(select format('(%%s,%%s)', i, j)::tid from generate_series($1::int,$2::int) as gs(i), generate_series(1,(current_setting('block_size')::int-24)/28) as gs2(j)))`

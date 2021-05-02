@@ -27,7 +27,7 @@ var gateway = &cobra.Command{
 	Use:   "gateway",
 	Short: "grpc api for downstream to consume changes and dumps",
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
-		resolverConfig := map[string]dblog.StaticPGXPulsarURIConfig{}
+		resolverConfig := map[string]dblog.StaticAgentPulsarURIConfig{}
 		if err = json.Unmarshal([]byte(ResolverConfig), &resolverConfig); err != nil {
 			return err
 		}
@@ -36,7 +36,7 @@ var gateway = &cobra.Command{
 			return err
 		}
 		gateway := &dblog.Gateway{
-			SourceResolver: dblog.NewStaticPGXPulsarResolver(resolverConfig),
+			SourceResolver: dblog.NewStaticAgentPulsarResolver(resolverConfig),
 			DumpInfoPuller: &dblog.GRPCDumpInfoPuller{Client: pb.NewDBLogControllerClient(controlConn)},
 		}
 		return serveGRPC(&pb.DBLogGateway_ServiceDesc, GatewayListenAddr, gateway)

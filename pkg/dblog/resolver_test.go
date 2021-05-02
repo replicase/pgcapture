@@ -2,12 +2,16 @@ package dblog
 
 import (
 	"context"
+	"net"
 	"testing"
+
+	"github.com/rueian/pgcapture/pkg/pb"
+	"google.golang.org/grpc"
 )
 
 func TestStaticPGXPulsarResolver_ErrURINotFound(t *testing.T) {
 	ctx := context.Background()
-	r := NewStaticPGXPulsarResolver(nil)
+	r := NewStaticAgentPulsarResolver(nil)
 	if _, err := r.Source(ctx, "any"); err != ErrURINotFound {
 		t.Fatal("unexpected")
 	}
@@ -16,14 +20,28 @@ func TestStaticPGXPulsarResolver_ErrURINotFound(t *testing.T) {
 	}
 }
 
-func TestStaticPGXPulsarResolver(t *testing.T) {
+type agent struct {
+	pb.UnimplementedAgentServer
+}
+
+func TestStaticAgentPulsarResolver(t *testing.T) {
 	ctx := context.Background()
-	r := NewStaticPGXPulsarResolver(map[string]StaticPGXPulsarURIConfig{
+
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	server := grpc.NewServer()
+	server.RegisterService(&pb.Agent_ServiceDesc, &agent{})
+	go server.Serve(lis)
+
+	r := NewStaticAgentPulsarResolver(map[string]StaticAgentPulsarURIConfig{
 		URI1: {
 			PulsarURL:          "",
 			PulsarTopic:        "",
 			PulsarSubscription: "",
-			PostgresURL:        "postgres://postgres@127.0.0.1/postgres?sslmode=disable",
+			AgentURL:           lis.Addr().String(),
 		},
 	})
 	source, err := r.Source(ctx, URI1)
@@ -35,4 +53,5 @@ func TestStaticPGXPulsarResolver(t *testing.T) {
 		t.Fatal(err)
 	}
 	dumper.Stop()
+	server.Stop()
 }

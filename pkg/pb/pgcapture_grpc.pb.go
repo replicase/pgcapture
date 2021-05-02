@@ -292,6 +292,7 @@ var DBLogController_ServiceDesc = grpc.ServiceDesc{
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type AgentClient interface {
 	Configure(ctx context.Context, in *AgentConfigRequest, opts ...grpc.CallOption) (*AgentConfigResponse, error)
+	Dump(ctx context.Context, in *AgentDumpRequest, opts ...grpc.CallOption) (*AgentDumpResponse, error)
 }
 
 type agentClient struct {
@@ -311,11 +312,21 @@ func (c *agentClient) Configure(ctx context.Context, in *AgentConfigRequest, opt
 	return out, nil
 }
 
+func (c *agentClient) Dump(ctx context.Context, in *AgentDumpRequest, opts ...grpc.CallOption) (*AgentDumpResponse, error) {
+	out := new(AgentDumpResponse)
+	err := c.cc.Invoke(ctx, "/pgcapture.Agent/Dump", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AgentServer is the server API for Agent service.
 // All implementations must embed UnimplementedAgentServer
 // for forward compatibility
 type AgentServer interface {
 	Configure(context.Context, *AgentConfigRequest) (*AgentConfigResponse, error)
+	Dump(context.Context, *AgentDumpRequest) (*AgentDumpResponse, error)
 	mustEmbedUnimplementedAgentServer()
 }
 
@@ -325,6 +336,9 @@ type UnimplementedAgentServer struct {
 
 func (UnimplementedAgentServer) Configure(context.Context, *AgentConfigRequest) (*AgentConfigResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Configure not implemented")
+}
+func (UnimplementedAgentServer) Dump(context.Context, *AgentDumpRequest) (*AgentDumpResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Dump not implemented")
 }
 func (UnimplementedAgentServer) mustEmbedUnimplementedAgentServer() {}
 
@@ -357,6 +371,24 @@ func _Agent_Configure_Handler(srv interface{}, ctx context.Context, dec func(int
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Agent_Dump_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AgentDumpRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServer).Dump(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/pgcapture.Agent/Dump",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServer).Dump(ctx, req.(*AgentDumpRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Agent_ServiceDesc is the grpc.ServiceDesc for Agent service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -367,6 +399,10 @@ var Agent_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Configure",
 			Handler:    _Agent_Configure_Handler,
+		},
+		{
+			MethodName: "Dump",
+			Handler:    _Agent_Dump_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

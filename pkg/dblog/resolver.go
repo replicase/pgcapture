@@ -13,22 +13,22 @@ type SourceResolver interface {
 	Dumper(ctx context.Context, uri string) (SourceDumper, error)
 }
 
-type StaticPGXPulsarURIConfig struct {
+type StaticAgentPulsarURIConfig struct {
 	PulsarURL          string
 	PulsarTopic        string
 	PulsarSubscription string
-	PostgresURL        string
+	AgentURL           string
 }
 
-func NewStaticPGXPulsarResolver(config map[string]StaticPGXPulsarURIConfig) *StaticPGXPulsarResolver {
-	return &StaticPGXPulsarResolver{config: config}
+func NewStaticAgentPulsarResolver(config map[string]StaticAgentPulsarURIConfig) *StaticAgentPulsarResolver {
+	return &StaticAgentPulsarResolver{config: config}
 }
 
-type StaticPGXPulsarResolver struct {
-	config map[string]StaticPGXPulsarURIConfig
+type StaticAgentPulsarResolver struct {
+	config map[string]StaticAgentPulsarURIConfig
 }
 
-func (r *StaticPGXPulsarResolver) Source(ctx context.Context, uri string) (source.RequeueSource, error) {
+func (r *StaticAgentPulsarResolver) Source(ctx context.Context, uri string) (source.RequeueSource, error) {
 	config, ok := r.config[uri]
 	if !ok {
 		return nil, ErrURINotFound
@@ -40,12 +40,12 @@ func (r *StaticPGXPulsarResolver) Source(ctx context.Context, uri string) (sourc
 	}, nil
 }
 
-func (r *StaticPGXPulsarResolver) Dumper(ctx context.Context, uri string) (SourceDumper, error) {
+func (r *StaticAgentPulsarResolver) Dumper(ctx context.Context, uri string) (SourceDumper, error) {
 	config, ok := r.config[uri]
 	if !ok {
 		return nil, ErrURINotFound
 	}
-	return NewPGXSourceDumper(ctx, config.PostgresURL)
+	return NewAgentSourceDumper(ctx, config.AgentURL)
 }
 
 var ErrURINotFound = errors.New("requested uri not found")

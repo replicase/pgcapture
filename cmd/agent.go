@@ -9,11 +9,14 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar"
+	"github.com/rueian/pgcapture/pkg/dblog"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/sink"
 	"github.com/rueian/pgcapture/pkg/source"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -42,6 +45,7 @@ type Agent struct {
 
 	mu        sync.Mutex
 	params    *structpb.Struct
+	dumper    *dblog.PGXSourceDumper
 	sinkErr   error
 	sourceErr error
 }
@@ -74,6 +78,31 @@ func (a *Agent) Configure(ctx context.Context, request *pb.AgentConfigRequest) (
 			return nil, errors.New("'Command' should be one of [pg2pulsar|pulsar2pg|status]")
 		}
 	}
+}
+
+func (a *Agent) Dump(ctx context.Context, req *pb.AgentDumpRequest) (*pb.AgentDumpResponse, error) {
+	var dumper *dblog.PGXSourceDumper
+	a.mu.Lock()
+	dumper = a.dumper
+	a.mu.Unlock()
+
+	if dumper == nil {
+		return nil, status.Error(codes.Aborted, "dumper is not ready")
+	}
+
+	dump, err := dumper.LoadDump(req.MinLsn, req.Info)
+	if err != nil {
+		switch err {
+		case dblog.ErrMissingTable:
+			return nil, status.Error(codes.NotFound, err.Error())
+		case dblog.ErrLSNMissing:
+			return nil, status.Error(codes.Unavailable, err.Error())
+		case dblog.ErrLSNFallBehind:
+			return nil, status.Error(codes.FailedPrecondition, err.Error())
+		}
+		return nil, err
+	}
+	return &pb.AgentDumpResponse{Change: dump}, nil
 }
 
 func (a *Agent) pg2pulsar(params *structpb.Struct) (*pb.AgentConfigResponse, error) {
@@ -112,6 +141,13 @@ func (a *Agent) pulsar2pg(params *structpb.Struct) (*pb.AgentConfigResponse, err
 		defer pgLog.Close()
 		pgSink.LogReader = pgLog
 	}
+
+	dumper, err := dblog.NewPGXSourceDumper(context.Background(), v["PGConnURL"])
+	if err != nil {
+		return nil, err
+	}
+
+	a.dumper = dumper
 
 	logrus.WithFields(logrus.Fields{
 		"PulsarURL":   v["PulsarURL"],
@@ -158,6 +194,10 @@ func (a *Agent) sourceToSink(src source.Source, sk sink.Sink) (err error) {
 			if a.sourceErr != nil {
 				a.params = nil
 				logrus.Errorf("source error: %v", a.sourceErr)
+			}
+			if a.dumper != nil && (a.sourceErr != nil || a.sinkErr != nil) {
+				a.dumper.Stop()
+				a.dumper = nil
 			}
 			return a.sinkErr == nil && a.sourceErr == nil
 		}
