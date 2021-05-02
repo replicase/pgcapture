@@ -47,7 +47,7 @@ func (c *Consumer) Consume(mh ModelHandlers) error {
 		}
 		c.source.Commit(change.Checkpoint)
 	}
-	return nil
+	return c.source.Error()
 }
 
 func makeModel(ref reflection, fields []*pb.Field) interface{} {
