@@ -2,6 +2,7 @@ import sys
 import grpc
 import asyncio
 
+from decoders import OIDRegistery
 from pgcapture_pb2 import CaptureInit, CaptureAck, CaptureRequest
 from pgcapture_pb2_grpc import DBLogGatewayStub
 from google.protobuf.struct_pb2 import Struct
@@ -24,9 +25,33 @@ class PGCapture:
             async for msg in stream:
                 ack = CaptureAck(checkpoint=msg.checkpoint)
                 try:
-                    handler(msg)
+                    handler({
+                        'checkpoint': msg.checkpoint,
+                        'change': {
+                            'op': msg.change.op,
+                            'schema': msg.change.schema,
+                            'table': msg.change.table,
+                            'new': decode(msg.change.new),
+                            'old': decode(msg.change.old),
+                        }
+                    })
                 except Exception as e:
                     ack.requeue_reason=str(e)
-                    print(ack.requeue_reason, file=sys.stderr)
+                    print("reqeue failed {}.{} record with error={}".format(msg.change.schema, msg.change.table, str(e)), file=sys.stderr)
 
                 await stream.write(CaptureRequest(ack=ack))
+
+
+def decode(fields):
+    decoded = []
+    for field in fields:
+        if field.HasField('binary'):
+            decode = OIDRegistery[field.oid]
+            if not decode:
+                print("unsupported oid '{}' on field '{}'".format(field.oid, field.name), file=sys.stderr)
+                continue
+            decoded.append({'name': field.name, 'oid': field.oid, 'value': decode(field.binary)})
+        elif field.HasField("text"):
+            decoded.append({'name': field.name, 'oid': field.oid, 'value': field.text})
+
+    return decoded
