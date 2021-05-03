@@ -25,6 +25,11 @@ func (s *Gateway) Capture(server pb.DBLogGateway_CaptureServer) error {
 		return ErrCaptureInitMessageRequired
 	}
 
+	filter, err := tableRegexFromInit(init)
+	if err != nil {
+		return err
+	}
+
 	src, err := s.SourceResolver.Source(server.Context(), init.Uri)
 	if err != nil {
 		return err
@@ -35,7 +40,7 @@ func (s *Gateway) Capture(server pb.DBLogGateway_CaptureServer) error {
 	}
 	defer dumper.Stop()
 
-	return s.capture(init, server, src, dumper)
+	return s.capture(init, filter, server, src, dumper)
 }
 
 func (s *Gateway) acknowledge(server pb.DBLogGateway_CaptureServer, src source.RequeueSource) chan error {
@@ -71,7 +76,7 @@ func (s *Gateway) acknowledge(server pb.DBLogGateway_CaptureServer, src source.R
 	return done
 }
 
-func (s *Gateway) capture(init *pb.CaptureInit, server pb.DBLogGateway_CaptureServer, src source.RequeueSource, dumper SourceDumper) error {
+func (s *Gateway) capture(init *pb.CaptureInit, filter *regexp.Regexp, server pb.DBLogGateway_CaptureServer, src source.RequeueSource, dumper SourceDumper) error {
 	changes, err := src.Capture(source.Checkpoint{})
 	if err != nil {
 		return err
@@ -83,11 +88,6 @@ func (s *Gateway) capture(init *pb.CaptureInit, server pb.DBLogGateway_CaptureSe
 	done := s.acknowledge(server, src)
 	dumps := s.DumpInfoPuller.Pull(server.Context(), init.Uri, acks)
 	lsn := uint64(0)
-
-	filter, err := tableRegexFromInit(init)
-	if err != nil {
-		return err
-	}
 
 	for {
 		select {
