@@ -2,7 +2,7 @@
 """Client and server classes corresponding to protobuf-defined services."""
 import grpc
 
-import pgcapture_pb2 as pgcapture__pb2
+from pb import pgcapture_pb2 as pb_dot_pgcapture__pb2
 
 
 class DBLogGatewayStub(object):
@@ -16,8 +16,8 @@ class DBLogGatewayStub(object):
         """
         self.Capture = channel.stream_stream(
                 '/pgcapture.DBLogGateway/Capture',
-                request_serializer=pgcapture__pb2.CaptureRequest.SerializeToString,
-                response_deserializer=pgcapture__pb2.CaptureMessage.FromString,
+                request_serializer=pb_dot_pgcapture__pb2.CaptureRequest.SerializeToString,
+                response_deserializer=pb_dot_pgcapture__pb2.CaptureMessage.FromString,
                 )
 
 
@@ -35,8 +35,8 @@ def add_DBLogGatewayServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'Capture': grpc.stream_stream_rpc_method_handler(
                     servicer.Capture,
-                    request_deserializer=pgcapture__pb2.CaptureRequest.FromString,
-                    response_serializer=pgcapture__pb2.CaptureMessage.SerializeToString,
+                    request_deserializer=pb_dot_pgcapture__pb2.CaptureRequest.FromString,
+                    response_serializer=pb_dot_pgcapture__pb2.CaptureMessage.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -60,8 +60,8 @@ class DBLogGateway(object):
             timeout=None,
             metadata=None):
         return grpc.experimental.stream_stream(request_iterator, target, '/pgcapture.DBLogGateway/Capture',
-            pgcapture__pb2.CaptureRequest.SerializeToString,
-            pgcapture__pb2.CaptureMessage.FromString,
+            pb_dot_pgcapture__pb2.CaptureRequest.SerializeToString,
+            pb_dot_pgcapture__pb2.CaptureMessage.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 
@@ -77,13 +77,13 @@ class DBLogControllerStub(object):
         """
         self.PullDumpInfo = channel.stream_stream(
                 '/pgcapture.DBLogController/PullDumpInfo',
-                request_serializer=pgcapture__pb2.DumpInfoRequest.SerializeToString,
-                response_deserializer=pgcapture__pb2.DumpInfoResponse.FromString,
+                request_serializer=pb_dot_pgcapture__pb2.DumpInfoRequest.SerializeToString,
+                response_deserializer=pb_dot_pgcapture__pb2.DumpInfoResponse.FromString,
                 )
         self.Schedule = channel.unary_unary(
                 '/pgcapture.DBLogController/Schedule',
-                request_serializer=pgcapture__pb2.ScheduleRequest.SerializeToString,
-                response_deserializer=pgcapture__pb2.ScheduleResponse.FromString,
+                request_serializer=pb_dot_pgcapture__pb2.ScheduleRequest.SerializeToString,
+                response_deserializer=pb_dot_pgcapture__pb2.ScheduleResponse.FromString,
                 )
 
 
@@ -107,13 +107,13 @@ def add_DBLogControllerServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'PullDumpInfo': grpc.stream_stream_rpc_method_handler(
                     servicer.PullDumpInfo,
-                    request_deserializer=pgcapture__pb2.DumpInfoRequest.FromString,
-                    response_serializer=pgcapture__pb2.DumpInfoResponse.SerializeToString,
+                    request_deserializer=pb_dot_pgcapture__pb2.DumpInfoRequest.FromString,
+                    response_serializer=pb_dot_pgcapture__pb2.DumpInfoResponse.SerializeToString,
             ),
             'Schedule': grpc.unary_unary_rpc_method_handler(
                     servicer.Schedule,
-                    request_deserializer=pgcapture__pb2.ScheduleRequest.FromString,
-                    response_serializer=pgcapture__pb2.ScheduleResponse.SerializeToString,
+                    request_deserializer=pb_dot_pgcapture__pb2.ScheduleRequest.FromString,
+                    response_serializer=pb_dot_pgcapture__pb2.ScheduleResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -137,8 +137,8 @@ class DBLogController(object):
             timeout=None,
             metadata=None):
         return grpc.experimental.stream_stream(request_iterator, target, '/pgcapture.DBLogController/PullDumpInfo',
-            pgcapture__pb2.DumpInfoRequest.SerializeToString,
-            pgcapture__pb2.DumpInfoResponse.FromString,
+            pb_dot_pgcapture__pb2.DumpInfoRequest.SerializeToString,
+            pb_dot_pgcapture__pb2.DumpInfoResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 
@@ -154,8 +154,8 @@ class DBLogController(object):
             timeout=None,
             metadata=None):
         return grpc.experimental.unary_unary(request, target, '/pgcapture.DBLogController/Schedule',
-            pgcapture__pb2.ScheduleRequest.SerializeToString,
-            pgcapture__pb2.ScheduleResponse.FromString,
+            pb_dot_pgcapture__pb2.ScheduleRequest.SerializeToString,
+            pb_dot_pgcapture__pb2.ScheduleResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 
@@ -171,13 +171,13 @@ class AgentStub(object):
         """
         self.Configure = channel.unary_unary(
                 '/pgcapture.Agent/Configure',
-                request_serializer=pgcapture__pb2.AgentConfigRequest.SerializeToString,
-                response_deserializer=pgcapture__pb2.AgentConfigResponse.FromString,
+                request_serializer=pb_dot_pgcapture__pb2.AgentConfigRequest.SerializeToString,
+                response_deserializer=pb_dot_pgcapture__pb2.AgentConfigResponse.FromString,
                 )
         self.Dump = channel.unary_unary(
                 '/pgcapture.Agent/Dump',
-                request_serializer=pgcapture__pb2.AgentDumpRequest.SerializeToString,
-                response_deserializer=pgcapture__pb2.AgentDumpResponse.FromString,
+                request_serializer=pb_dot_pgcapture__pb2.AgentDumpRequest.SerializeToString,
+                response_deserializer=pb_dot_pgcapture__pb2.AgentDumpResponse.FromString,
                 )
 
 
@@ -201,13 +201,13 @@ def add_AgentServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'Configure': grpc.unary_unary_rpc_method_handler(
                     servicer.Configure,
-                    request_deserializer=pgcapture__pb2.AgentConfigRequest.FromString,
-                    response_serializer=pgcapture__pb2.AgentConfigResponse.SerializeToString,
+                    request_deserializer=pb_dot_pgcapture__pb2.AgentConfigRequest.FromString,
+                    response_serializer=pb_dot_pgcapture__pb2.AgentConfigResponse.SerializeToString,
             ),
             'Dump': grpc.unary_unary_rpc_method_handler(
                     servicer.Dump,
-                    request_deserializer=pgcapture__pb2.AgentDumpRequest.FromString,
-                    response_serializer=pgcapture__pb2.AgentDumpResponse.SerializeToString,
+                    request_deserializer=pb_dot_pgcapture__pb2.AgentDumpRequest.FromString,
+                    response_serializer=pb_dot_pgcapture__pb2.AgentDumpResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -231,8 +231,8 @@ class Agent(object):
             timeout=None,
             metadata=None):
         return grpc.experimental.unary_unary(request, target, '/pgcapture.Agent/Configure',
-            pgcapture__pb2.AgentConfigRequest.SerializeToString,
-            pgcapture__pb2.AgentConfigResponse.FromString,
+            pb_dot_pgcapture__pb2.AgentConfigRequest.SerializeToString,
+            pb_dot_pgcapture__pb2.AgentConfigResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 
@@ -248,7 +248,7 @@ class Agent(object):
             timeout=None,
             metadata=None):
         return grpc.experimental.unary_unary(request, target, '/pgcapture.Agent/Dump',
-            pgcapture__pb2.AgentDumpRequest.SerializeToString,
-            pgcapture__pb2.AgentDumpResponse.FromString,
+            pb_dot_pgcapture__pb2.AgentDumpRequest.SerializeToString,
+            pb_dot_pgcapture__pb2.AgentDumpResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)

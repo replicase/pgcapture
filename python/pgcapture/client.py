@@ -2,12 +2,12 @@ import sys
 import grpc
 import asyncio
 
-from decoders import OIDRegistery
-from pgcapture_pb2 import CaptureInit, CaptureAck, CaptureRequest
-from pgcapture_pb2_grpc import DBLogGatewayStub
+from . decoders import OIDRegistery
+from pb.pgcapture_pb2 import CaptureInit, CaptureAck, CaptureRequest
+from pb.pgcapture_pb2_grpc import DBLogGatewayStub
 from google.protobuf.struct_pb2 import Struct
 
-class PGCapture:
+class PGCaptureClient:
 
     def __init__(self, grpc_addr, uri, **kwargs):
         params = Struct()
@@ -37,7 +37,7 @@ class PGCapture:
                     })
                 except Exception as e:
                     ack.requeue_reason=str(e)
-                    print("reqeue failed {}.{} record with error={}".format(msg.change.schema, msg.change.table, str(e)), file=sys.stderr)
+                    print("requeue failed {}.{} record with error={}".format(msg.change.schema, msg.change.table, str(e)), file=sys.stderr)
 
                 await stream.write(CaptureRequest(ack=ack))
 
