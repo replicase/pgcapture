@@ -91,6 +91,8 @@ func (s *Gateway) capture(init *pb.CaptureInit, filter *regexp.Regexp, server pb
 
 	for {
 		select {
+		case <-server.Context().Done():
+			return server.Context().Err()
 		case msg, more := <-changes:
 			if !more {
 				return nil
