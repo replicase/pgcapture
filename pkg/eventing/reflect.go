@@ -11,7 +11,7 @@ import (
 )
 
 type Model interface {
-	Name() (namespace, table string)
+	TableName() (schema, table string)
 }
 
 type Change struct {

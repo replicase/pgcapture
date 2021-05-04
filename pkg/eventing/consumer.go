@@ -20,7 +20,7 @@ func (c *Consumer) Consume(mh ModelHandlers) error {
 			return err
 		}
 		ref.hdl = h
-		refs[ModelName(m.Name())] = ref
+		refs[ModelName(m.TableName())] = ref
 	}
 
 	changes, err := c.source.Capture(source.Checkpoint{})

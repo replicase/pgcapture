@@ -18,7 +18,7 @@ type T1 struct {
 	V  pgtype.Int4 `pg:"v"`
 }
 
-func (t *T1) Name() (namespace, table string) {
+func (t *T1) TableName() (schema, table string) {
 	return "public", example.TestTable
 }
 
