@@ -53,5 +53,7 @@ def decode(fields):
             decoded.append({'name': field.name, 'oid': field.oid, 'value': decode(field.binary)})
         elif field.HasField("text"):
             decoded.append({'name': field.name, 'oid': field.oid, 'value': field.text})
+        else:
+            decoded.append({'name': field.name, 'oid': field.oid, 'value': None})
 
     return decoded
