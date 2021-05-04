@@ -169,6 +169,7 @@ func (s *MemoryScheduler) Ack(uri string, client string, requeue string) {
 	if dump != nil && requeue != "" {
 		s.pendingMu.Lock()
 		if pending, ok := s.pending[uri]; ok {
+			s.log.WithFields(logrus.Fields{"URI": uri, "Reason": requeue, "Dump": dump.String()}).Error("requeue")
 			pending.Push(dump)
 		}
 		s.pendingMu.Unlock()

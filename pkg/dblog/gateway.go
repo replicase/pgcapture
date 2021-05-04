@@ -6,6 +6,7 @@ import (
 
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/source"
+	"github.com/sirupsen/logrus"
 )
 
 type Gateway struct {
@@ -88,6 +89,7 @@ func (s *Gateway) capture(init *pb.CaptureInit, filter *regexp.Regexp, server pb
 	done := s.acknowledge(server, src)
 	dumps := s.DumpInfoPuller.Pull(server.Context(), init.Uri, acks)
 	lsn := uint64(0)
+	logger := logrus.WithFields(logrus.Fields{"URI": init.Uri, "From": "Gateway"})
 
 	for {
 		select {
@@ -117,19 +119,21 @@ func (s *Gateway) capture(init *pb.CaptureInit, filter *regexp.Regexp, server pb
 			if !more {
 				return nil
 			}
-			dump, err := dumper.LoadDump(lsn, info)
-			if err == nil || err == ErrMissingTable {
+			var requeue string
+			if filter == nil || filter.MatchString(info.Table) {
+				logger.WithFields(logrus.Fields{"Dump": info.String()}).Info("loading dump")
+				dump, err := dumper.LoadDump(lsn, info)
 				for _, change := range dump {
-					if filter == nil || filter.MatchString(change.Table) {
-						if err := server.Send(&pb.CaptureMessage{Checkpoint: &pb.Checkpoint{Lsn: 0}, Change: change}); err != nil {
-							return err
-						}
+					if err = server.Send(&pb.CaptureMessage{Checkpoint: &pb.Checkpoint{Lsn: 0}, Change: change}); err != nil {
+						acks <- err.Error()
+						return err
 					}
 				}
-				acks <- ""
-			} else {
-				acks <- err.Error()
+				if err != nil && err != ErrMissingTable {
+					requeue = err.Error()
+				}
 			}
+			acks <- requeue
 		case err := <-done:
 			return err
 		}
