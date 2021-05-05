@@ -1,21 +1,14 @@
-package eventing
+package pgcapture
 
 import (
 	"context"
-	"google.golang.org/grpc"
 	"sync/atomic"
 
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/source"
 )
 
-func NewDBLogConsumer(ctx context.Context, conn *grpc.ClientConn, init *pb.CaptureInit) *Consumer {
-	c := &DBLogGRPCConsumer{client: pb.NewDBLogGatewayClient(conn), init: init}
-	c.ctx, c.cancel = context.WithCancel(ctx)
-	return &Consumer{source: c}
-}
-
-type DBLogGRPCConsumer struct {
+type DBLogGatewayConsumer struct {
 	client pb.DBLogGatewayClient
 	init   *pb.CaptureInit
 	state  int64
@@ -25,7 +18,7 @@ type DBLogGRPCConsumer struct {
 	err    atomic.Value
 }
 
-func (c *DBLogGRPCConsumer) Capture(cp source.Checkpoint) (changes chan source.Change, err error) {
+func (c *DBLogGatewayConsumer) Capture(cp source.Checkpoint) (changes chan source.Change, err error) {
 	stream, err := c.client.Capture(c.ctx)
 	if err != nil {
 		c.cancel()
@@ -64,7 +57,7 @@ func (c *DBLogGRPCConsumer) Capture(cp source.Checkpoint) (changes chan source.C
 	return changes, nil
 }
 
-func (c *DBLogGRPCConsumer) Commit(cp source.Checkpoint) {
+func (c *DBLogGatewayConsumer) Commit(cp source.Checkpoint) {
 	if atomic.LoadInt64(&c.state) == 1 {
 		if err := c.stream.Send(&pb.CaptureRequest{Type: &pb.CaptureRequest_Ack{Ack: &pb.CaptureAck{Checkpoint: &pb.Checkpoint{
 			Lsn:  cp.LSN,
@@ -77,7 +70,7 @@ func (c *DBLogGRPCConsumer) Commit(cp source.Checkpoint) {
 	}
 }
 
-func (c *DBLogGRPCConsumer) Requeue(cp source.Checkpoint, reason string) {
+func (c *DBLogGatewayConsumer) Requeue(cp source.Checkpoint, reason string) {
 	if atomic.LoadInt64(&c.state) == 1 {
 		if err := c.stream.Send(&pb.CaptureRequest{Type: &pb.CaptureRequest_Ack{Ack: &pb.CaptureAck{Checkpoint: &pb.Checkpoint{
 			Lsn:  cp.LSN,
@@ -90,14 +83,14 @@ func (c *DBLogGRPCConsumer) Requeue(cp source.Checkpoint, reason string) {
 	}
 }
 
-func (c *DBLogGRPCConsumer) Error() error {
+func (c *DBLogGatewayConsumer) Error() error {
 	if err, ok := c.err.Load().(error); ok {
 		return err
 	}
 	return nil
 }
 
-func (c *DBLogGRPCConsumer) Stop() error {
+func (c *DBLogGatewayConsumer) Stop() error {
 	c.cancel()
 	return c.Error()
 }

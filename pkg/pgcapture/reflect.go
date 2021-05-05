@@ -1,4 +1,4 @@
-package eventing
+package pgcapture
 
 import (
 	"errors"

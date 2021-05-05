@@ -7,8 +7,8 @@ import (
 	"github.com/jackc/pgtype"
 	"github.com/rueian/pgcapture/example"
 	"github.com/rueian/pgcapture/pkg/dblog"
-	"github.com/rueian/pgcapture/pkg/eventing"
 	"github.com/rueian/pgcapture/pkg/pb"
+	"github.com/rueian/pgcapture/pkg/pgcapture"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/structpb"
 )
@@ -36,14 +36,14 @@ func main() {
 		panic(err)
 	}
 
-	consumer := eventing.NewDBLogConsumer(context.Background(), conn, &pb.CaptureInit{
+	consumer := pgcapture.NewConsumer(context.Background(), conn, &pb.CaptureInit{
 		Uri:        example.SrcDB.DB,
 		Parameters: parameters,
 	})
 	defer consumer.Stop()
 
-	err = consumer.Consume(map[eventing.Model]eventing.ModelHandlerFunc{
-		&T1{}: func(change eventing.Change) error {
+	err = consumer.Consume(map[pgcapture.Model]pgcapture.ModelHandlerFunc{
+		&T1{}: func(change pgcapture.Change) error {
 			fmt.Println(change.New)
 			return nil
 		},

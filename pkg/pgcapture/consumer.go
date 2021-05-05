@@ -1,6 +1,8 @@
-package eventing
+package pgcapture
 
 import (
+	"context"
+	"google.golang.org/grpc"
 	"reflect"
 
 	"github.com/jackc/pgtype"
@@ -8,8 +10,14 @@ import (
 	"github.com/rueian/pgcapture/pkg/source"
 )
 
+func NewConsumer(ctx context.Context, conn *grpc.ClientConn, init *pb.CaptureInit) *Consumer {
+	c := &DBLogGatewayConsumer{client: pb.NewDBLogGatewayClient(conn), init: init}
+	c.ctx, c.cancel = context.WithCancel(ctx)
+	return &Consumer{Source: c}
+}
+
 type Consumer struct {
-	source source.RequeueSource
+	Source source.RequeueSource
 }
 
 func (c *Consumer) Consume(mh ModelHandlers) error {
@@ -23,7 +31,7 @@ func (c *Consumer) Consume(mh ModelHandlers) error {
 		refs[ModelName(m.TableName())] = ref
 	}
 
-	changes, err := c.source.Capture(source.Checkpoint{})
+	changes, err := c.Source.Capture(source.Checkpoint{})
 	if err != nil {
 		return err
 	}
@@ -41,13 +49,13 @@ func (c *Consumer) Consume(mh ModelHandlers) error {
 				New: makeModel(ref, m.Change.New),
 				Old: makeModel(ref, m.Change.Old),
 			}); err != nil {
-				c.source.Requeue(change.Checkpoint, err.Error())
+				c.Source.Requeue(change.Checkpoint, err.Error())
 				continue
 			}
 		}
-		c.source.Commit(change.Checkpoint)
+		c.Source.Commit(change.Checkpoint)
 	}
-	return c.source.Error()
+	return c.Source.Error()
 }
 
 func makeModel(ref reflection, fields []*pb.Field) interface{} {
@@ -77,7 +85,7 @@ func makeModel(ref reflection, fields []*pb.Field) interface{} {
 }
 
 func (c *Consumer) Stop() {
-	c.source.Stop()
+	c.Source.Stop()
 }
 
 var ci = pgtype.NewConnInfo()
