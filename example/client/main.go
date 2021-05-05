@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"time"
 
 	"github.com/jackc/pgtype"
 	"github.com/rueian/pgcapture/example"
@@ -19,6 +21,10 @@ func (t *T1) TableName() (schema, table string) {
 	return "public", example.TestTable
 }
 
+func (t *T1) DebounceKey() string {
+	return strconv.Itoa(int(t.ID.Int))
+}
+
 func main() {
 	conn, err := grpc.Dial(example.GatewayAddr, grpc.WithInsecure())
 	if err != nil {
@@ -27,8 +33,9 @@ func main() {
 	defer conn.Close()
 
 	consumer := pgcapture.NewConsumer(context.Background(), conn, pgcapture.ConsumerOption{
-		URI:        example.SrcDB.DB,
-		TableRegex: example.TestTable,
+		URI:              example.SrcDB.DB,
+		TableRegex:       example.TestTable,
+		DebounceInterval: time.Second,
 	})
 	defer consumer.Stop()
 

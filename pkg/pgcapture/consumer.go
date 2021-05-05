@@ -3,6 +3,7 @@ package pgcapture
 import (
 	"context"
 	"reflect"
+	"time"
 
 	"github.com/jackc/pgtype"
 	"github.com/rueian/pgcapture/pkg/pb"
@@ -23,19 +24,38 @@ func NewConsumer(ctx context.Context, conn *grpc.ClientConn, option ConsumerOpti
 		Parameters: parameters,
 	}}
 	c.ctx, c.cancel = context.WithCancel(ctx)
-	return &Consumer{Source: c}
+
+	if option.DebounceInterval > 0 {
+		return &Consumer{
+			Source: c,
+			Bouncer: &DebounceHandler{
+				Interval: option.DebounceInterval,
+				source:   c,
+			},
+			ctx: c.ctx,
+		}
+	}
+
+	return &Consumer{Source: c, Bouncer: &NoBounceHandler{source: c}, ctx: c.ctx}
 }
 
 type ConsumerOption struct {
-	URI        string
-	TableRegex string
+	URI              string
+	TableRegex       string
+	DebounceInterval time.Duration
 }
 
 type Consumer struct {
-	Source source.RequeueSource
+	Source  source.RequeueSource
+	Bouncer BounceHandler
+	ctx     context.Context
 }
 
 func (c *Consumer) Consume(mh ModelHandlers) error {
+	if err := c.Bouncer.Initialize(c.ctx, mh); err != nil {
+		return err
+	}
+
 	refs := make(map[string]reflection, len(mh))
 	for m, h := range mh {
 		ref, err := reflectModel(m)
@@ -56,19 +76,18 @@ func (c *Consumer) Consume(mh ModelHandlers) error {
 		case *pb.Message_Change:
 			ref, ok := refs[ModelName(m.Change.Schema, m.Change.Table)]
 			if !ok {
+				c.Source.Commit(change.Checkpoint)
 				break
 			}
-			if err := ref.hdl(Change{
+			c.Bouncer.Handle(ref.hdl, change.Checkpoint, Change{
 				Op:  m.Change.Op,
 				LSN: change.Checkpoint.LSN,
 				New: makeModel(ref, m.Change.New),
 				Old: makeModel(ref, m.Change.Old),
-			}); err != nil {
-				c.Source.Requeue(change.Checkpoint, err.Error())
-				continue
-			}
+			})
+		default:
+			c.Source.Commit(change.Checkpoint)
 		}
-		c.Source.Commit(change.Checkpoint)
 	}
 	return c.Source.Error()
 }
@@ -81,13 +100,14 @@ func makeModel(ref reflection, fields []*pb.Field) interface{} {
 	val := ptr.Elem()
 	var err error
 	for _, f := range fields {
+		if f.Value == nil {
+			continue
+		}
 		i, ok := ref.idx[f.Name]
 		if !ok {
 			continue
 		}
-		if f.Value == nil {
-			// do nothing
-		} else if value, ok := f.Value.(*pb.Field_Binary); ok {
+		if value, ok := f.Value.(*pb.Field_Binary); ok {
 			err = val.Field(i).Addr().Interface().(pgtype.BinaryDecoder).DecodeBinary(ci, value.Binary)
 		} else {
 			err = val.Field(i).Addr().Interface().(pgtype.TextDecoder).DecodeText(ci, []byte(f.GetText()))
