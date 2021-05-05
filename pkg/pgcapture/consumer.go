@@ -2,18 +2,33 @@ package pgcapture
 
 import (
 	"context"
-	"google.golang.org/grpc"
 	"reflect"
 
 	"github.com/jackc/pgtype"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/source"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
-func NewConsumer(ctx context.Context, conn *grpc.ClientConn, init *pb.CaptureInit) *Consumer {
-	c := &DBLogGatewayConsumer{client: pb.NewDBLogGatewayClient(conn), init: init}
+const TableRegexOption = "TableRegex"
+
+func NewConsumer(ctx context.Context, conn *grpc.ClientConn, option ConsumerOption) *Consumer {
+	parameters, _ := structpb.NewStruct(map[string]interface{}{})
+	if option.TableRegex != "" {
+		parameters.Fields[TableRegexOption] = structpb.NewStringValue(option.TableRegex)
+	}
+	c := &DBLogGatewayConsumer{client: pb.NewDBLogGatewayClient(conn), init: &pb.CaptureInit{
+		Uri:        option.URI,
+		Parameters: parameters,
+	}}
 	c.ctx, c.cancel = context.WithCancel(ctx)
 	return &Consumer{Source: c}
+}
+
+type ConsumerOption struct {
+	URI        string
+	TableRegex string
 }
 
 type Consumer struct {

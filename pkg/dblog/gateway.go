@@ -5,6 +5,7 @@ import (
 	"regexp"
 
 	"github.com/rueian/pgcapture/pkg/pb"
+	"github.com/rueian/pgcapture/pkg/pgcapture"
 	"github.com/rueian/pgcapture/pkg/source"
 	"github.com/sirupsen/logrus"
 )
@@ -140,13 +141,11 @@ func (s *Gateway) capture(init *pb.CaptureInit, filter *regexp.Regexp, server pb
 	}
 }
 
-const TableRegexOption = "TableRegex"
-
 func tableRegexFromInit(init *pb.CaptureInit) (*regexp.Regexp, error) {
 	if init.Parameters == nil || init.Parameters.Fields == nil {
 		return nil, nil
 	}
-	if regex, ok := init.Parameters.Fields[TableRegexOption]; ok {
+	if regex, ok := init.Parameters.Fields[pgcapture.TableRegexOption]; ok {
 		return regexp.Compile(regex.GetStringValue())
 	}
 	return nil, nil

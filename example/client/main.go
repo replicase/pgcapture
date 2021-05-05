@@ -6,11 +6,8 @@ import (
 
 	"github.com/jackc/pgtype"
 	"github.com/rueian/pgcapture/example"
-	"github.com/rueian/pgcapture/pkg/dblog"
-	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/pgcapture"
 	"google.golang.org/grpc"
-	"google.golang.org/protobuf/types/known/structpb"
 )
 
 type T1 struct {
@@ -29,16 +26,9 @@ func main() {
 	}
 	defer conn.Close()
 
-	parameters, err := structpb.NewStruct(map[string]interface{}{
-		dblog.TableRegexOption: example.TestTable,
-	})
-	if err != nil {
-		panic(err)
-	}
-
-	consumer := pgcapture.NewConsumer(context.Background(), conn, &pb.CaptureInit{
-		Uri:        example.SrcDB.DB,
-		Parameters: parameters,
+	consumer := pgcapture.NewConsumer(context.Background(), conn, pgcapture.ConsumerOption{
+		URI:        example.SrcDB.DB,
+		TableRegex: example.TestTable,
 	})
 	defer consumer.Stop()
 
