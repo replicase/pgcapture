@@ -105,6 +105,19 @@ func (a *Agent) Dump(ctx context.Context, req *pb.AgentDumpRequest) (*pb.AgentDu
 	return &pb.AgentDumpResponse{Change: dump}, nil
 }
 
+func (a *Agent) StreamDump(req *pb.AgentDumpRequest, server pb.Agent_StreamDumpServer) error {
+	resp, err := a.Dump(server.Context(), req)
+	if err != nil {
+		return err
+	}
+	for _, change := range resp.Change {
+		if err = server.Send(change); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (a *Agent) pg2pulsar(params *structpb.Struct) (*pb.AgentConfigResponse, error) {
 	v, err := extract(params, "PGConnURL", "PGReplURL", "PulsarURL", "PulsarTopic")
 	if err != nil {

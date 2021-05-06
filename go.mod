@@ -6,7 +6,7 @@ replace github.com/pganalyze/pg_query_go/v2 v2.0.2 => github.com/rueian/pg_query
 
 require (
 	github.com/apache/pulsar-client-go v0.4.1-0.20210421002016-eebdab861ac6
-	github.com/golang/protobuf v1.5.2
+	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/jackc/pgconn v1.8.1
 	github.com/jackc/pglogrepl v0.0.0-20210109153808-a78a685a0bff
 	github.com/jackc/pgproto3/v2 v2.0.7

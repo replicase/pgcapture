@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"sync"
 	"time"
 
@@ -37,8 +38,8 @@ type AgentSource struct {
 	client pb.AgentClient
 }
 
-func (a *AgentSource) LoadDump(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.Change, error) {
-	resp, err := a.client.Dump(context.Background(), &pb.AgentDumpRequest{
+func (a *AgentSource) LoadDump(minLSN uint64, info *pb.DumpInfoResponse) (changes []*pb.Change, err error) {
+	stream, err := a.client.StreamDump(context.Background(), &pb.AgentDumpRequest{
 		MinLsn: minLSN,
 		Info:   info,
 	})
@@ -55,7 +56,18 @@ func (a *AgentSource) LoadDump(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.
 		}
 		return nil, err
 	}
-	return resp.Change, nil
+	for {
+		change, err := stream.Recv()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil, err
+		}
+		changes = append(changes, change)
+	}
+	stream.CloseSend()
+	return changes, nil
 }
 
 func (a *AgentSource) Stop() {

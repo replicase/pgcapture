@@ -179,6 +179,11 @@ class AgentStub(object):
                 request_serializer=pb_dot_pgcapture__pb2.AgentDumpRequest.SerializeToString,
                 response_deserializer=pb_dot_pgcapture__pb2.AgentDumpResponse.FromString,
                 )
+        self.StreamDump = channel.unary_stream(
+                '/pgcapture.Agent/StreamDump',
+                request_serializer=pb_dot_pgcapture__pb2.AgentDumpRequest.SerializeToString,
+                response_deserializer=pb_dot_pgcapture__pb2.Change.FromString,
+                )
 
 
 class AgentServicer(object):
@@ -196,6 +201,12 @@ class AgentServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def StreamDump(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_AgentServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -208,6 +219,11 @@ def add_AgentServicer_to_server(servicer, server):
                     servicer.Dump,
                     request_deserializer=pb_dot_pgcapture__pb2.AgentDumpRequest.FromString,
                     response_serializer=pb_dot_pgcapture__pb2.AgentDumpResponse.SerializeToString,
+            ),
+            'StreamDump': grpc.unary_stream_rpc_method_handler(
+                    servicer.StreamDump,
+                    request_deserializer=pb_dot_pgcapture__pb2.AgentDumpRequest.FromString,
+                    response_serializer=pb_dot_pgcapture__pb2.Change.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -250,5 +266,22 @@ class Agent(object):
         return grpc.experimental.unary_unary(request, target, '/pgcapture.Agent/Dump',
             pb_dot_pgcapture__pb2.AgentDumpRequest.SerializeToString,
             pb_dot_pgcapture__pb2.AgentDumpResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def StreamDump(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(request, target, '/pgcapture.Agent/StreamDump',
+            pb_dot_pgcapture__pb2.AgentDumpRequest.SerializeToString,
+            pb_dot_pgcapture__pb2.Change.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)

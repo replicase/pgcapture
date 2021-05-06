@@ -108,6 +108,7 @@ message ScheduleResponse {
 service Agent {
   rpc Configure(AgentConfigRequest) returns (AgentConfigResponse) {}
   rpc Dump(AgentDumpRequest) returns (AgentDumpResponse) {}
+  rpc StreamDump(AgentDumpRequest) returns (stream Change) {}
 }
 
 message AgentDumpRequest {

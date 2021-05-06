@@ -293,6 +293,7 @@ var DBLogController_ServiceDesc = grpc.ServiceDesc{
 type AgentClient interface {
 	Configure(ctx context.Context, in *AgentConfigRequest, opts ...grpc.CallOption) (*AgentConfigResponse, error)
 	Dump(ctx context.Context, in *AgentDumpRequest, opts ...grpc.CallOption) (*AgentDumpResponse, error)
+	StreamDump(ctx context.Context, in *AgentDumpRequest, opts ...grpc.CallOption) (Agent_StreamDumpClient, error)
 }
 
 type agentClient struct {
@@ -321,12 +322,45 @@ func (c *agentClient) Dump(ctx context.Context, in *AgentDumpRequest, opts ...gr
 	return out, nil
 }
 
+func (c *agentClient) StreamDump(ctx context.Context, in *AgentDumpRequest, opts ...grpc.CallOption) (Agent_StreamDumpClient, error) {
+	stream, err := c.cc.NewStream(ctx, &Agent_ServiceDesc.Streams[0], "/pgcapture.Agent/StreamDump", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &agentStreamDumpClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type Agent_StreamDumpClient interface {
+	Recv() (*Change, error)
+	grpc.ClientStream
+}
+
+type agentStreamDumpClient struct {
+	grpc.ClientStream
+}
+
+func (x *agentStreamDumpClient) Recv() (*Change, error) {
+	m := new(Change)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // AgentServer is the server API for Agent service.
 // All implementations must embed UnimplementedAgentServer
 // for forward compatibility
 type AgentServer interface {
 	Configure(context.Context, *AgentConfigRequest) (*AgentConfigResponse, error)
 	Dump(context.Context, *AgentDumpRequest) (*AgentDumpResponse, error)
+	StreamDump(*AgentDumpRequest, Agent_StreamDumpServer) error
 	mustEmbedUnimplementedAgentServer()
 }
 
@@ -339,6 +373,9 @@ func (UnimplementedAgentServer) Configure(context.Context, *AgentConfigRequest) 
 }
 func (UnimplementedAgentServer) Dump(context.Context, *AgentDumpRequest) (*AgentDumpResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Dump not implemented")
+}
+func (UnimplementedAgentServer) StreamDump(*AgentDumpRequest, Agent_StreamDumpServer) error {
+	return status.Errorf(codes.Unimplemented, "method StreamDump not implemented")
 }
 func (UnimplementedAgentServer) mustEmbedUnimplementedAgentServer() {}
 
@@ -389,6 +426,27 @@ func _Agent_Dump_Handler(srv interface{}, ctx context.Context, dec func(interfac
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Agent_StreamDump_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(AgentDumpRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(AgentServer).StreamDump(m, &agentStreamDumpServer{stream})
+}
+
+type Agent_StreamDumpServer interface {
+	Send(*Change) error
+	grpc.ServerStream
+}
+
+type agentStreamDumpServer struct {
+	grpc.ServerStream
+}
+
+func (x *agentStreamDumpServer) Send(m *Change) error {
+	return x.ServerStream.SendMsg(m)
+}
+
 // Agent_ServiceDesc is the grpc.ServiceDesc for Agent service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -405,6 +463,12 @@ var Agent_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Agent_Dump_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "StreamDump",
+			Handler:       _Agent_StreamDump_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "pb/pgcapture.proto",
 }
