@@ -51,7 +51,7 @@ func (b *BaseSink) apply(changes chan source.Change, applyFn ApplyFn) (committed
 					goto cleanup
 				}
 				if err := applyFn(change, b.committed); err != nil {
-					b.err.Store(err)
+					b.err.Store(err.(error))
 					goto cleanup
 				}
 			case <-ticker.C:

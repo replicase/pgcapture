@@ -142,7 +142,7 @@ func (b *BaseSource) capture(readFn ReadFn, flushFn FlushFn) (chan Change, error
 				continue
 			}
 			if err != nil {
-				b.err.Store(err)
+				b.err.Store(err.(error))
 				return
 			}
 			if change.Message != nil {

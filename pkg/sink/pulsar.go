@@ -129,7 +129,7 @@ func (p *PulsarSink) Apply(changes chan source.Change) chan source.Checkpoint {
 					"MessageLSN":   change.Checkpoint.LSN,
 					"MessageIDHex": hex.EncodeToString(id.Serialize()),
 				}).Errorf("fail to send message to pulsar: %v", err)
-				p.BaseSink.err.Store(err)
+				p.BaseSink.err.Store(err.(error))
 				p.BaseSink.Stop()
 				return
 			}
