@@ -25,6 +25,11 @@ func NewConsumer(ctx context.Context, conn *grpc.ClientConn, option ConsumerOpti
 	}}
 	c.ctx, c.cancel = context.WithCancel(ctx)
 
+	errFn := func(source source.Change, err error) {}
+	if option.OnDecodeError != nil {
+		errFn = option.OnDecodeError
+	}
+
 	if option.DebounceInterval > 0 {
 		return &Consumer{
 			Source: c,
@@ -32,23 +37,28 @@ func NewConsumer(ctx context.Context, conn *grpc.ClientConn, option ConsumerOpti
 				Interval: option.DebounceInterval,
 				source:   c,
 			},
-			ctx: c.ctx,
+			ctx:   c.ctx,
+			errFn: errFn,
 		}
 	}
 
-	return &Consumer{Source: c, Bouncer: &NoBounceHandler{source: c}, ctx: c.ctx}
+	return &Consumer{Source: c, Bouncer: &NoBounceHandler{source: c}, ctx: c.ctx, errFn: errFn}
 }
+
+type OnDecodeError func(source source.Change, err error)
 
 type ConsumerOption struct {
 	URI              string
 	TableRegex       string
 	DebounceInterval time.Duration
+	OnDecodeError    OnDecodeError
 }
 
 type Consumer struct {
 	Source  source.RequeueSource
 	Bouncer BounceHandler
 	ctx     context.Context
+	errFn   OnDecodeError
 }
 
 func (c *Consumer) Consume(mh ModelHandlers) error {
@@ -76,26 +86,32 @@ func (c *Consumer) Consume(mh ModelHandlers) error {
 		case *pb.Message_Change:
 			ref, ok := refs[ModelName(m.Change.Schema, m.Change.Table)]
 			if !ok {
-				c.Source.Commit(change.Checkpoint)
+				break
+			}
+			n, err := makeModel(ref, m.Change.New)
+			if err != nil {
+				c.errFn(change, err)
+				break
+			}
+			o, err := makeModel(ref, m.Change.Old)
+			if err != nil {
+				c.errFn(change, err)
 				break
 			}
 			c.Bouncer.Handle(ref.hdl, change.Checkpoint, Change{
 				Op:  m.Change.Op,
 				LSN: change.Checkpoint.LSN,
-				New: makeModel(ref, m.Change.New),
-				Old: makeModel(ref, m.Change.Old),
+				New: n,
+				Old: o,
 			})
-		default:
-			c.Source.Commit(change.Checkpoint)
+			continue
 		}
+		c.Source.Commit(change.Checkpoint)
 	}
 	return c.Source.Error()
 }
 
-func makeModel(ref reflection, fields []*pb.Field) interface{} {
-	if len(fields) == 0 {
-		return nil
-	}
+func makeModel(ref reflection, fields []*pb.Field) (interface{}, error) {
 	ptr := reflect.New(ref.typ)
 	val := ptr.Elem()
 	interfaces := make(map[string]interface{}, len(ref.idx))
@@ -119,10 +135,10 @@ func makeModel(ref reflection, fields []*pb.Field) interface{} {
 			err = field.(pgtype.TextDecoder).DecodeText(ci, []byte(f.GetText()))
 		}
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
-	return ptr.Interface()
+	return ptr.Interface(), nil
 }
 
 func (c *Consumer) Stop() {
