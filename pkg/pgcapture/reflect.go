@@ -33,18 +33,21 @@ func reflectModel(model Model) (ref reflection, err error) {
 	ref = reflection{idx: make(map[string]int, typ.NumField()), typ: typ}
 	for i := 0; i < typ.NumField(); i++ {
 		f := typ.Field(i)
-		if !reflect.PtrTo(f.Type).Implements(decoderType) {
-			return ref, fmt.Errorf("the field %s of %s should be a pgtype.BinaryDecoder", f.Name, typ.Elem())
-		}
-		tag, ok := f.Tag.Lookup("pg")
-		if !ok {
-			return ref, fmt.Errorf("the field %s of %s should should have a pg tag", f.Name, typ.Elem())
-		}
-		if n := strings.Split(tag, ","); len(n) > 0 && n[0] != "" {
-			ref.idx[n[0]] = i
+		if tag, ok := f.Tag.Lookup("pg"); ok {
+			if !reflect.PtrTo(f.Type).Implements(decoderType) {
+				return ref, fmt.Errorf("the field %s of %s should be a pgtype.BinaryDecoder", f.Name, typ.Elem())
+			}
+			if n := strings.Split(tag, ","); len(n) > 0 && n[0] != "" {
+				ref.idx[n[0]] = i
+			}
 		}
 	}
-	return ref, nil
+	for k := range ref.idx {
+		if k != "" {
+			return ref, nil
+		}
+	}
+	return ref, fmt.Errorf("at least one field of %s should should have a valid pg tag", typ.Elem())
 }
 
 func ModelName(namespace, table string) string {
