@@ -98,19 +98,25 @@ func makeModel(ref reflection, fields []*pb.Field) interface{} {
 	}
 	ptr := reflect.New(ref.typ)
 	val := ptr.Elem()
+	interfaces := make(map[string]interface{}, len(ref.idx))
+	for name, i := range ref.idx {
+		field := val.Field(i).Addr().Interface()
+		field.(pgtype.BinaryDecoder).DecodeBinary(ci, nil) // set each field to null
+		interfaces[name] = field
+	}
 	var err error
 	for _, f := range fields {
 		if f.Value == nil {
 			continue
 		}
-		i, ok := ref.idx[f.Name]
+		field, ok := interfaces[f.Name]
 		if !ok {
 			continue
 		}
 		if value, ok := f.Value.(*pb.Field_Binary); ok {
-			err = val.Field(i).Addr().Interface().(pgtype.BinaryDecoder).DecodeBinary(ci, value.Binary)
+			err = field.(pgtype.BinaryDecoder).DecodeBinary(ci, value.Binary)
 		} else {
-			err = val.Field(i).Addr().Interface().(pgtype.TextDecoder).DecodeText(ci, []byte(f.GetText()))
+			err = field.(pgtype.TextDecoder).DecodeText(ci, []byte(f.GetText()))
 		}
 		if err != nil {
 			return err
