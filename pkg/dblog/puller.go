@@ -45,14 +45,16 @@ func (p *GRPCDumpInfoPuller) pulling(ctx context.Context, uri string, resp chan 
 		for {
 			select {
 			case <-server.Context().Done():
-				return
+				// if err is context.Canceled, the loop should continue until acks closed
+				// if err is not context.Canceled, this go routine should exit and be recreated by upper retry loop
+				if !errors.Is(server.Context().Err(), context.Canceled) {
+					return
+				}
 			case msg, more := <-acks:
 				if !more {
 					return
 				}
-				if err := server.Send(&pb.DumpInfoRequest{RequeueReason: msg}); err != nil {
-					return
-				}
+				server.Send(&pb.DumpInfoRequest{RequeueReason: msg})
 			}
 		}
 	}()
