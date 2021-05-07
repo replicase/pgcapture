@@ -80,7 +80,7 @@ func TestMemoryScheduler_Schedule(t *testing.T) {
 	}
 
 	// wait schedule finished
-	time.Sleep(time.Millisecond * 10)
+	time.Sleep(time.Millisecond * 100)
 	// start a new schedule with the same uri
 	dumps := []*pb.DumpInfoResponse{{Table: URI1, PageBegin: 777}}
 	if err := s.Schedule(URI1, dumps); err != nil {
@@ -93,7 +93,7 @@ func TestMemoryScheduler_Schedule(t *testing.T) {
 		t.Fatal(err)
 	}
 	// wait for unregister error client
-	time.Sleep(time.Millisecond * 10)
+	time.Sleep(time.Millisecond * 100)
 	// register again, and re-consume the fail dump
 	done := make(chan struct{})
 	if _, err := s.Register(URI1, "1", func(dump *pb.DumpInfoResponse) error {

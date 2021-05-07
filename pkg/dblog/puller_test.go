@@ -151,11 +151,11 @@ func TestPuller_SendErr(t *testing.T) {
 	dumps := puller.Pull(context.Background(), URI1, acks)
 
 	acks <- "first ack should be called with SendCB"
-	acks <- "second ack should not be call with SendCB"
+	acks <- "second ack should also be call with SendCB even if errored"
 
 	time.Sleep(time.Millisecond * 10)
 
-	if atomic.LoadInt64(&count) != 2 {
+	if atomic.LoadInt64(&count) != 3 {
 		t.Fatal("unexpected")
 	}
 
