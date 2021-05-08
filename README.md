@@ -9,14 +9,107 @@ A scalable Netflix DBLog implementation for PostgreSQL
 ![overview](./hack/images/overview.png)
 
 ## Features
-* DDL replication
-* Replicate in Postgres Binary Representation
-* gRPC API for consuming dumps and changes
+* DDL command is also captured
+* One gRPC API for consuming the latest changes and on-demand dumps
+* The changes and dumps are streamed in Postgres Binary Representation
 
-## Difference to Netflix DBLog
-* PostgreSQL Only
-* Not inject dumps into the source CDC stream, but merge dumps in the later grpc gateway service.
-  In this way the dump process can be scaled by adding more logical replicas and consumers.
-  Most importantly, dumps process will not have impact to other downstream consumers that don't need to apply old dumps.  
-* The replication requires a unique key on every table. However, the key isn't limited to be a single and incremental column,
-  because dumps are performed by PostgreSQL TID Scan not on the unique key.
+## Improvements to Netflix DBLog
+* Dumps are not selected from source database and are not injected into the source CDC stream.
+  Instead, They are dumped from the logical replica and are injected into the downstream by the grpc gateway service.
+* In this way, the on-demand dump process can be scaled by adding more logical replicas and consumers.
+  Most importantly, dumps process will not have impact to source database as well as other downstream consumers who don't need those dumps.   
+* The replication requires a unique key on each table. However, these key aren't limited to be a single numeric column,
+  because dumps are performed by PostgreSQL TID Scan not performed on the unique key.
+  
+## Use cases
+* Microservice Event Sourcing
+* Data synchronization, Moving data to other databases
+* Upgrade PostgreSQL with minimum downtime
+  
+## Consume changes with Golang
+
+```golang
+package main
+
+import (
+  "context"
+
+  "github.com/jackc/pgtype"
+  "github.com/rueian/pgcapture/pkg/pgcapture"
+  "google.golang.org/grpc"
+)
+
+// MyTable implements pgcapture.Model interface
+// and will be decoded from change that matching the TableName()
+type MyTable struct {
+  ID    pgtype.Int4 `pg:"id"`       // the field needed to be decoded should be a pgtype struct, 
+  Value pgtype.Text `pg:"my_value"` // and has a 'pg' tag specifying the name mapping explicitly
+}
+
+func (t *MyTable) TableName() (schema, table string) {
+  return "public", "my_table"
+}
+
+func main() {
+	ctx := context.Background()
+
+	conn, _ := grpc.Dial("127.0.0.1:1000", grpc.WithInsecure())
+	defer conn.Close()
+
+	consumer := pgcapture.NewConsumer(ctx, conn, pgcapture.ConsumerOption{ 
+		// the uri identify which change stream you want.
+		// you can implement dblog.SourceResolver to customize gateway behavior based on uri
+		URI: "my_subscription_id", 
+	})
+	defer consumer.Stop()
+	
+	consumer.Consume(map[pgcapture.Model]pgcapture.ModelHandlerFunc{
+		&MyTable{}: func(change pgcapture.Change) error {
+			row := change.New.(*MyTable) 
+			// and then handle the decoded change event
+			return nil
+		},
+	})
+}
+```
+
+## Customize the `dblog.SourceResolver`
+
+The provided `gateway` sub command will start a gateway server with `dblog.StaticAgentPulsarResolver` which reads a static URI resolving config.
+However, it is recommended to implement your own `dblog.SourceResolver` based on the URI consumer provided, 
+
+```golang
+package cmd
+
+import (
+	"context"
+	"net"
+	
+	"github.com/rueian/pgcapture/pkg/dblog"
+	"github.com/rueian/pgcapture/pkg/pb"
+	"github.com/rueian/pgcapture/pkg/source"
+	"google.golang.org/grpc"
+)
+
+type MySourceResolver struct {}
+
+func (m *MySourceResolver) Source(ctx context.Context, uri string) (source.RequeueSource, error) {
+  // decide where to fetch latest change based on uri
+}
+
+func (m *MySourceResolver) Dumper(ctx context.Context, uri string) (dblog.SourceDumper, error) {
+  // decide where to fetch on-demand dumps based on uri
+}
+
+func main() {
+	// connect to dump controller
+	controlConn, _ := grpc.Dial("127.0.0.1:10001", grpc.WithInsecure())
+	
+	gateway := &dblog.Gateway{
+		SourceResolver: &MySourceResolver{}, 
+		DumpInfoPuller: &dblog.GRPCDumpInfoPuller{Client: pb.NewDBLogControllerClient(controlConn)},
+	}
+	serveGRPC(gateway, "0.0.0.0:10000")
+}
+
+```
