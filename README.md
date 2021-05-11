@@ -25,6 +25,12 @@ A scalable Netflix DBLog implementation for PostgreSQL
 * Microservice Event Sourcing
 * Data synchronization, Moving data to other databases
 * Upgrade PostgreSQL with minimum downtime
+
+## Dependencies
+* pglogical postgresql extension
+* pgcapture postgresql extension
+
+See [./hack/postgres/Dockerfile](./hack/postgres/Dockerfile) for installation guide.
   
 ## Consume changes with Golang
 
