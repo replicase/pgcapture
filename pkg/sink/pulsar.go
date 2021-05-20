@@ -3,6 +3,7 @@ package sink
 import (
 	"context"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"time"
 
@@ -129,7 +130,7 @@ func (p *PulsarSink) Apply(changes chan source.Change) chan source.Checkpoint {
 					"MessageLSN":   change.Checkpoint.LSN,
 					"MessageIDHex": hex.EncodeToString(id.Serialize()),
 				}).Errorf("fail to send message to pulsar: %v", err)
-				p.BaseSink.err.Store(err.(error))
+				p.BaseSink.err.Store(fmt.Errorf("%w", err))
 				p.BaseSink.Stop()
 				return
 			}

@@ -139,7 +139,7 @@ func TestBaseSource_Error(t *testing.T) {
 		t.Fatal("clean func should be called once")
 	}
 
-	if source.Error() != ErrAny {
+	if !errors.Is(source.Error(), ErrAny) {
 		t.Fatalf("unexpected %v", source.Error())
 	}
 }

@@ -2,6 +2,7 @@ package pgcapture
 
 import (
 	"context"
+	"fmt"
 	"sync/atomic"
 
 	"github.com/rueian/pgcapture/pkg/pb"
@@ -40,7 +41,7 @@ func (c *DBLogGatewayConsumer) Capture(cp source.Checkpoint) (changes chan sourc
 		for {
 			msg, err := stream.Recv()
 			if err != nil {
-				c.err.Store(err.(error))
+				c.err.Store(fmt.Errorf("%w", err))
 				return
 			}
 			changes <- source.Change{
@@ -64,7 +65,7 @@ func (c *DBLogGatewayConsumer) Commit(cp source.Checkpoint) {
 			Seq:  cp.Seq,
 			Data: cp.Data,
 		}}}}); err != nil {
-			c.err.Store(err.(error))
+			c.err.Store(fmt.Errorf("%w", err))
 			c.Stop()
 		}
 	}
@@ -77,7 +78,7 @@ func (c *DBLogGatewayConsumer) Requeue(cp source.Checkpoint, reason string) {
 			Seq:  cp.Seq,
 			Data: cp.Data,
 		}, RequeueReason: reason}}}); err != nil {
-			c.err.Store(err.(error))
+			c.err.Store(fmt.Errorf("%w", err))
 			c.Stop()
 		}
 	}

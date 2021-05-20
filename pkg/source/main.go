@@ -3,13 +3,14 @@ package source
 import (
 	"context"
 	"errors"
-	"github.com/apache/pulsar-client-go/pulsar"
+	"fmt"
 	"net"
 	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/jackc/pglogrepl"
 	"github.com/rueian/pgcapture/pkg/pb"
 )
@@ -142,7 +143,7 @@ func (b *BaseSource) capture(readFn ReadFn, flushFn FlushFn) (chan Change, error
 				continue
 			}
 			if err != nil {
-				b.err.Store(err.(error))
+				b.err.Store(fmt.Errorf("%w", err))
 				return
 			}
 			if change.Message != nil {

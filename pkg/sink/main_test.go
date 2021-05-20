@@ -120,7 +120,7 @@ func TestBaseSink_Error(t *testing.T) {
 		t.Fatal("committed channel should be closed")
 	}
 
-	if err := sink.Stop(); err != ErrAny {
+	if err := sink.Stop(); !errors.Is(err, ErrAny) {
 		t.Fatalf("unexpected %v", err)
 	}
 

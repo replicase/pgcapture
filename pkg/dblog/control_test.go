@@ -3,11 +3,12 @@ package dblog
 import (
 	"context"
 	"errors"
+	"sync/atomic"
+	"testing"
+
 	"github.com/rueian/pgcapture/pkg/pb"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
-	"sync/atomic"
-	"testing"
 )
 
 func TestController_Schedule_Delegate(t *testing.T) {

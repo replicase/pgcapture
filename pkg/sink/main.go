@@ -1,6 +1,7 @@
 package sink
 
 import (
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -51,7 +52,7 @@ func (b *BaseSink) apply(changes chan source.Change, applyFn ApplyFn) (committed
 					goto cleanup
 				}
 				if err := applyFn(change, b.committed); err != nil {
-					b.err.Store(err.(error))
+					b.err.Store(fmt.Errorf("%w", err))
 					goto cleanup
 				}
 			case <-ticker.C:
