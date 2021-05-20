@@ -2,14 +2,14 @@ package dblog
 
 import (
 	"context"
-	"github.com/jackc/pglogrepl"
-	"github.com/jackc/pgtype"
-	"github.com/rueian/pgcapture/pkg/pb"
-	"github.com/rueian/pgcapture/pkg/sql"
 	"testing"
 	"time"
 
+	"github.com/jackc/pglogrepl"
+	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4"
+	"github.com/rueian/pgcapture/pkg/pb"
+	"github.com/rueian/pgcapture/pkg/sql"
 )
 
 func TestPGXSourceDumper(t *testing.T) {
