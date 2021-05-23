@@ -56,6 +56,10 @@ func (t *MyTable) TableName() (schema, table string) {
   return "public", "my_table"
 }
 
+func (t *MyTable) MarshalJSON() ([]byte, error) {
+  return pgcapture.MarshalJSON(t) // ignore unchanged TOAST field
+}
+
 func main() {
 	ctx := context.Background()
 
@@ -73,11 +77,23 @@ func main() {
 		&MyTable{}: func(change pgcapture.Change) error {
 			row := change.New.(*MyTable) 
 			// and then handle the decoded change event
+
+			if row.Value.Status == pgtype.Undefined {
+				// handle the unchanged toast field
+			}
+
 			return nil
 		},
 	})
 }
 ```
+
+### Handling unchanged TOAST field
+
+Since unchanged TOAST fields will not be present in the change stream, the corresponding model fields will remain undefined and have no value.
+Users should verify them by checking the field status.
+
+The `pgcapture.MarshalJSON` is a handy `json.Marshaler` that just ignore those undefined fields.
 
 ## Customize the `dblog.SourceResolver`
 
@@ -85,7 +101,7 @@ The provided `gateway` sub command will start a gateway server with `dblog.Stati
 However, it is recommended to implement your own `dblog.SourceResolver` based on the URI consumer provided, 
 
 ```golang
-package cmd
+package main
 
 import (
 	"context"

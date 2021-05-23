@@ -3,10 +3,10 @@ package pgcapture
 import (
 	"context"
 	"fmt"
-	"github.com/rueian/pgcapture/pkg/pb"
 	"sync"
 	"time"
 
+	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/source"
 )
 
