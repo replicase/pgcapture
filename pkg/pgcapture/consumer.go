@@ -116,9 +116,9 @@ func makeModel(ref reflection, fields []*pb.Field) (interface{}, error) {
 	val := ptr.Elem()
 	interfaces := make(map[string]interface{}, len(ref.idx))
 	for name, i := range ref.idx {
-		field := val.Field(i).Addr().Interface()
-		field.(pgtype.BinaryDecoder).DecodeBinary(ci, nil) // set each field to null
-		interfaces[name] = field
+		if f := val.Field(i).Addr(); f.CanInterface() {
+			interfaces[name] = f.Interface()
+		}
 	}
 	var err error
 	for _, f := range fields {
