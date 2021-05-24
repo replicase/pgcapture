@@ -85,6 +85,8 @@ func NewPGXSourceDumper(ctx context.Context, url string) (*PGXSourceDumper, erro
 type PGXSourceDumper struct {
 	conn *pgx.Conn
 	mu   sync.Mutex
+
+	SkipLSNCheck bool
 }
 
 func (p *PGXSourceDumper) LoadDump(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.Change, error) {
@@ -124,8 +126,10 @@ func (p *PGXSourceDumper) load(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.
 	}
 	defer tx.Rollback(ctx)
 
-	if err = checkLSN(ctx, tx, minLSN); err != nil {
-		return nil, err
+	if !p.SkipLSNCheck {
+		if err = checkLSN(ctx, tx, minLSN); err != nil {
+			return nil, err
+		}
 	}
 
 	rows, err := tx.Query(ctx, fmt.Sprintf(DumpQuery, info.Schema, info.Table), info.PageBegin, info.PageEnd)
