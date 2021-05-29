@@ -149,6 +149,10 @@ func (s *scheduler) SetCoolDown(uri string, dur time.Duration) {
 
 }
 
+func (s *scheduler) StopSchedule(uri string) {
+
+}
+
 type pdis struct {
 	SendCB func(response *pb.DumpInfoResponse) error
 	RecvCB func() (*pb.DumpInfoRequest, error)

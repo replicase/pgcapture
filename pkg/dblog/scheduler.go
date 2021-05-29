@@ -20,6 +20,7 @@ type Scheduler interface {
 	Register(uri string, client string, fn OnSchedule) (CancelFunc, error)
 	Ack(uri string, client string, requeue string)
 	SetCoolDown(uri string, dur time.Duration)
+	StopSchedule(uri string)
 }
 
 func NewMemoryScheduler(interval time.Duration) *MemoryScheduler {
@@ -82,6 +83,7 @@ func (s *MemoryScheduler) scheduleOne(uri string) bool {
 
 	busy := 0
 	remain := 0
+	stopping := false
 
 	s.clientsMu.Lock()
 	if clients, ok := s.clients[uri]; ok {
@@ -98,7 +100,9 @@ func (s *MemoryScheduler) scheduleOne(uri string) bool {
 	s.pendingMu.Lock()
 	if pending, ok := s.pending[uri]; ok {
 		remain = pending.Remaining()
-		if candidate != nil && (pending.coolDown == 0 || time.Now().Sub(candidate.ackTs) > pending.coolDown) {
+		stopping = pending.stopping
+		if candidate != nil && !stopping &&
+			(pending.coolDown == 0 || time.Now().Sub(candidate.ackTs) > pending.coolDown) {
 			dump = pending.Pop()
 		}
 	}
@@ -111,6 +115,10 @@ func (s *MemoryScheduler) scheduleOne(uri string) bool {
 		if err := candidate.schedule(dump); err != nil {
 			candidate.cancel()
 		}
+	}
+
+	if stopping {
+		return busy == 0
 	}
 
 	return busy == 0 && remain == 0
@@ -169,6 +177,14 @@ func (s *MemoryScheduler) SetCoolDown(uri string, dur time.Duration) {
 	s.pendingMu.Unlock()
 }
 
+func (s *MemoryScheduler) StopSchedule(uri string) {
+	s.pendingMu.Lock()
+	if pending, ok := s.pending[uri]; ok {
+		pending.stopping = true
+	}
+	s.pendingMu.Unlock()
+}
+
 type track struct {
 	dump     *pb.DumpInfoResponse
 	ackTs    time.Time
@@ -180,6 +196,7 @@ type pending struct {
 	dumps    []*pb.DumpInfoResponse
 	coolDown time.Duration
 	offset   int
+	stopping bool
 }
 
 func (p *pending) Remaining() int {

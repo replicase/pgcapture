@@ -122,7 +122,10 @@ func TestMemoryScheduler_Schedule(t *testing.T) {
 
 	// start a new schedule with the same uri
 	// and set cool down duration
+	// stop schedule in the middle
 	dumps = []*pb.DumpInfoResponse{
+		{Table: URI1, PageBegin: 777},
+		{Table: URI1, PageBegin: 999},
 		{Table: URI1, PageBegin: 777},
 		{Table: URI1, PageBegin: 999},
 	}
@@ -137,6 +140,9 @@ func TestMemoryScheduler_Schedule(t *testing.T) {
 	var received []time.Time
 	if _, err := s.Register(URI1, "1", func(dump *pb.DumpInfoResponse) error {
 		received = append(received, time.Now())
+		if len(received) == 2 {
+			s.StopSchedule(URI1)
+		}
 		go func() {
 			s.Ack(URI1, "1", "")
 		}()
@@ -147,6 +153,9 @@ func TestMemoryScheduler_Schedule(t *testing.T) {
 	<-done
 	if received[1].Sub(received[0]) < coolDown {
 		t.Fatalf("received gap should not be smaller then cool down interval")
+	}
+	if len(received) != 2 {
+		t.Fatalf("scheduler is not stopped as requested")
 	}
 }
 
