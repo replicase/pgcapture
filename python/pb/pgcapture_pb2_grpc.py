@@ -85,6 +85,16 @@ class DBLogControllerStub(object):
                 request_serializer=pb_dot_pgcapture__pb2.ScheduleRequest.SerializeToString,
                 response_deserializer=pb_dot_pgcapture__pb2.ScheduleResponse.FromString,
                 )
+        self.StopSchedule = channel.unary_unary(
+                '/pgcapture.DBLogController/StopSchedule',
+                request_serializer=pb_dot_pgcapture__pb2.StopScheduleRequest.SerializeToString,
+                response_deserializer=pb_dot_pgcapture__pb2.StopScheduleResponse.FromString,
+                )
+        self.SetScheduleCoolDown = channel.unary_unary(
+                '/pgcapture.DBLogController/SetScheduleCoolDown',
+                request_serializer=pb_dot_pgcapture__pb2.SetScheduleCoolDownRequest.SerializeToString,
+                response_deserializer=pb_dot_pgcapture__pb2.SetScheduleCoolDownResponse.FromString,
+                )
 
 
 class DBLogControllerServicer(object):
@@ -102,6 +112,18 @@ class DBLogControllerServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def StopSchedule(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SetScheduleCoolDown(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_DBLogControllerServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -114,6 +136,16 @@ def add_DBLogControllerServicer_to_server(servicer, server):
                     servicer.Schedule,
                     request_deserializer=pb_dot_pgcapture__pb2.ScheduleRequest.FromString,
                     response_serializer=pb_dot_pgcapture__pb2.ScheduleResponse.SerializeToString,
+            ),
+            'StopSchedule': grpc.unary_unary_rpc_method_handler(
+                    servicer.StopSchedule,
+                    request_deserializer=pb_dot_pgcapture__pb2.StopScheduleRequest.FromString,
+                    response_serializer=pb_dot_pgcapture__pb2.StopScheduleResponse.SerializeToString,
+            ),
+            'SetScheduleCoolDown': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetScheduleCoolDown,
+                    request_deserializer=pb_dot_pgcapture__pb2.SetScheduleCoolDownRequest.FromString,
+                    response_serializer=pb_dot_pgcapture__pb2.SetScheduleCoolDownResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -156,6 +188,40 @@ class DBLogController(object):
         return grpc.experimental.unary_unary(request, target, '/pgcapture.DBLogController/Schedule',
             pb_dot_pgcapture__pb2.ScheduleRequest.SerializeToString,
             pb_dot_pgcapture__pb2.ScheduleResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def StopSchedule(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/pgcapture.DBLogController/StopSchedule',
+            pb_dot_pgcapture__pb2.StopScheduleRequest.SerializeToString,
+            pb_dot_pgcapture__pb2.StopScheduleResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def SetScheduleCoolDown(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/pgcapture.DBLogController/SetScheduleCoolDown',
+            pb_dot_pgcapture__pb2.SetScheduleCoolDownRequest.SerializeToString,
+            pb_dot_pgcapture__pb2.SetScheduleCoolDownResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 

@@ -248,3 +248,11 @@ func (c *ctrlClient) PullDumpInfo(ctx context.Context, opts ...grpc.CallOption) 
 func (c *ctrlClient) Schedule(ctx context.Context, in *pb.ScheduleRequest, opts ...grpc.CallOption) (*pb.ScheduleResponse, error) {
 	panic("implement me")
 }
+
+func (c *ctrlClient) StopSchedule(ctx context.Context, request *pb.StopScheduleRequest, opts ...grpc.CallOption) (*pb.StopScheduleResponse, error) {
+	panic("implement me")
+}
+
+func (c *ctrlClient) SetScheduleCoolDown(ctx context.Context, request *pb.SetScheduleCoolDownRequest, opts ...grpc.CallOption) (*pb.SetScheduleCoolDownResponse, error) {
+	panic("implement me")
+}

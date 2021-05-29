@@ -12,6 +12,7 @@ _sym_db = _symbol_database.Default()
 
 
 from google.protobuf import struct_pb2 as google_dot_protobuf_dot_struct__pb2
+from google.protobuf import duration_pb2 as google_dot_protobuf_dot_duration__pb2
 
 
 DESCRIPTOR = _descriptor.FileDescriptor(
@@ -20,9 +21,9 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   syntax='proto3',
   serialized_options=b'Z\"github.com/rueian/pgcapture/pkg/pb',
   create_key=_descriptor._internal_create_key,
-  serialized_pb=b'\n\x12pb/pgcapture.proto\x12\tpgcapture\x1a\x1cgoogle/protobuf/struct.proto\"4\n\nCheckpoint\x12\x0b\n\x03lsn\x18\x01 \x01(\x04\x12\x0b\n\x03seq\x18\x02 \x01(\r\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\x0c\"~\n\x07Message\x12!\n\x05\x62\x65gin\x18\x01 \x01(\x0b\x32\x10.pgcapture.BeginH\x00\x12#\n\x06\x63ommit\x18\x02 \x01(\x0b\x32\x11.pgcapture.CommitH\x00\x12#\n\x06\x63hange\x18\x03 \x01(\x0b\x32\x11.pgcapture.ChangeH\x00\x42\x06\n\x04type\"C\n\x05\x42\x65gin\x12\x11\n\tfinal_lsn\x18\x01 \x01(\x04\x12\x13\n\x0b\x63ommit_time\x18\x02 \x01(\x04\x12\x12\n\nremote_xid\x18\x03 \x01(\r\"B\n\x06\x43ommit\x12\x12\n\ncommit_lsn\x18\x01 \x01(\x04\x12\x0f\n\x07\x65nd_lsn\x18\x02 \x01(\x04\x12\x13\n\x0b\x63ommit_time\x18\x03 \x01(\x04\"\xbf\x01\n\x06\x43hange\x12\'\n\x02op\x18\x01 \x01(\x0e\x32\x1b.pgcapture.Change.Operation\x12\x0e\n\x06schema\x18\x02 \x01(\t\x12\r\n\x05table\x18\x03 \x01(\t\x12\x1d\n\x03new\x18\x04 \x03(\x0b\x32\x10.pgcapture.Field\x12\x1d\n\x03old\x18\x05 \x03(\x0b\x32\x10.pgcapture.Field\"/\n\tOperation\x12\n\n\x06INSERT\x10\x00\x12\n\n\x06UPDATE\x10\x01\x12\n\n\x06\x44\x45LETE\x10\x02\"M\n\x05\x46ield\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x0b\n\x03oid\x18\x02 \x01(\r\x12\x10\n\x06\x62inary\x18\x03 \x01(\x0cH\x00\x12\x0e\n\x04text\x18\x04 \x01(\tH\x00\x42\x07\n\x05value\"f\n\x0e\x43\x61ptureRequest\x12&\n\x04init\x18\x01 \x01(\x0b\x32\x16.pgcapture.CaptureInitH\x00\x12$\n\x03\x61\x63k\x18\x02 \x01(\x0b\x32\x15.pgcapture.CaptureAckH\x00\x42\x06\n\x04type\"G\n\x0b\x43\x61ptureInit\x12\x0b\n\x03uri\x18\x01 \x01(\t\x12+\n\nparameters\x18\x02 \x01(\x0b\x32\x17.google.protobuf.Struct\"O\n\nCaptureAck\x12)\n\ncheckpoint\x18\x01 \x01(\x0b\x32\x15.pgcapture.Checkpoint\x12\x16\n\x0erequeue_reason\x18\x02 \x01(\t\"^\n\x0e\x43\x61ptureMessage\x12)\n\ncheckpoint\x18\x01 \x01(\x0b\x32\x15.pgcapture.Checkpoint\x12!\n\x06\x63hange\x18\x02 \x01(\x0b\x32\x11.pgcapture.Change\"6\n\x0f\x44umpInfoRequest\x12\x0b\n\x03uri\x18\x01 \x01(\t\x12\x16\n\x0erequeue_reason\x18\x02 \x01(\t\"W\n\x10\x44umpInfoResponse\x12\x0e\n\x06schema\x18\x01 \x01(\t\x12\r\n\x05table\x18\x02 \x01(\t\x12\x12\n\npage_begin\x18\x03 \x01(\r\x12\x10\n\x08page_end\x18\x04 \x01(\r\"J\n\x0fScheduleRequest\x12\x0b\n\x03uri\x18\x01 \x01(\t\x12*\n\x05\x64umps\x18\x02 \x03(\x0b\x32\x1b.pgcapture.DumpInfoResponse\"\x12\n\x10ScheduleResponse\"N\n\x10\x41gentDumpRequest\x12\x0f\n\x07min_lsn\x18\x01 \x01(\x04\x12)\n\x04info\x18\x02 \x01(\x0b\x32\x1b.pgcapture.DumpInfoResponse\"6\n\x11\x41gentDumpResponse\x12!\n\x06\x63hange\x18\x01 \x03(\x0b\x32\x11.pgcapture.Change\"A\n\x12\x41gentConfigRequest\x12+\n\nparameters\x18\x01 \x01(\x0b\x32\x17.google.protobuf.Struct\">\n\x13\x41gentConfigResponse\x12\'\n\x06report\x18\x01 \x01(\x0b\x32\x17.google.protobuf.Struct2S\n\x0c\x44\x42LogGateway\x12\x43\n\x07\x43\x61pture\x12\x19.pgcapture.CaptureRequest\x1a\x19.pgcapture.CaptureMessage(\x01\x30\x01\x32\xa3\x01\n\x0f\x44\x42LogController\x12K\n\x0cPullDumpInfo\x12\x1a.pgcapture.DumpInfoRequest\x1a\x1b.pgcapture.DumpInfoResponse(\x01\x30\x01\x12\x43\n\x08Schedule\x12\x1a.pgcapture.ScheduleRequest\x1a\x1b.pgcapture.ScheduleResponse2\xdc\x01\n\x05\x41gent\x12L\n\tConfigure\x12\x1d.pgcapture.AgentConfigRequest\x1a\x1e.pgcapture.AgentConfigResponse\"\x00\x12\x43\n\x04\x44ump\x12\x1b.pgcapture.AgentDumpRequest\x1a\x1c.pgcapture.AgentDumpResponse\"\x00\x12@\n\nStreamDump\x12\x1b.pgcapture.AgentDumpRequest\x1a\x11.pgcapture.Change\"\x00\x30\x01\x42$Z\"github.com/rueian/pgcapture/pkg/pbb\x06proto3'
+  serialized_pb=b'\n\x12pb/pgcapture.proto\x12\tpgcapture\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1egoogle/protobuf/duration.proto\"4\n\nCheckpoint\x12\x0b\n\x03lsn\x18\x01 \x01(\x04\x12\x0b\n\x03seq\x18\x02 \x01(\r\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\x0c\"~\n\x07Message\x12!\n\x05\x62\x65gin\x18\x01 \x01(\x0b\x32\x10.pgcapture.BeginH\x00\x12#\n\x06\x63ommit\x18\x02 \x01(\x0b\x32\x11.pgcapture.CommitH\x00\x12#\n\x06\x63hange\x18\x03 \x01(\x0b\x32\x11.pgcapture.ChangeH\x00\x42\x06\n\x04type\"C\n\x05\x42\x65gin\x12\x11\n\tfinal_lsn\x18\x01 \x01(\x04\x12\x13\n\x0b\x63ommit_time\x18\x02 \x01(\x04\x12\x12\n\nremote_xid\x18\x03 \x01(\r\"B\n\x06\x43ommit\x12\x12\n\ncommit_lsn\x18\x01 \x01(\x04\x12\x0f\n\x07\x65nd_lsn\x18\x02 \x01(\x04\x12\x13\n\x0b\x63ommit_time\x18\x03 \x01(\x04\"\xbf\x01\n\x06\x43hange\x12\'\n\x02op\x18\x01 \x01(\x0e\x32\x1b.pgcapture.Change.Operation\x12\x0e\n\x06schema\x18\x02 \x01(\t\x12\r\n\x05table\x18\x03 \x01(\t\x12\x1d\n\x03new\x18\x04 \x03(\x0b\x32\x10.pgcapture.Field\x12\x1d\n\x03old\x18\x05 \x03(\x0b\x32\x10.pgcapture.Field\"/\n\tOperation\x12\n\n\x06INSERT\x10\x00\x12\n\n\x06UPDATE\x10\x01\x12\n\n\x06\x44\x45LETE\x10\x02\"M\n\x05\x46ield\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x0b\n\x03oid\x18\x02 \x01(\r\x12\x10\n\x06\x62inary\x18\x03 \x01(\x0cH\x00\x12\x0e\n\x04text\x18\x04 \x01(\tH\x00\x42\x07\n\x05value\"f\n\x0e\x43\x61ptureRequest\x12&\n\x04init\x18\x01 \x01(\x0b\x32\x16.pgcapture.CaptureInitH\x00\x12$\n\x03\x61\x63k\x18\x02 \x01(\x0b\x32\x15.pgcapture.CaptureAckH\x00\x42\x06\n\x04type\"G\n\x0b\x43\x61ptureInit\x12\x0b\n\x03uri\x18\x01 \x01(\t\x12+\n\nparameters\x18\x02 \x01(\x0b\x32\x17.google.protobuf.Struct\"O\n\nCaptureAck\x12)\n\ncheckpoint\x18\x01 \x01(\x0b\x32\x15.pgcapture.Checkpoint\x12\x16\n\x0erequeue_reason\x18\x02 \x01(\t\"^\n\x0e\x43\x61ptureMessage\x12)\n\ncheckpoint\x18\x01 \x01(\x0b\x32\x15.pgcapture.Checkpoint\x12!\n\x06\x63hange\x18\x02 \x01(\x0b\x32\x11.pgcapture.Change\"6\n\x0f\x44umpInfoRequest\x12\x0b\n\x03uri\x18\x01 \x01(\t\x12\x16\n\x0erequeue_reason\x18\x02 \x01(\t\"W\n\x10\x44umpInfoResponse\x12\x0e\n\x06schema\x18\x01 \x01(\t\x12\r\n\x05table\x18\x02 \x01(\t\x12\x12\n\npage_begin\x18\x03 \x01(\r\x12\x10\n\x08page_end\x18\x04 \x01(\r\"J\n\x0fScheduleRequest\x12\x0b\n\x03uri\x18\x01 \x01(\t\x12*\n\x05\x64umps\x18\x02 \x03(\x0b\x32\x1b.pgcapture.DumpInfoResponse\"\x12\n\x10ScheduleResponse\"\"\n\x13StopScheduleRequest\x12\x0b\n\x03uri\x18\x01 \x01(\t\"\x16\n\x14StopScheduleResponse\"V\n\x1aSetScheduleCoolDownRequest\x12\x0b\n\x03uri\x18\x01 \x01(\t\x12+\n\x08\x64uration\x18\x02 \x01(\x0b\x32\x19.google.protobuf.Duration\"\x1d\n\x1bSetScheduleCoolDownResponse\"N\n\x10\x41gentDumpRequest\x12\x0f\n\x07min_lsn\x18\x01 \x01(\x04\x12)\n\x04info\x18\x02 \x01(\x0b\x32\x1b.pgcapture.DumpInfoResponse\"6\n\x11\x41gentDumpResponse\x12!\n\x06\x63hange\x18\x01 \x03(\x0b\x32\x11.pgcapture.Change\"A\n\x12\x41gentConfigRequest\x12+\n\nparameters\x18\x01 \x01(\x0b\x32\x17.google.protobuf.Struct\">\n\x13\x41gentConfigResponse\x12\'\n\x06report\x18\x01 \x01(\x0b\x32\x17.google.protobuf.Struct2S\n\x0c\x44\x42LogGateway\x12\x43\n\x07\x43\x61pture\x12\x19.pgcapture.CaptureRequest\x1a\x19.pgcapture.CaptureMessage(\x01\x30\x01\x32\xda\x02\n\x0f\x44\x42LogController\x12K\n\x0cPullDumpInfo\x12\x1a.pgcapture.DumpInfoRequest\x1a\x1b.pgcapture.DumpInfoResponse(\x01\x30\x01\x12\x43\n\x08Schedule\x12\x1a.pgcapture.ScheduleRequest\x1a\x1b.pgcapture.ScheduleResponse\x12O\n\x0cStopSchedule\x12\x1e.pgcapture.StopScheduleRequest\x1a\x1f.pgcapture.StopScheduleResponse\x12\x64\n\x13SetScheduleCoolDown\x12%.pgcapture.SetScheduleCoolDownRequest\x1a&.pgcapture.SetScheduleCoolDownResponse2\xdc\x01\n\x05\x41gent\x12L\n\tConfigure\x12\x1d.pgcapture.AgentConfigRequest\x1a\x1e.pgcapture.AgentConfigResponse\"\x00\x12\x43\n\x04\x44ump\x12\x1b.pgcapture.AgentDumpRequest\x1a\x1c.pgcapture.AgentDumpResponse\"\x00\x12@\n\nStreamDump\x12\x1b.pgcapture.AgentDumpRequest\x1a\x11.pgcapture.Change\"\x00\x30\x01\x42$Z\"github.com/rueian/pgcapture/pkg/pbb\x06proto3'
   ,
-  dependencies=[google_dot_protobuf_dot_struct__pb2.DESCRIPTOR,])
+  dependencies=[google_dot_protobuf_dot_struct__pb2.DESCRIPTOR,google_dot_protobuf_dot_duration__pb2.DESCRIPTOR,])
 
 
 
@@ -51,8 +52,8 @@ _CHANGE_OPERATION = _descriptor.EnumDescriptor(
   ],
   containing_type=None,
   serialized_options=None,
-  serialized_start=527,
-  serialized_end=574,
+  serialized_start=559,
+  serialized_end=606,
 )
 _sym_db.RegisterEnumDescriptor(_CHANGE_OPERATION)
 
@@ -98,8 +99,8 @@ _CHECKPOINT = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=63,
-  serialized_end=115,
+  serialized_start=95,
+  serialized_end=147,
 )
 
 
@@ -149,8 +150,8 @@ _MESSAGE = _descriptor.Descriptor(
       create_key=_descriptor._internal_create_key,
     fields=[]),
   ],
-  serialized_start=117,
-  serialized_end=243,
+  serialized_start=149,
+  serialized_end=275,
 )
 
 
@@ -195,8 +196,8 @@ _BEGIN = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=245,
-  serialized_end=312,
+  serialized_start=277,
+  serialized_end=344,
 )
 
 
@@ -241,8 +242,8 @@ _COMMIT = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=314,
-  serialized_end=380,
+  serialized_start=346,
+  serialized_end=412,
 )
 
 
@@ -302,8 +303,8 @@ _CHANGE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=383,
-  serialized_end=574,
+  serialized_start=415,
+  serialized_end=606,
 )
 
 
@@ -360,8 +361,8 @@ _FIELD = _descriptor.Descriptor(
       create_key=_descriptor._internal_create_key,
     fields=[]),
   ],
-  serialized_start=576,
-  serialized_end=653,
+  serialized_start=608,
+  serialized_end=685,
 )
 
 
@@ -404,8 +405,8 @@ _CAPTUREREQUEST = _descriptor.Descriptor(
       create_key=_descriptor._internal_create_key,
     fields=[]),
   ],
-  serialized_start=655,
-  serialized_end=757,
+  serialized_start=687,
+  serialized_end=789,
 )
 
 
@@ -443,8 +444,8 @@ _CAPTUREINIT = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=759,
-  serialized_end=830,
+  serialized_start=791,
+  serialized_end=862,
 )
 
 
@@ -482,8 +483,8 @@ _CAPTUREACK = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=832,
-  serialized_end=911,
+  serialized_start=864,
+  serialized_end=943,
 )
 
 
@@ -521,8 +522,8 @@ _CAPTUREMESSAGE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=913,
-  serialized_end=1007,
+  serialized_start=945,
+  serialized_end=1039,
 )
 
 
@@ -560,8 +561,8 @@ _DUMPINFOREQUEST = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1009,
-  serialized_end=1063,
+  serialized_start=1041,
+  serialized_end=1095,
 )
 
 
@@ -613,8 +614,8 @@ _DUMPINFORESPONSE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1065,
-  serialized_end=1152,
+  serialized_start=1097,
+  serialized_end=1184,
 )
 
 
@@ -652,8 +653,8 @@ _SCHEDULEREQUEST = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1154,
-  serialized_end=1228,
+  serialized_start=1186,
+  serialized_end=1260,
 )
 
 
@@ -677,8 +678,129 @@ _SCHEDULERESPONSE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1230,
-  serialized_end=1248,
+  serialized_start=1262,
+  serialized_end=1280,
+)
+
+
+_STOPSCHEDULEREQUEST = _descriptor.Descriptor(
+  name='StopScheduleRequest',
+  full_name='pgcapture.StopScheduleRequest',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='uri', full_name='pgcapture.StopScheduleRequest.uri', index=0,
+      number=1, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=b"".decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=1282,
+  serialized_end=1316,
+)
+
+
+_STOPSCHEDULERESPONSE = _descriptor.Descriptor(
+  name='StopScheduleResponse',
+  full_name='pgcapture.StopScheduleResponse',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=1318,
+  serialized_end=1340,
+)
+
+
+_SETSCHEDULECOOLDOWNREQUEST = _descriptor.Descriptor(
+  name='SetScheduleCoolDownRequest',
+  full_name='pgcapture.SetScheduleCoolDownRequest',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='uri', full_name='pgcapture.SetScheduleCoolDownRequest.uri', index=0,
+      number=1, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=b"".decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+    _descriptor.FieldDescriptor(
+      name='duration', full_name='pgcapture.SetScheduleCoolDownRequest.duration', index=1,
+      number=2, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR,  create_key=_descriptor._internal_create_key),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=1342,
+  serialized_end=1428,
+)
+
+
+_SETSCHEDULECOOLDOWNRESPONSE = _descriptor.Descriptor(
+  name='SetScheduleCoolDownResponse',
+  full_name='pgcapture.SetScheduleCoolDownResponse',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  create_key=_descriptor._internal_create_key,
+  fields=[
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=1430,
+  serialized_end=1459,
 )
 
 
@@ -716,8 +838,8 @@ _AGENTDUMPREQUEST = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1250,
-  serialized_end=1328,
+  serialized_start=1461,
+  serialized_end=1539,
 )
 
 
@@ -748,8 +870,8 @@ _AGENTDUMPRESPONSE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1330,
-  serialized_end=1384,
+  serialized_start=1541,
+  serialized_end=1595,
 )
 
 
@@ -780,8 +902,8 @@ _AGENTCONFIGREQUEST = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1386,
-  serialized_end=1451,
+  serialized_start=1597,
+  serialized_end=1662,
 )
 
 
@@ -812,8 +934,8 @@ _AGENTCONFIGRESPONSE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1453,
-  serialized_end=1515,
+  serialized_start=1664,
+  serialized_end=1726,
 )
 
 _MESSAGE.fields_by_name['begin'].message_type = _BEGIN
@@ -851,6 +973,7 @@ _CAPTUREACK.fields_by_name['checkpoint'].message_type = _CHECKPOINT
 _CAPTUREMESSAGE.fields_by_name['checkpoint'].message_type = _CHECKPOINT
 _CAPTUREMESSAGE.fields_by_name['change'].message_type = _CHANGE
 _SCHEDULEREQUEST.fields_by_name['dumps'].message_type = _DUMPINFORESPONSE
+_SETSCHEDULECOOLDOWNREQUEST.fields_by_name['duration'].message_type = google_dot_protobuf_dot_duration__pb2._DURATION
 _AGENTDUMPREQUEST.fields_by_name['info'].message_type = _DUMPINFORESPONSE
 _AGENTDUMPRESPONSE.fields_by_name['change'].message_type = _CHANGE
 _AGENTCONFIGREQUEST.fields_by_name['parameters'].message_type = google_dot_protobuf_dot_struct__pb2._STRUCT
@@ -869,6 +992,10 @@ DESCRIPTOR.message_types_by_name['DumpInfoRequest'] = _DUMPINFOREQUEST
 DESCRIPTOR.message_types_by_name['DumpInfoResponse'] = _DUMPINFORESPONSE
 DESCRIPTOR.message_types_by_name['ScheduleRequest'] = _SCHEDULEREQUEST
 DESCRIPTOR.message_types_by_name['ScheduleResponse'] = _SCHEDULERESPONSE
+DESCRIPTOR.message_types_by_name['StopScheduleRequest'] = _STOPSCHEDULEREQUEST
+DESCRIPTOR.message_types_by_name['StopScheduleResponse'] = _STOPSCHEDULERESPONSE
+DESCRIPTOR.message_types_by_name['SetScheduleCoolDownRequest'] = _SETSCHEDULECOOLDOWNREQUEST
+DESCRIPTOR.message_types_by_name['SetScheduleCoolDownResponse'] = _SETSCHEDULECOOLDOWNRESPONSE
 DESCRIPTOR.message_types_by_name['AgentDumpRequest'] = _AGENTDUMPREQUEST
 DESCRIPTOR.message_types_by_name['AgentDumpResponse'] = _AGENTDUMPRESPONSE
 DESCRIPTOR.message_types_by_name['AgentConfigRequest'] = _AGENTCONFIGREQUEST
@@ -973,6 +1100,34 @@ ScheduleResponse = _reflection.GeneratedProtocolMessageType('ScheduleResponse', 
   })
 _sym_db.RegisterMessage(ScheduleResponse)
 
+StopScheduleRequest = _reflection.GeneratedProtocolMessageType('StopScheduleRequest', (_message.Message,), {
+  'DESCRIPTOR' : _STOPSCHEDULEREQUEST,
+  '__module__' : 'pb.pgcapture_pb2'
+  # @@protoc_insertion_point(class_scope:pgcapture.StopScheduleRequest)
+  })
+_sym_db.RegisterMessage(StopScheduleRequest)
+
+StopScheduleResponse = _reflection.GeneratedProtocolMessageType('StopScheduleResponse', (_message.Message,), {
+  'DESCRIPTOR' : _STOPSCHEDULERESPONSE,
+  '__module__' : 'pb.pgcapture_pb2'
+  # @@protoc_insertion_point(class_scope:pgcapture.StopScheduleResponse)
+  })
+_sym_db.RegisterMessage(StopScheduleResponse)
+
+SetScheduleCoolDownRequest = _reflection.GeneratedProtocolMessageType('SetScheduleCoolDownRequest', (_message.Message,), {
+  'DESCRIPTOR' : _SETSCHEDULECOOLDOWNREQUEST,
+  '__module__' : 'pb.pgcapture_pb2'
+  # @@protoc_insertion_point(class_scope:pgcapture.SetScheduleCoolDownRequest)
+  })
+_sym_db.RegisterMessage(SetScheduleCoolDownRequest)
+
+SetScheduleCoolDownResponse = _reflection.GeneratedProtocolMessageType('SetScheduleCoolDownResponse', (_message.Message,), {
+  'DESCRIPTOR' : _SETSCHEDULECOOLDOWNRESPONSE,
+  '__module__' : 'pb.pgcapture_pb2'
+  # @@protoc_insertion_point(class_scope:pgcapture.SetScheduleCoolDownResponse)
+  })
+_sym_db.RegisterMessage(SetScheduleCoolDownResponse)
+
 AgentDumpRequest = _reflection.GeneratedProtocolMessageType('AgentDumpRequest', (_message.Message,), {
   'DESCRIPTOR' : _AGENTDUMPREQUEST,
   '__module__' : 'pb.pgcapture_pb2'
@@ -1011,8 +1166,8 @@ _DBLOGGATEWAY = _descriptor.ServiceDescriptor(
   index=0,
   serialized_options=None,
   create_key=_descriptor._internal_create_key,
-  serialized_start=1517,
-  serialized_end=1600,
+  serialized_start=1728,
+  serialized_end=1811,
   methods=[
   _descriptor.MethodDescriptor(
     name='Capture',
@@ -1037,8 +1192,8 @@ _DBLOGCONTROLLER = _descriptor.ServiceDescriptor(
   index=1,
   serialized_options=None,
   create_key=_descriptor._internal_create_key,
-  serialized_start=1603,
-  serialized_end=1766,
+  serialized_start=1814,
+  serialized_end=2160,
   methods=[
   _descriptor.MethodDescriptor(
     name='PullDumpInfo',
@@ -1060,6 +1215,26 @@ _DBLOGCONTROLLER = _descriptor.ServiceDescriptor(
     serialized_options=None,
     create_key=_descriptor._internal_create_key,
   ),
+  _descriptor.MethodDescriptor(
+    name='StopSchedule',
+    full_name='pgcapture.DBLogController.StopSchedule',
+    index=2,
+    containing_service=None,
+    input_type=_STOPSCHEDULEREQUEST,
+    output_type=_STOPSCHEDULERESPONSE,
+    serialized_options=None,
+    create_key=_descriptor._internal_create_key,
+  ),
+  _descriptor.MethodDescriptor(
+    name='SetScheduleCoolDown',
+    full_name='pgcapture.DBLogController.SetScheduleCoolDown',
+    index=3,
+    containing_service=None,
+    input_type=_SETSCHEDULECOOLDOWNREQUEST,
+    output_type=_SETSCHEDULECOOLDOWNRESPONSE,
+    serialized_options=None,
+    create_key=_descriptor._internal_create_key,
+  ),
 ])
 _sym_db.RegisterServiceDescriptor(_DBLOGCONTROLLER)
 
@@ -1073,8 +1248,8 @@ _AGENT = _descriptor.ServiceDescriptor(
   index=2,
   serialized_options=None,
   create_key=_descriptor._internal_create_key,
-  serialized_start=1769,
-  serialized_end=1989,
+  serialized_start=2163,
+  serialized_end=2383,
   methods=[
   _descriptor.MethodDescriptor(
     name='Configure',

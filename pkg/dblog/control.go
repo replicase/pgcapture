@@ -77,3 +77,15 @@ func (c *Controller) Schedule(ctx context.Context, req *pb.ScheduleRequest) (*pb
 	}
 	return &pb.ScheduleResponse{}, nil
 }
+
+func (c *Controller) StopSchedule(ctx context.Context, req *pb.StopScheduleRequest) (*pb.StopScheduleResponse, error) {
+	c.log.WithFields(logrus.Fields{"URI": req.Uri}).Infof("stop scheduling dumps of %s", req.Uri)
+	c.Scheduler.StopSchedule(req.Uri)
+	return &pb.StopScheduleResponse{}, nil
+}
+
+func (c *Controller) SetScheduleCoolDown(ctx context.Context, req *pb.SetScheduleCoolDownRequest) (*pb.SetScheduleCoolDownResponse, error) {
+	c.log.WithFields(logrus.Fields{"URI": req.Uri}).Infof("set scheduling cool down of %s to %v", req.Uri, req.Duration.AsDuration())
+	c.Scheduler.SetCoolDown(req.Uri, req.Duration.AsDuration())
+	return &pb.SetScheduleCoolDownResponse{}, nil
+}

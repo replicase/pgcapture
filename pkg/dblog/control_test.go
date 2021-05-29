@@ -10,6 +10,7 @@ import (
 	"github.com/rueian/pgcapture/pkg/pb"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 func TestController_Schedule_Delegate(t *testing.T) {
@@ -127,10 +128,45 @@ func TestController_PullDumpInfo_Delegate(t *testing.T) {
 	}
 }
 
+func TestController_SetCoolDown_Delegate(t *testing.T) {
+	done := make(chan struct{})
+	c := NewController(&scheduler{
+		SetCoolDownCB: func(uri string, dur time.Duration) {
+			if uri != URI1 || dur != time.Second {
+				t.Fatal("unexpected")
+			}
+			close(done)
+		},
+	})
+	_, _ = c.SetScheduleCoolDown(context.Background(), &pb.SetScheduleCoolDownRequest{
+		Uri:      URI1,
+		Duration: durationpb.New(time.Second),
+	})
+	<-done
+}
+
+func TestController_StopSchedule_Delegate(t *testing.T) {
+	done := make(chan struct{})
+	c := NewController(&scheduler{
+		StopScheduleCB: func(uri string) {
+			if uri != URI1 {
+				t.Fatal("unexpected")
+			}
+			close(done)
+		},
+	})
+	_, _ = c.StopSchedule(context.Background(), &pb.StopScheduleRequest{
+		Uri: URI1,
+	})
+	<-done
+}
+
 type scheduler struct {
-	ScheduleCB func(uri string, dumps []*pb.DumpInfoResponse) error
-	RegisterCB func(uri string, client string, fn OnSchedule) (CancelFunc, error)
-	AckCB      func(uri string, client string, requeue string)
+	ScheduleCB     func(uri string, dumps []*pb.DumpInfoResponse) error
+	RegisterCB     func(uri string, client string, fn OnSchedule) (CancelFunc, error)
+	AckCB          func(uri string, client string, requeue string)
+	SetCoolDownCB  func(uri string, dur time.Duration)
+	StopScheduleCB func(uri string)
 }
 
 func (s *scheduler) Schedule(uri string, dumps []*pb.DumpInfoResponse, fn AfterSchedule) error {
@@ -146,11 +182,11 @@ func (s *scheduler) Ack(uri string, client string, requeue string) {
 }
 
 func (s *scheduler) SetCoolDown(uri string, dur time.Duration) {
-
+	s.SetCoolDownCB(uri, dur)
 }
 
 func (s *scheduler) StopSchedule(uri string) {
-
+	s.StopScheduleCB(uri)
 }
 
 type pdis struct {

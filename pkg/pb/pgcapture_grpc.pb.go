@@ -138,6 +138,8 @@ var DBLogGateway_ServiceDesc = grpc.ServiceDesc{
 type DBLogControllerClient interface {
 	PullDumpInfo(ctx context.Context, opts ...grpc.CallOption) (DBLogController_PullDumpInfoClient, error)
 	Schedule(ctx context.Context, in *ScheduleRequest, opts ...grpc.CallOption) (*ScheduleResponse, error)
+	StopSchedule(ctx context.Context, in *StopScheduleRequest, opts ...grpc.CallOption) (*StopScheduleResponse, error)
+	SetScheduleCoolDown(ctx context.Context, in *SetScheduleCoolDownRequest, opts ...grpc.CallOption) (*SetScheduleCoolDownResponse, error)
 }
 
 type dBLogControllerClient struct {
@@ -188,12 +190,32 @@ func (c *dBLogControllerClient) Schedule(ctx context.Context, in *ScheduleReques
 	return out, nil
 }
 
+func (c *dBLogControllerClient) StopSchedule(ctx context.Context, in *StopScheduleRequest, opts ...grpc.CallOption) (*StopScheduleResponse, error) {
+	out := new(StopScheduleResponse)
+	err := c.cc.Invoke(ctx, "/pgcapture.DBLogController/StopSchedule", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dBLogControllerClient) SetScheduleCoolDown(ctx context.Context, in *SetScheduleCoolDownRequest, opts ...grpc.CallOption) (*SetScheduleCoolDownResponse, error) {
+	out := new(SetScheduleCoolDownResponse)
+	err := c.cc.Invoke(ctx, "/pgcapture.DBLogController/SetScheduleCoolDown", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DBLogControllerServer is the server API for DBLogController service.
 // All implementations must embed UnimplementedDBLogControllerServer
 // for forward compatibility
 type DBLogControllerServer interface {
 	PullDumpInfo(DBLogController_PullDumpInfoServer) error
 	Schedule(context.Context, *ScheduleRequest) (*ScheduleResponse, error)
+	StopSchedule(context.Context, *StopScheduleRequest) (*StopScheduleResponse, error)
+	SetScheduleCoolDown(context.Context, *SetScheduleCoolDownRequest) (*SetScheduleCoolDownResponse, error)
 	mustEmbedUnimplementedDBLogControllerServer()
 }
 
@@ -206,6 +228,12 @@ func (UnimplementedDBLogControllerServer) PullDumpInfo(DBLogController_PullDumpI
 }
 func (UnimplementedDBLogControllerServer) Schedule(context.Context, *ScheduleRequest) (*ScheduleResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Schedule not implemented")
+}
+func (UnimplementedDBLogControllerServer) StopSchedule(context.Context, *StopScheduleRequest) (*StopScheduleResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method StopSchedule not implemented")
+}
+func (UnimplementedDBLogControllerServer) SetScheduleCoolDown(context.Context, *SetScheduleCoolDownRequest) (*SetScheduleCoolDownResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetScheduleCoolDown not implemented")
 }
 func (UnimplementedDBLogControllerServer) mustEmbedUnimplementedDBLogControllerServer() {}
 
@@ -264,6 +292,42 @@ func _DBLogController_Schedule_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DBLogController_StopSchedule_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StopScheduleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DBLogControllerServer).StopSchedule(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/pgcapture.DBLogController/StopSchedule",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DBLogControllerServer).StopSchedule(ctx, req.(*StopScheduleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DBLogController_SetScheduleCoolDown_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetScheduleCoolDownRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DBLogControllerServer).SetScheduleCoolDown(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/pgcapture.DBLogController/SetScheduleCoolDown",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DBLogControllerServer).SetScheduleCoolDown(ctx, req.(*SetScheduleCoolDownRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // DBLogController_ServiceDesc is the grpc.ServiceDesc for DBLogController service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -274,6 +338,14 @@ var DBLogController_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Schedule",
 			Handler:    _DBLogController_Schedule_Handler,
+		},
+		{
+			MethodName: "StopSchedule",
+			Handler:    _DBLogController_StopSchedule_Handler,
+		},
+		{
+			MethodName: "SetScheduleCoolDown",
+			Handler:    _DBLogController_SetScheduleCoolDown_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
