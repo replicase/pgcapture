@@ -2,7 +2,10 @@ package cmd
 
 import (
 	"fmt"
+	"log"
 	"net"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"strings"
@@ -14,8 +17,21 @@ import (
 	"google.golang.org/grpc"
 )
 
+var ProfilerListenAddr string
+
+func init() {
+	rootCmd.Flags().StringVarP(&ProfilerListenAddr, "ProfilerListenAddr", "", "localhost:6060", "golang profiler http endpoint")
+}
+
 var rootCmd = &cobra.Command{
 	Use: "pgcapture",
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		go func() {
+			if ProfilerListenAddr != "" {
+				log.Println(http.ListenAndServe(ProfilerListenAddr, nil))
+			}
+		}()
+	},
 }
 
 func Execute() {
