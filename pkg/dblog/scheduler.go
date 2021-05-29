@@ -10,15 +10,17 @@ import (
 )
 
 type OnSchedule func(response *pb.DumpInfoResponse) error
+type AfterSchedule func()
 type CancelFunc func()
 
 var ErrAlreadyScheduled = errors.New("already scheduled")
 var ErrAlreadyRegistered = errors.New("already registered")
 
 type Scheduler interface {
-	Schedule(uri string, dumps []*pb.DumpInfoResponse) error
+	Schedule(uri string, dumps []*pb.DumpInfoResponse, fn AfterSchedule) error
 	Register(uri string, client string, fn OnSchedule) (CancelFunc, error)
 	Ack(uri string, client string, requeue string)
+	SetCoolDown(uri string, dur time.Duration)
 }
 
 func NewMemoryScheduler(interval time.Duration) *MemoryScheduler {
@@ -39,7 +41,7 @@ type MemoryScheduler struct {
 	log       *logrus.Entry
 }
 
-func (s *MemoryScheduler) Schedule(uri string, dumps []*pb.DumpInfoResponse) error {
+func (s *MemoryScheduler) Schedule(uri string, dumps []*pb.DumpInfoResponse, fn AfterSchedule) error {
 	s.pendingMu.Lock()
 	defer s.pendingMu.Unlock()
 
@@ -53,15 +55,16 @@ func (s *MemoryScheduler) Schedule(uri string, dumps []*pb.DumpInfoResponse) err
 		"NumDump": len(dumps),
 	}).Infof("start scheduling dumps of %s", uri)
 
-	go s.schedule(uri)
+	go s.schedule(uri, fn)
 	return nil
 }
 
-func (s *MemoryScheduler) schedule(uri string) {
+func (s *MemoryScheduler) schedule(uri string, fn AfterSchedule) {
 	defer func() {
 		s.pendingMu.Lock()
 		delete(s.pending, uri)
 		s.pendingMu.Unlock()
+		fn()
 		s.log.WithFields(logrus.Fields{"URI": uri}).Infof("finish scheduling dumps of %s", uri)
 	}()
 
@@ -104,7 +107,7 @@ func (s *MemoryScheduler) scheduleOne(uri string) bool {
 	s.pendingMu.Lock()
 	if pending, ok := s.pending[uri]; ok {
 		remain = pending.Remaining()
-		if candidate != nil {
+		if candidate != nil && (pending.coolDown == 0 || time.Now().Sub(candidate.ackTs) > pending.coolDown) {
 			dump = pending.Pop()
 		}
 	}
@@ -162,6 +165,7 @@ func (s *MemoryScheduler) Ack(uri string, client string, requeue string) {
 		if track, ok := clients[client]; ok {
 			dump = track.dump
 			track.dump = nil
+			track.ackTs = time.Now()
 		}
 	}
 	s.clientsMu.Unlock()
@@ -176,15 +180,25 @@ func (s *MemoryScheduler) Ack(uri string, client string, requeue string) {
 	}
 }
 
+func (s *MemoryScheduler) SetCoolDown(uri string, dur time.Duration) {
+	s.pendingMu.Lock()
+	if pending, ok := s.pending[uri]; ok {
+		pending.coolDown = dur
+	}
+	s.pendingMu.Unlock()
+}
+
 type track struct {
 	dump     *pb.DumpInfoResponse
+	ackTs    time.Time
 	schedule OnSchedule
 	cancel   CancelFunc
 }
 
 type pending struct {
-	dumps  []*pb.DumpInfoResponse
-	offset int
+	dumps    []*pb.DumpInfoResponse
+	coolDown time.Duration
+	offset   int
 }
 
 func (p *pending) Remaining() int {

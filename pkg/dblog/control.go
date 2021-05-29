@@ -45,7 +45,9 @@ func (c *Controller) PullDumpInfo(server pb.DBLogController_PullDumpInfoServer) 
 }
 
 func (c *Controller) Schedule(ctx context.Context, req *pb.ScheduleRequest) (*pb.ScheduleResponse, error) {
-	if err := c.Scheduler.Schedule(req.Uri, req.Dumps); err != nil {
+	if err := c.Scheduler.Schedule(req.Uri, req.Dumps, func() {
+
+	}); err != nil {
 		return nil, err
 	}
 	return &pb.ScheduleResponse{}, nil

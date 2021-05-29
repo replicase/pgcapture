@@ -22,13 +22,16 @@ func TestMemoryScheduler_Schedule(t *testing.T) {
 
 	// start schedule each group without error
 	for uri, group := range groups {
-		if err := s.Schedule(uri, group.dumps); err != nil {
+		group := group
+		if err := s.Schedule(uri, group.dumps, func() {
+			close(group.done)
+		}); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	for uri, group := range groups {
-		if err := s.Schedule(uri, group.dumps); err != ErrAlreadyScheduled {
+		if err := s.Schedule(uri, group.dumps, nil); err != ErrAlreadyScheduled {
 			t.Fatal("scheduled uri should be reject until finished")
 		}
 	}
@@ -46,16 +49,9 @@ func TestMemoryScheduler_Schedule(t *testing.T) {
 				}
 				group.counter++
 				group.clients[i].counter++
-				if group.counter != len(group.dumps) {
-					go func() {
-						s.Ack(uri, strconv.Itoa(i), "")
-					}()
-				} else {
-					go func() {
-						s.Ack(uri, strconv.Itoa(i), "")
-						close(group.done)
-					}()
-				}
+				go func() {
+					s.Ack(uri, strconv.Itoa(i), "")
+				}()
 				return nil
 			})
 		}
@@ -73,39 +69,85 @@ func TestMemoryScheduler_Schedule(t *testing.T) {
 		<-group.done
 		for _, client := range group.clients {
 			if client.counter == 0 {
-				t.Fatalf("full client should be scheduled")
+				t.Fatalf("all clients should be scheduled")
 			}
 			client.cancel()
 		}
 	}
 
-	// wait schedule finished
-	time.Sleep(time.Millisecond * 100)
+	done := make(chan struct{})
 	// start a new schedule with the same uri
 	dumps := []*pb.DumpInfoResponse{{Table: URI1, PageBegin: 777}}
-	if err := s.Schedule(URI1, dumps); err != nil {
+	if err := s.Schedule(URI1, dumps, func() {
+		done <- struct{}{}
+	}); err != nil {
 		t.Fatal(err)
 	}
+
 	// error client should be unregistered later
+	scheduled := make(chan struct{})
 	if _, err := s.Register(URI1, "1", func(dump *pb.DumpInfoResponse) error {
+		scheduled <- struct{}{}
 		return errors.New("any error")
 	}); err != nil {
 		t.Fatal(err)
 	}
 	// wait for unregister error client
-	time.Sleep(time.Millisecond * 100)
+	<-scheduled
 	// register again, and re-consume the fail dump
-	done := make(chan struct{})
-	if _, err := s.Register(URI1, "1", func(dump *pb.DumpInfoResponse) error {
-		if dump != dumps[0] {
-			t.Fatalf("dump not match")
+	var err error
+	var cancel CancelFunc
+	for {
+		cancel, err = s.Register(URI1, "1", func(dump *pb.DumpInfoResponse) error {
+			if dump != dumps[0] {
+				t.Fatalf("dump not match")
+			}
+			go func() {
+				s.Ack(URI1, "1", "")
+			}()
+			scheduled <- struct{}{}
+			return nil
+		})
+		if err == nil {
+			break
 		}
-		close(done)
+		if err == ErrAlreadyRegistered {
+			continue
+		}
+		t.Fatal(err)
+	}
+	<-scheduled
+	<-done
+	cancel()
+
+	// start a new schedule with the same uri
+	// and set cool down duration
+	dumps = []*pb.DumpInfoResponse{
+		{Table: URI1, PageBegin: 777},
+		{Table: URI1, PageBegin: 999},
+	}
+	if err := s.Schedule(URI1, dumps, func() {
+		done <- struct{}{}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	coolDown := time.Millisecond * 10
+	s.SetCoolDown(URI1, coolDown)
+
+	var received []time.Time
+	if _, err := s.Register(URI1, "1", func(dump *pb.DumpInfoResponse) error {
+		received = append(received, time.Now())
+		go func() {
+			s.Ack(URI1, "1", "")
+		}()
 		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
 	<-done
+	if received[1].Sub(received[0]) < coolDown {
+		t.Fatalf("received gap should not be smaller then cool down interval")
+	}
 }
 
 func makeDumps(table string, n int) (dumps []*pb.DumpInfoResponse) {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/rueian/pgcapture/pkg/pb"
 	"google.golang.org/grpc/metadata"
@@ -136,7 +137,7 @@ type scheduler struct {
 	AckCB      func(uri string, client string, requeue string)
 }
 
-func (s *scheduler) Schedule(uri string, dumps []*pb.DumpInfoResponse) error {
+func (s *scheduler) Schedule(uri string, dumps []*pb.DumpInfoResponse, fn AfterSchedule) error {
 	return s.ScheduleCB(uri, dumps)
 }
 
@@ -146,6 +147,10 @@ func (s *scheduler) Register(uri string, client string, fn OnSchedule) (CancelFu
 
 func (s *scheduler) Ack(uri string, client string, requeue string) {
 	s.AckCB(uri, client, requeue)
+}
+
+func (s *scheduler) SetCoolDown(uri string, dur time.Duration) {
+
 }
 
 type pdis struct {
