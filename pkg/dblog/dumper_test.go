@@ -3,7 +3,6 @@ package dblog
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgtype"
@@ -47,18 +46,11 @@ func TestPGXSourceDumper(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	catchup := make(chan struct{})
-	go func() {
-		time.Sleep(time.Millisecond * 50)
-		conn.Exec(ctx, "UPDATE pgcapture.sources SET commit=$2 WHERE id = $1", "t1", pglogrepl.LSN(100).String())
-		close(catchup)
-	}()
-	if _, err := dumper.LoadDump(100, &pb.DumpInfoResponse{Schema: "public", Table: "t1"}); err != nil {
+	if _, err := dumper.LoadDump(100, &pb.DumpInfoResponse{Schema: "public", Table: "t1"}); err != ErrLSNFallBehind {
 		t.Fatal(err)
 	}
-	if _, more := <-catchup; more {
-		t.Fatal("dumper should wait for lsn")
-	}
+
+	conn.Exec(ctx, "UPDATE pgcapture.sources SET commit=$2 WHERE id = $1", "t1", pglogrepl.LSN(100).String())
 
 	var pages int
 	if err := conn.QueryRow(ctx, "select relpages from pg_class where relname = 't1'").Scan(&pages); err != nil || pages == 0 {

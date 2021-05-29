@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"sync"
-	"time"
 
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pglogrepl"
@@ -94,19 +93,14 @@ func (p *PGXSourceDumper) LoadDump(minLSN uint64, info *pb.DumpInfoResponse) ([]
 		return nil, ErrMissingTable
 	}
 
-	for {
-		p.mu.Lock()
-		changes, err := p.load(minLSN, info)
-		p.mu.Unlock()
-		if err == ErrLSNFallBehind {
-			time.Sleep(time.Millisecond * 100)
-			continue
-		}
-		if err != nil {
-			return nil, err
-		}
-		return changes, nil
+	p.mu.Lock()
+	changes, err := p.load(minLSN, info)
+	p.mu.Unlock()
+
+	if err != nil {
+		return nil, err
 	}
+	return changes, nil
 }
 
 func (p *PGXSourceDumper) Stop() {
