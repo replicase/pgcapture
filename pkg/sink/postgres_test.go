@@ -20,6 +20,7 @@ func newPGXSink() *PGXSink {
 	return &PGXSink{
 		ConnStr:  "postgres://postgres@127.0.0.1/postgres?sslmode=disable",
 		SourceID: "repl_test",
+		Renice:   -10,
 	}
 }
 

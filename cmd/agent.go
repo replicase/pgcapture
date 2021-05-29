@@ -22,11 +22,13 @@ import (
 
 var (
 	AgentListenAddr string
+	AgentRenice     int64
 )
 
 func init() {
 	rootCmd.AddCommand(agent)
 	agent.Flags().StringVarP(&AgentListenAddr, "ListenAddr", "", ":10000", "the tcp address for agent server to listen")
+	agent.Flags().Int64VarP(&AgentRenice, "Renice", "", -10, "try renice the sink pg process")
 }
 
 var agent = &cobra.Command{
@@ -145,7 +147,7 @@ func (a *Agent) pulsar2pg(params *structpb.Struct) (*pb.AgentConfigResponse, err
 		return nil, err
 	}
 
-	pgSink := &sink.PGXSink{ConnStr: v["PGConnURL"], SourceID: trimSlot(v["PulsarTopic"]), LogReader: nil}
+	pgSink := &sink.PGXSink{ConnStr: v["PGConnURL"], SourceID: trimSlot(v["PulsarTopic"]), Renice: AgentRenice, LogReader: nil}
 	if v, err := extract(params, "PGLogPath"); err == nil {
 		pgLog, err := os.Open(v["PGLogPath"])
 		if err != nil {

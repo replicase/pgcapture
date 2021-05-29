@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,6 +31,7 @@ type PGXSink struct {
 
 	ConnStr   string
 	SourceID  string
+	Renice    int64
 	LogReader io.Reader
 
 	conn    *pgx.Conn
@@ -100,6 +103,16 @@ func (p *PGXSink) Setup() (cp source.Checkpoint, err error) {
 		"From":     "PGXSink",
 		"SourceID": p.SourceID,
 	})
+
+	// try renice
+	if p.Renice < 0 {
+		var pid int64
+		if err := p.conn.QueryRow(ctx, "select pg_backend_pid()").Scan(&pid); err != nil {
+			return cp, err
+		}
+		out, err := exec.Command("renice", "-n", strconv.FormatInt(p.Renice, 10), "-p", strconv.FormatInt(pid, 10)).CombinedOutput()
+		p.log.Infof("try renice to %d for pid %d: %s(%v)", p.Renice, pid, string(out), err)
+	}
 
 	return p.findCheckpoint(ctx)
 }
