@@ -8,6 +8,7 @@ import (
 	"github.com/rueian/pgcapture/pkg/pgcapture"
 	"github.com/rueian/pgcapture/pkg/source"
 	"github.com/sirupsen/logrus"
+	"google.golang.org/grpc/peer"
 )
 
 type Gateway struct {
@@ -87,10 +88,17 @@ func (s *Gateway) capture(init *pb.CaptureInit, filter *regexp.Regexp, server pb
 
 	acks := make(chan string)
 	defer close(acks)
+
 	done := s.acknowledge(server, src)
 	dumps := s.DumpInfoPuller.Pull(server.Context(), init.Uri, acks)
+
+	var addr string
+	if p, ok := peer.FromContext(server.Context()); ok {
+		addr = p.Addr.String()
+	}
+	logger := logrus.WithFields(logrus.Fields{"URI": init.Uri, "From": "Gateway", "Peer": addr})
+
 	lsn := uint64(0)
-	logger := logrus.WithFields(logrus.Fields{"URI": init.Uri, "From": "Gateway"})
 
 	for {
 		select {
