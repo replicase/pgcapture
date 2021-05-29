@@ -21,7 +21,7 @@ var controller = &cobra.Command{
 	Use:   "controller",
 	Short: "grpc api for controlling the dump process",
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
-		control := &dblog.Controller{Scheduler: dblog.NewMemoryScheduler(time.Millisecond * 100)}
+		control := dblog.NewController(dblog.NewMemoryScheduler(time.Millisecond * 100))
 		return serveGRPC(&pb.DBLogController_ServiceDesc, ControllerListenAddr, control)
 	},
 }

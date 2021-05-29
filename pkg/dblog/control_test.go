@@ -14,39 +14,35 @@ import (
 
 func TestController_Schedule_Delegate(t *testing.T) {
 	req := &pb.ScheduleRequest{Uri: URI1, Dumps: []*pb.DumpInfoResponse{{PageBegin: 1}}}
-	c := &Controller{
-		Scheduler: &scheduler{
-			ScheduleCB: func(uri string, dumps []*pb.DumpInfoResponse) error {
-				if uri != URI1 {
-					t.Fatal("unexpected")
-				}
-				if !proto.Equal(req, &pb.ScheduleRequest{Uri: uri, Dumps: dumps}) {
-					t.Fatal("unexpected")
-				}
-				return nil
-			},
+	c := NewController(&scheduler{
+		ScheduleCB: func(uri string, dumps []*pb.DumpInfoResponse) error {
+			if uri != URI1 {
+				t.Fatal("unexpected")
+			}
+			if !proto.Equal(req, &pb.ScheduleRequest{Uri: uri, Dumps: dumps}) {
+				t.Fatal("unexpected")
+			}
+			return nil
 		},
-	}
+	})
 	if _, err := c.Schedule(context.Background(), req); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestController_Schedule_Error(t *testing.T) {
-	c := &Controller{
-		Scheduler: &scheduler{
-			ScheduleCB: func(uri string, dumps []*pb.DumpInfoResponse) error {
-				return context.Canceled
-			},
+	c := NewController(&scheduler{
+		ScheduleCB: func(uri string, dumps []*pb.DumpInfoResponse) error {
+			return context.Canceled
 		},
-	}
+	})
 	if _, err := c.Schedule(context.Background(), &pb.ScheduleRequest{}); err != context.Canceled {
 		t.Fatal(err)
 	}
 }
 
 func TestController_PullDumpInfo_InitError(t *testing.T) {
-	c := &Controller{}
+	c := NewController(nil)
 	if err := c.PullDumpInfo(&pdis{
 		RecvCB: func() (*pb.DumpInfoRequest, error) { return nil, errors.New("any") },
 	}); err == nil || err.Error() != "any" {
@@ -61,11 +57,11 @@ func TestController_PullDumpInfo_InitError(t *testing.T) {
 }
 
 func TestController_PullDumpInfo_RegisterError(t *testing.T) {
-	c := &Controller{Scheduler: &scheduler{
+	c := NewController(&scheduler{
 		RegisterCB: func(uri string, client string, fn OnSchedule) (CancelFunc, error) {
 			return nil, errors.New("any")
 		},
-	}}
+	})
 	if err := c.PullDumpInfo(&pdis{
 		RecvCB: func() (*pb.DumpInfoRequest, error) {
 			return &pb.DumpInfoRequest{Uri: URI1}, nil
@@ -81,7 +77,7 @@ func TestController_PullDumpInfo_Delegate(t *testing.T) {
 	dump := &pb.DumpInfoResponse{Table: URI1, PageBegin: 0}
 	done := make(chan struct{})
 
-	c := &Controller{Scheduler: &scheduler{
+	c := NewController(&scheduler{
 		RegisterCB: func(uri string, client string, fn OnSchedule) (CancelFunc, error) {
 			if uri != URI1 {
 				t.Fatal("unexpected")
@@ -105,7 +101,7 @@ func TestController_PullDumpInfo_Delegate(t *testing.T) {
 			}
 			atomic.AddInt64(&acks, 1)
 		},
-	}}
+	})
 
 	if err := c.PullDumpInfo(&pdis{
 		RecvCB: func() (*pb.DumpInfoRequest, error) {

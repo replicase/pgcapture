@@ -7,14 +7,23 @@ import (
 	"sync/atomic"
 
 	"github.com/rueian/pgcapture/pkg/pb"
+	"github.com/sirupsen/logrus"
 )
 
 var ErrEmptyURI = errors.New("first request uri should not be empty")
+
+func NewController(scheduler Scheduler) *Controller {
+	return &Controller{
+		Scheduler: scheduler,
+		log:       logrus.WithFields(logrus.Fields{"From": "Controller"}),
+	}
+}
 
 type Controller struct {
 	pb.UnimplementedDBLogControllerServer
 	Scheduler Scheduler
 	clients   int64
+	log       *logrus.Entry
 }
 
 func (c *Controller) PullDumpInfo(server pb.DBLogController_PullDumpInfoServer) (err error) {
@@ -33,7 +42,14 @@ func (c *Controller) PullDumpInfo(server pb.DBLogController_PullDumpInfoServer) 
 	if err != nil {
 		return err
 	}
-	defer cancel()
+
+	log := c.log.WithFields(logrus.Fields{"URI": uri, "Client": id})
+	log.Infof("registered client %s from uri %s", id, uri)
+
+	defer func() {
+		cancel()
+		log.Infof("unregistered client %s to uri %s", id, uri)
+	}()
 
 	for {
 		msg, err = server.Recv()
@@ -41,12 +57,21 @@ func (c *Controller) PullDumpInfo(server pb.DBLogController_PullDumpInfoServer) 
 			return err
 		}
 		c.Scheduler.Ack(uri, id, msg.RequeueReason)
+		if msg.RequeueReason != "" {
+			log.WithFields(logrus.Fields{"Reason": msg.RequeueReason}).Error("requeue")
+		}
 	}
 }
 
 func (c *Controller) Schedule(ctx context.Context, req *pb.ScheduleRequest) (*pb.ScheduleResponse, error) {
-	if err := c.Scheduler.Schedule(req.Uri, req.Dumps, func() {
+	log := c.log.WithFields(logrus.Fields{
+		"URI":     req.Uri,
+		"NumDump": len(req.Dumps),
+	})
+	log.Infof("start scheduling dumps of %s", req.Uri)
 
+	if err := c.Scheduler.Schedule(req.Uri, req.Dumps, func() {
+		log.Infof("finish scheduling dumps of %s", req.Uri)
 	}); err != nil {
 		return nil, err
 	}
