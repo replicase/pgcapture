@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"time"
 
 	"github.com/rueian/pgcapture/example"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 func main() {
@@ -22,11 +24,19 @@ func main() {
 		panic(err)
 	}
 
-	dumps := make([]*pb.DumpInfoResponse, pages)
-	for i := uint32(0); i < uint32(pages); i++ {
-		dumps[i] = &pb.DumpInfoResponse{Schema: "public", Table: example.TestTable, PageBegin: i, PageEnd: i}
+	batch := uint32(1)
+	var dumps []*pb.DumpInfoResponse
+
+	for i := uint32(0); i < uint32(pages); i += batch {
+		dumps = append(dumps, &pb.DumpInfoResponse{Schema: "public", Table: example.TestTable, PageBegin: i, PageEnd: i + batch - 1})
 	}
 	if _, err = client.Schedule(context.Background(), &pb.ScheduleRequest{Uri: example.TestDBSrc, Dumps: dumps}); err != nil {
+		panic(err)
+	}
+
+	if _, err = client.SetScheduleCoolDown(context.Background(), &pb.SetScheduleCoolDownRequest{
+		Uri: example.TestDBSrc, Duration: durationpb.New(time.Second * 5),
+	}); err != nil {
 		panic(err)
 	}
 }
