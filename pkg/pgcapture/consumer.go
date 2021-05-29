@@ -14,18 +14,24 @@ import (
 
 const TableRegexOption = "TableRegex"
 
+var DefaultErrorFn = func(source source.Change, err error) {}
+
 func NewConsumer(ctx context.Context, conn *grpc.ClientConn, option ConsumerOption) *Consumer {
+	return newConsumer(ctx, pb.NewDBLogGatewayClient(conn), option)
+}
+
+func newConsumer(ctx context.Context, client pb.DBLogGatewayClient, option ConsumerOption) *Consumer {
 	parameters, _ := structpb.NewStruct(map[string]interface{}{})
 	if option.TableRegex != "" {
 		parameters.Fields[TableRegexOption] = structpb.NewStringValue(option.TableRegex)
 	}
-	c := &DBLogGatewayConsumer{client: pb.NewDBLogGatewayClient(conn), init: &pb.CaptureInit{
+	c := &DBLogGatewayConsumer{client: client, init: &pb.CaptureInit{
 		Uri:        option.URI,
 		Parameters: parameters,
 	}}
 	c.ctx, c.cancel = context.WithCancel(ctx)
 
-	errFn := func(source source.Change, err error) {}
+	errFn := DefaultErrorFn
 	if option.OnDecodeError != nil {
 		errFn = option.OnDecodeError
 	}

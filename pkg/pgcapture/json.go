@@ -3,6 +3,7 @@ package pgcapture
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/jackc/pgtype"
 	"reflect"
 	"strings"
 	"sync"
@@ -66,10 +67,18 @@ func MarshalJSON(m Model) ([]byte, error) {
 	count := 0
 	for i, opt := range names {
 		f := ele.Field(i)
-		if !f.CanInterface() || opt.name == "-" || (opt.omitempty && isEmptyValue(f)) {
+		if !f.CanInterface() || opt.name == "-" {
 			continue
 		}
-		bs, err := json.Marshal(f.Addr().Interface())
+		face := f.Addr().Interface()
+		if opt.omitempty {
+			if valuer, ok := face.(pgtype.Value); ok {
+				if v := valuer.Get(); v == nil || isEmptyValue(reflect.ValueOf(v)) {
+					continue
+				}
+			}
+		}
+		bs, err := json.Marshal(face)
 		if err != nil {
 			if strings.Contains(err.Error(), "cannot encode status undefined") {
 				continue
