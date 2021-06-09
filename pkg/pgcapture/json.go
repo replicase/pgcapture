@@ -76,6 +76,10 @@ func MarshalJSON(m Model) ([]byte, error) {
 				if v := valuer.Get(); v == nil || isEmptyValue(reflect.ValueOf(v)) {
 					continue
 				}
+			} else {
+				if (f.Kind() == reflect.Ptr && f.IsNil()) || isEmptyValue(f) {
+					continue
+				}
 			}
 		}
 		bs, err := json.Marshal(face)
