@@ -126,9 +126,13 @@ func (p *PulsarSink) Apply(changes chan source.Change) chan source.Checkpoint {
 			Payload: bs,
 		}, func(id pulsar.MessageID, message *pulsar.ProducerMessage, err error) {
 			if err != nil {
+				var idHex string
+				if id != nil {
+					idHex = hex.EncodeToString(id.Serialize())
+				}
 				p.log.WithFields(logrus.Fields{
 					"MessageLSN":   change.Checkpoint.LSN,
-					"MessageIDHex": hex.EncodeToString(id.Serialize()),
+					"MessageIDHex": idHex,
 				}).Errorf("fail to send message to pulsar: %v", err)
 				p.BaseSink.err.Store(fmt.Errorf("%w", err))
 				p.BaseSink.Stop()
