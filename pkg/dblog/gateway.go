@@ -80,23 +80,27 @@ func (s *Gateway) acknowledge(server pb.DBLogGateway_CaptureServer, src source.R
 }
 
 func (s *Gateway) capture(init *pb.CaptureInit, filter *regexp.Regexp, server pb.DBLogGateway_CaptureServer, src source.RequeueSource, dumper SourceDumper) error {
+	var addr string
+	if p, ok := peer.FromContext(server.Context()); ok {
+		addr = p.Addr.String()
+	}
+	logger := logrus.WithFields(logrus.Fields{"URI": init.Uri, "From": "Gateway", "Peer": addr})
+
 	changes, err := src.Capture(source.Checkpoint{})
 	if err != nil {
 		return err
 	}
-	defer src.Stop()
+	defer func() {
+		src.Stop()
+		logger.Infof("stop capturing")
+	}()
+	logger.Infof("start capturing")
 
 	acks := make(chan string)
 	defer close(acks)
 
 	done := s.acknowledge(server, src)
 	dumps := s.DumpInfoPuller.Pull(server.Context(), init.Uri, acks)
-
-	var addr string
-	if p, ok := peer.FromContext(server.Context()); ok {
-		addr = p.Addr.String()
-	}
-	logger := logrus.WithFields(logrus.Fields{"URI": init.Uri, "From": "Gateway", "Peer": addr})
 
 	lsn := uint64(0)
 
@@ -130,10 +134,15 @@ func (s *Gateway) capture(init *pb.CaptureInit, filter *regexp.Regexp, server pb
 			}
 			var requeue string
 			if filter == nil || filter.MatchString(info.Table) {
-				logger.WithFields(logrus.Fields{"Dump": info.String()}).Info("loading dump")
 				dump, err := dumper.LoadDump(lsn, info)
-				for _, change := range dump {
+				if err == nil {
+					logger.WithFields(logrus.Fields{"Dump": info.String(), "Len": len(dump)}).Info("dump loaded")
+				} else {
+					logger.WithFields(logrus.Fields{"Dump": info.String()}).Errorf("dump error %v", err)
+				}
+				for i, change := range dump {
 					if err = server.Send(&pb.CaptureMessage{Checkpoint: &pb.Checkpoint{Lsn: 0}, Change: change}); err != nil {
+						logger.WithFields(logrus.Fields{"Dump": info.String(), "Len": len(dump), "Idx": i}).Errorf("partial dump error: %v", err)
 						acks <- err.Error()
 						return err
 					}
