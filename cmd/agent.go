@@ -187,6 +187,7 @@ func (a *Agent) sourceToSink(src source.Source, sk sink.Sink) (err error) {
 
 	changes, err := src.Capture(lastCheckPoint)
 	if err != nil {
+		sk.Stop()
 		return err
 	}
 
