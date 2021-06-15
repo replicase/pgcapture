@@ -128,12 +128,14 @@ func (a *Agent) pg2pulsar(params *structpb.Struct) (*pb.AgentConfigResponse, err
 	pgSrc := &source.PGXSource{SetupConnStr: v["PGConnURL"], ReplConnStr: v["PGReplURL"], ReplSlot: trimSlot(v["PulsarTopic"]), CreateSlot: true}
 	pulsarSink := &sink.PulsarSink{PulsarOption: pulsar.ClientOptions{URL: v["PulsarURL"]}, PulsarTopic: v["PulsarTopic"]}
 
-	logrus.WithFields(logrus.Fields{
+	logger := logrus.WithFields(logrus.Fields{
 		"PulsarURL":   v["PulsarURL"],
 		"PulsarTopic": v["PulsarTopic"],
-	}).Info("start pg2pulsar")
+	})
+	logger.Info("start pg2pulsar")
 
 	if err := a.sourceToSink(pgSrc, pulsarSink); err != nil {
+		logger.Fatalf("sourceToSink err: %v", err)
 		return nil, err
 	}
 
@@ -164,14 +166,16 @@ func (a *Agent) pulsar2pg(params *structpb.Struct) (*pb.AgentConfigResponse, err
 
 	a.dumper = dumper
 
-	logrus.WithFields(logrus.Fields{
+	logger := logrus.WithFields(logrus.Fields{
 		"PulsarURL":   v["PulsarURL"],
 		"PulsarTopic": v["PulsarTopic"],
 		"PGLogPath":   v["PGLogPath"],
-	}).Info("start pulsar2pg")
+	})
+	logger.Info("start pulsar2pg")
 
 	pulsarSrc := &source.PulsarReaderSource{PulsarOption: pulsar.ClientOptions{URL: v["PulsarURL"]}, PulsarTopic: v["PulsarTopic"]}
 	if err = a.sourceToSink(pulsarSrc, pgSink); err != nil {
+		logger.Fatalf("sourceToSink error: %v", err)
 		return nil, err
 	}
 
