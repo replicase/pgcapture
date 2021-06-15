@@ -5,7 +5,7 @@ go 1.15
 replace github.com/pganalyze/pg_query_go/v2 v2.0.2 => github.com/rueian/pg_query_go/v2 v2.0.3-0.20210404160231-00fbdb47649c
 
 require (
-	github.com/apache/pulsar-client-go v0.4.1-0.20210421002016-eebdab861ac6
+	github.com/apache/pulsar-client-go v0.4.1-0.20210615012709-cb72395fb53f
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/jackc/pgconn v1.8.1
 	github.com/jackc/pglogrepl v0.0.0-20210109153808-a78a685a0bff
