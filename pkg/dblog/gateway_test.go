@@ -19,6 +19,7 @@ func TestGateway_CaptureInitError(t *testing.T) {
 		},
 	}
 	if err := gw.Capture(&capture{
+		ctx: context.Background(),
 		RecvCB: func() (*pb.CaptureRequest, error) {
 			return nil, context.Canceled
 		},
@@ -27,6 +28,7 @@ func TestGateway_CaptureInitError(t *testing.T) {
 	}
 
 	if err := gw.Capture(&capture{
+		ctx: context.Background(),
 		RecvCB: func() (*pb.CaptureRequest, error) {
 			return &pb.CaptureRequest{}, nil
 		},
@@ -35,6 +37,7 @@ func TestGateway_CaptureInitError(t *testing.T) {
 	}
 
 	if err := gw.Capture(&capture{
+		ctx: context.Background(),
 		RecvCB: func() (*pb.CaptureRequest, error) {
 			return &pb.CaptureRequest{Type: &pb.CaptureRequest_Init{Init: &pb.CaptureInit{Uri: URI1}}}, nil
 		},
@@ -61,6 +64,7 @@ func TestGateway_CaptureInitError(t *testing.T) {
 		},
 	}
 	if err := gw.Capture(&capture{
+		ctx: context.Background(),
 		RecvCB: func() (*pb.CaptureRequest, error) {
 			return &pb.CaptureRequest{Type: &pb.CaptureRequest_Init{Init: &pb.CaptureInit{Uri: URI1}}}, nil
 		},
@@ -90,6 +94,7 @@ func TestGateway_CaptureInitError(t *testing.T) {
 		},
 	}
 	if err := gw.Capture(&capture{
+		ctx: context.Background(),
 		RecvCB: func() (*pb.CaptureRequest, error) {
 			return &pb.CaptureRequest{Type: &pb.CaptureRequest_Init{Init: &pb.CaptureInit{Uri: URI1}}}, nil
 		},
