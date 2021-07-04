@@ -1,8 +1,11 @@
 package dblog
 
 import (
+	"encoding/binary"
 	"errors"
+	"hash/crc32"
 	"regexp"
+	"sync"
 
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/pgcapture"
@@ -46,7 +49,7 @@ func (s *Gateway) Capture(server pb.DBLogGateway_CaptureServer) error {
 	return s.capture(init, filter, server, src, dumper)
 }
 
-func (s *Gateway) acknowledge(server pb.DBLogGateway_CaptureServer, src source.RequeueSource) chan error {
+func (s *Gateway) acknowledge(server pb.DBLogGateway_CaptureServer, src source.RequeueSource, dumps *dumpMap) chan error {
 	done := make(chan error)
 	go func() {
 		for {
@@ -57,7 +60,6 @@ func (s *Gateway) acknowledge(server pb.DBLogGateway_CaptureServer, src source.R
 				return
 			}
 			if ack := request.GetAck(); ack != nil {
-				// ignore dump changes (Checkpoint == 0), do nothing
 				if ack.Checkpoint.Lsn != 0 {
 					if ack.RequeueReason != "" {
 						src.Requeue(source.Checkpoint{
@@ -71,6 +73,15 @@ func (s *Gateway) acknowledge(server pb.DBLogGateway_CaptureServer, src source.R
 							Seq:  ack.Checkpoint.Seq,
 							Data: ack.Checkpoint.Data,
 						})
+					}
+				} else {
+					// ack.Checkpoint.Lsn == 0 for dumps
+					// ack.Checkpoint.Seq is dump id
+					// len(ack.Checkpoint.Data) == 1 for last record of dump
+					if len(ack.Checkpoint.Data) == 1 {
+						dumps.ack(ack.Checkpoint.Seq, ack.RequeueReason)
+					} else if ack.RequeueReason != "" {
+						dumps.ack(ack.Checkpoint.Seq, ack.RequeueReason)
 					}
 				}
 			}
@@ -96,7 +107,8 @@ func (s *Gateway) capture(init *pb.CaptureInit, filter *regexp.Regexp, server pb
 	}()
 	logger.Infof("start capturing")
 
-	done := s.acknowledge(server, src)
+	ongoingDumps := &dumpMap{m: make(map[uint32]DumpInfo, 2)}
+	done := s.acknowledge(server, src, ongoingDumps)
 	dumps := s.DumpInfoPuller.Pull(server.Context(), init.Uri)
 
 	lsn := uint64(0)
@@ -129,26 +141,40 @@ func (s *Gateway) capture(init *pb.CaptureInit, filter *regexp.Regexp, server pb
 			if !more {
 				return nil
 			}
+			var dump []*pb.Change
 			if filter == nil || filter.MatchString(info.Resp.Table) {
-				dump, err := dumper.LoadDump(lsn, info.Resp)
-				if err == nil {
-					logger.WithFields(logrus.Fields{"Dump": info.Resp.String(), "Len": len(dump)}).Info("dump loaded")
-				} else {
+				dump, err = dumper.LoadDump(lsn, info.Resp)
+				if err != nil {
 					logger.WithFields(logrus.Fields{"Dump": info.Resp.String()}).Errorf("dump error %v", err)
-				}
-				for i, change := range dump {
-					if err = server.Send(&pb.CaptureMessage{Checkpoint: &pb.Checkpoint{Lsn: 0}, Change: change}); err != nil {
-						logger.WithFields(logrus.Fields{"Dump": info.Resp.String(), "Len": len(dump), "Idx": i}).Errorf("partial dump error: %v", err)
+					if err != ErrMissingTable {
 						info.Ack(err.Error())
-						return err
+						continue
 					}
 				}
-				if err != nil && err != ErrMissingTable {
+			}
+			if len(dump) == 0 {
+				info.Ack("")
+				continue
+			}
+
+			logger.WithFields(logrus.Fields{"Dump": info.Resp.String(), "Len": len(dump)}).Info("dump loaded")
+			dumpID := ongoingDumps.store(info)
+
+			var isLast []byte
+			for i, change := range dump {
+				if i+1 == len(dump) {
+					isLast = []byte{1}
+				}
+				if err = server.Send(&pb.CaptureMessage{Checkpoint: &pb.Checkpoint{
+					Lsn:  0,
+					Seq:  dumpID,
+					Data: isLast,
+				}, Change: change}); err != nil {
+					logger.WithFields(logrus.Fields{"Dump": info.Resp.String(), "Len": len(dump), "Idx": i}).Errorf("partial dump error: %v", err)
 					info.Ack(err.Error())
-					continue
+					return err
 				}
 			}
-			info.Ack("")
 		case err := <-done:
 			return err
 		}
@@ -168,3 +194,34 @@ func tableRegexFromInit(init *pb.CaptureInit) (*regexp.Regexp, error) {
 var (
 	ErrCaptureInitMessageRequired = errors.New("the first request should be a CaptureInit message")
 )
+
+type dumpMap struct {
+	mu sync.Mutex
+	m  map[uint32]DumpInfo
+}
+
+func (m *dumpMap) store(info DumpInfo) uint32 {
+	id := dumpID(info.Resp)
+	m.mu.Lock()
+	m.m[id] = info
+	m.mu.Unlock()
+	return id
+}
+
+func (m *dumpMap) ack(id uint32, reason string) {
+	m.mu.Lock()
+	if info, ok := m.m[id]; ok {
+		info.Ack(reason)
+		delete(m.m, id)
+	}
+	m.mu.Unlock()
+}
+
+func dumpID(info *pb.DumpInfoResponse) uint32 {
+	sum := crc32.NewIEEE()
+	sum.Write([]byte(info.Schema))
+	sum.Write([]byte(info.Table))
+	binary.Write(sum, binary.BigEndian, info.PageBegin)
+	binary.Write(sum, binary.BigEndian, info.PageEnd)
+	return sum.Sum32()
+}

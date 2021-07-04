@@ -229,7 +229,6 @@ func TestGateway_Capture(t *testing.T) {
 	if req := <-dumpsReq; req.minLSN != 1 || req.info != dump {
 		t.Fatal("unexpected")
 	}
-
 	// prepare dump content, send it out, and ack
 	loaded := []*pb.Change{{Op: pb.Change_UPDATE}, {Op: pb.Change_UPDATE}, {Op: pb.Change_UPDATE}}
 	dumpsRes <- loaded
@@ -238,6 +237,48 @@ func TestGateway_Capture(t *testing.T) {
 			t.Fatal("unexpected")
 		}
 	}
+	// client ack the dump changes
+	for i := range loaded {
+		var isLast []byte
+		if i+1 == len(loaded) {
+			isLast = []byte{1}
+		}
+		recv <- &pb.CaptureRequest{Type: &pb.CaptureRequest_Ack{Ack: &pb.CaptureAck{Checkpoint: &pb.Checkpoint{Lsn: 0, Seq: dumpID(dump), Data: isLast}}}}
+	}
+	// wait for whole dump be acked to puller
+	if reason := <-dumpAcks; reason != "" {
+		t.Fatal("unexpected")
+	}
+
+	// if dump puller has dump, but client requeue
+	dump = &pb.DumpInfoResponse{Schema: "public", Table: "t1", PageBegin: 0, PageEnd: 0}
+	dumps <- DumpInfo{Resp: dump, client: &pullDumpInfoClient{acks: dumpAcks}}
+	if req := <-dumpsReq; req.minLSN != 1 || req.info != dump {
+		t.Fatal("unexpected")
+	}
+	// prepare dump content, send it out, and ack
+	loaded = []*pb.Change{{Op: pb.Change_UPDATE}, {Op: pb.Change_UPDATE}, {Op: pb.Change_UPDATE}}
+	dumpsRes <- loaded
+	for _, change := range loaded {
+		if sent := <-send; sent.Checkpoint.Lsn != 0 || sent.Change != change {
+			t.Fatal("unexpected")
+		}
+	}
+	// client requeue the dump changes
+	for range loaded {
+		recv <- &pb.CaptureRequest{Type: &pb.CaptureRequest_Ack{Ack: &pb.CaptureAck{Checkpoint: &pb.Checkpoint{Lsn: 0, Seq: dumpID(dump)}, RequeueReason: "clienterror"}}}
+	}
+	// wait for whole dump be acked to puller ONCE
+	if reason := <-dumpAcks; reason != "clienterror" {
+		t.Fatal("unexpected")
+	}
+
+	// if dump zero records, ack dump
+	dumps <- DumpInfo{Resp: dump, client: &pullDumpInfoClient{acks: dumpAcks}}
+	if req := <-dumpsReq; req.minLSN != 1 || req.info != dump {
+		t.Fatal("unexpected")
+	}
+	dumpsRes <- []*pb.Change{}
 	if reason := <-dumpAcks; reason != "" {
 		t.Fatal("unexpected")
 	}
@@ -247,7 +288,7 @@ func TestGateway_Capture(t *testing.T) {
 	if req := <-dumpsReq; req.minLSN != 1 || req.info != dump {
 		t.Fatal("unexpected")
 	}
-	dumpsRes <- nil
+	dumpsRes <- nil // make "fake"
 	if reason := <-dumpAcks; reason != "fake" {
 		t.Fatal("unexpected")
 	}
