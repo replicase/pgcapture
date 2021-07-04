@@ -10,20 +10,34 @@ import (
 )
 
 type DumpInfoPuller interface {
-	Pull(ctx context.Context, uri string, acks chan string) chan *pb.DumpInfoResponse
+	Pull(ctx context.Context, uri string) chan DumpInfo
+}
+
+type DumpInfo struct {
+	Resp   *pb.DumpInfoResponse
+	client pb.DBLogController_PullDumpInfoClient
+}
+
+func (i *DumpInfo) Ack(requeueReason string) error {
+	if i.client == nil {
+		return nil
+	}
+	err := i.client.Send(&pb.DumpInfoRequest{RequeueReason: requeueReason})
+	i.client = nil
+	return err
 }
 
 type GRPCDumpInfoPuller struct {
 	Client pb.DBLogControllerClient
 }
 
-func (p *GRPCDumpInfoPuller) Pull(ctx context.Context, uri string, acks chan string) chan *pb.DumpInfoResponse {
-	resp := make(chan *pb.DumpInfoResponse)
+func (p *GRPCDumpInfoPuller) Pull(ctx context.Context, uri string) chan DumpInfo {
+	resp := make(chan DumpInfo)
 
 	go func() {
 		defer close(resp)
 		for {
-			err := p.pulling(ctx, uri, resp, acks)
+			err := p.pulling(ctx, uri, resp)
 			if e, ok := status.FromError(err); (ok && e.Code() == codes.Canceled) || errors.Is(err, context.Canceled) {
 				return
 			}
@@ -33,36 +47,22 @@ func (p *GRPCDumpInfoPuller) Pull(ctx context.Context, uri string, acks chan str
 	return resp
 }
 
-func (p *GRPCDumpInfoPuller) pulling(ctx context.Context, uri string, resp chan *pb.DumpInfoResponse, acks chan string) error {
-	server, err := p.Client.PullDumpInfo(ctx)
+func (p *GRPCDumpInfoPuller) pulling(ctx context.Context, uri string, resp chan DumpInfo) error {
+	client, err := p.Client.PullDumpInfo(ctx)
 	if err != nil {
 		return err
 	}
-	if err = server.Send(&pb.DumpInfoRequest{Uri: uri}); err != nil {
+	if err = client.Send(&pb.DumpInfoRequest{Uri: uri}); err != nil {
 		return err
 	}
-	go func() {
-		for {
-			select {
-			case <-server.Context().Done():
-				// if err is context.Canceled, the loop should continue until acks closed
-				// if err is not context.Canceled, this go routine should exit and be recreated by upper retry loop
-				if !errors.Is(server.Context().Err(), context.Canceled) {
-					return
-				}
-			case msg, more := <-acks:
-				if !more {
-					return
-				}
-				server.Send(&pb.DumpInfoRequest{RequeueReason: msg})
-			}
-		}
-	}()
 	for {
-		msg, err := server.Recv()
+		msg, err := client.Recv()
 		if err != nil {
 			return err
 		}
-		resp <- msg
+		resp <- DumpInfo{
+			Resp:   msg,
+			client: client,
+		}
 	}
 }

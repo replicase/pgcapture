@@ -38,8 +38,7 @@ func TestPuller_Delegate(t *testing.T) {
 		},
 	}
 
-	acks := make(chan string)
-	dumps := puller.Pull(ctx, URI1, acks)
+	dumps := puller.Pull(ctx, URI1)
 
 	init := <-sendCh
 	if init.Uri != URI1 {
@@ -48,7 +47,7 @@ func TestPuller_Delegate(t *testing.T) {
 
 	dump := &pb.DumpInfoResponse{Table: URI1, PageBegin: 0}
 	recvCh <- dump
-	if dump != <-dumps {
+	if dump != (<-dumps).Resp {
 		t.Fatal("puller should deliver dumps to ret channel")
 	}
 
@@ -71,7 +70,7 @@ func TestPuller_RetryPull(t *testing.T) {
 		},
 	}
 
-	dumps := puller.Pull(context.Background(), URI1, make(chan string))
+	dumps := puller.Pull(context.Background(), URI1)
 	if _, more := <-dumps; more {
 		t.Fatal("dumps should be closed after canceled")
 	}
@@ -93,7 +92,7 @@ func TestPuller_RetryInit(t *testing.T) {
 		},
 	}
 
-	dumps := puller.Pull(context.Background(), URI1, make(chan string))
+	dumps := puller.Pull(context.Background(), URI1)
 	if _, more := <-dumps; more {
 		t.Fatal("dumps should be closed after canceled")
 	}
@@ -119,7 +118,7 @@ func TestPuller_RetryRecv(t *testing.T) {
 		},
 	}
 
-	dumps := puller.Pull(context.Background(), URI1, make(chan string))
+	dumps := puller.Pull(context.Background(), URI1)
 	if _, more := <-dumps; more {
 		t.Fatal("dumps should be closed after canceled")
 	}
@@ -141,19 +140,21 @@ func TestPuller_SendErr(t *testing.T) {
 				return errors.New("any")
 			},
 			RecvCB: func() (*pb.DumpInfoResponse, error) {
-				<-ctx.Done()
-				return nil, ctx.Err()
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				default:
+					return &pb.DumpInfoResponse{}, nil
+				}
 			},
 		},
 	}
 
-	acks := make(chan string, 2)
-	dumps := puller.Pull(context.Background(), URI1, acks)
-
-	acks <- "first ack should be called with SendCB"
-	acks <- "second ack should also be call with SendCB even if errored"
-
-	time.Sleep(time.Millisecond * 10)
+	dumps := puller.Pull(context.Background(), URI1)
+	resp := <-dumps
+	resp.Ack("first ack should be called with SendCB")
+	resp = <-dumps
+	resp.Ack("second ack should also be call with SendCB even if errored")
 
 	if atomic.LoadInt64(&count) != 3 {
 		t.Fatal("unexpected")
@@ -182,9 +183,7 @@ func TestPuller_SendClose(t *testing.T) {
 		},
 	}
 
-	acks := make(chan string)
-	close(acks)
-	dumps := puller.Pull(context.Background(), URI1, acks)
+	dumps := puller.Pull(context.Background(), URI1)
 
 	time.Sleep(time.Millisecond * 10)
 

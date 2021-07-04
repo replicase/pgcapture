@@ -96,11 +96,8 @@ func (s *Gateway) capture(init *pb.CaptureInit, filter *regexp.Regexp, server pb
 	}()
 	logger.Infof("start capturing")
 
-	acks := make(chan string)
-	defer close(acks)
-
 	done := s.acknowledge(server, src)
-	dumps := s.DumpInfoPuller.Pull(server.Context(), init.Uri, acks)
+	dumps := s.DumpInfoPuller.Pull(server.Context(), init.Uri)
 
 	lsn := uint64(0)
 
@@ -132,26 +129,26 @@ func (s *Gateway) capture(init *pb.CaptureInit, filter *regexp.Regexp, server pb
 			if !more {
 				return nil
 			}
-			var requeue string
-			if filter == nil || filter.MatchString(info.Table) {
-				dump, err := dumper.LoadDump(lsn, info)
+			if filter == nil || filter.MatchString(info.Resp.Table) {
+				dump, err := dumper.LoadDump(lsn, info.Resp)
 				if err == nil {
-					logger.WithFields(logrus.Fields{"Dump": info.String(), "Len": len(dump)}).Info("dump loaded")
+					logger.WithFields(logrus.Fields{"Dump": info.Resp.String(), "Len": len(dump)}).Info("dump loaded")
 				} else {
-					logger.WithFields(logrus.Fields{"Dump": info.String()}).Errorf("dump error %v", err)
+					logger.WithFields(logrus.Fields{"Dump": info.Resp.String()}).Errorf("dump error %v", err)
 				}
 				for i, change := range dump {
 					if err = server.Send(&pb.CaptureMessage{Checkpoint: &pb.Checkpoint{Lsn: 0}, Change: change}); err != nil {
-						logger.WithFields(logrus.Fields{"Dump": info.String(), "Len": len(dump), "Idx": i}).Errorf("partial dump error: %v", err)
-						acks <- err.Error()
+						logger.WithFields(logrus.Fields{"Dump": info.Resp.String(), "Len": len(dump), "Idx": i}).Errorf("partial dump error: %v", err)
+						info.Ack(err.Error())
 						return err
 					}
 				}
 				if err != nil && err != ErrMissingTable {
-					requeue = err.Error()
+					info.Ack(err.Error())
+					continue
 				}
 			}
-			acks <- requeue
+			info.Ack("")
 		case err := <-done:
 			return err
 		}

@@ -119,7 +119,7 @@ func TestGateway_Capture(t *testing.T) {
 	recv := make(chan *pb.CaptureRequest, 1)
 	send := make(chan *pb.CaptureMessage, 1)
 
-	dumps := make(chan *pb.DumpInfoResponse, 1)
+	dumps := make(chan DumpInfo, 1)
 	dumpAcks := make(chan string, 1)
 
 	dumpsReq := make(chan loadDumpReq, 1)
@@ -164,15 +164,10 @@ func TestGateway_Capture(t *testing.T) {
 			},
 		},
 		DumpInfoPuller: &puller{
-			PullCB: func(ctx context.Context, uri string, acks chan string) chan *pb.DumpInfoResponse {
+			PullCB: func(ctx context.Context, uri string) chan DumpInfo {
 				if ctx != ctx1 || uri != URI1 {
 					t.Fatal("unexpected")
 				}
-				go func() {
-					for s := range acks {
-						dumpAcks <- s
-					}
-				}()
 				return dumps
 			},
 		},
@@ -230,7 +225,7 @@ func TestGateway_Capture(t *testing.T) {
 
 	// if dump puller has dump
 	dump := &pb.DumpInfoResponse{Schema: "public", Table: "t1", PageBegin: 0, PageEnd: 0}
-	dumps <- dump
+	dumps <- DumpInfo{Resp: dump, client: &pullDumpInfoClient{acks: dumpAcks}}
 	if req := <-dumpsReq; req.minLSN != 1 || req.info != dump {
 		t.Fatal("unexpected")
 	}
@@ -248,7 +243,7 @@ func TestGateway_Capture(t *testing.T) {
 	}
 
 	// if dump error, requeue dump
-	dumps <- dump
+	dumps <- DumpInfo{Resp: dump, client: &pullDumpInfoClient{acks: dumpAcks}}
 	if req := <-dumpsReq; req.minLSN != 1 || req.info != dump {
 		t.Fatal("unexpected")
 	}
@@ -258,7 +253,7 @@ func TestGateway_Capture(t *testing.T) {
 	}
 
 	// if dump ErrMissingTable, ack dump
-	dumps <- dump
+	dumps <- DumpInfo{Resp: dump, client: &pullDumpInfoClient{acks: dumpAcks}}
 	if req := <-dumpsReq; req.minLSN != 1 || req.info != dump {
 		t.Fatal("unexpected")
 	}
@@ -282,8 +277,7 @@ func TestGateway_CaptureSendSourceError(t *testing.T) {
 	recv := make(chan *pb.CaptureRequest, 1)
 	send := make(chan *pb.CaptureMessage, 1)
 
-	dumps := make(chan *pb.DumpInfoResponse, 1)
-	dumpAcks := make(chan string, 1)
+	dumps := make(chan DumpInfo, 1)
 
 	dumpsReq := make(chan loadDumpReq, 1)
 	dumpsRes := make(chan []*pb.Change, 1)
@@ -320,15 +314,10 @@ func TestGateway_CaptureSendSourceError(t *testing.T) {
 			},
 		},
 		DumpInfoPuller: &puller{
-			PullCB: func(ctx context.Context, uri string, acks chan string) chan *pb.DumpInfoResponse {
+			PullCB: func(ctx context.Context, uri string) chan DumpInfo {
 				if ctx != ctx1 || uri != URI1 {
 					t.Fatal("unexpected")
 				}
-				go func() {
-					for s := range acks {
-						dumpAcks <- s
-					}
-				}()
 				return dumps
 			},
 		},
@@ -373,8 +362,7 @@ func TestGateway_CaptureSendDumpError(t *testing.T) {
 	recv := make(chan *pb.CaptureRequest, 1)
 	send := make(chan *pb.CaptureMessage, 1)
 
-	dumps := make(chan *pb.DumpInfoResponse, 1)
-	dumpAcks := make(chan string, 1)
+	dumps := make(chan DumpInfo, 1)
 
 	dumpsReq := make(chan loadDumpReq, 1)
 	dumpsRes := make(chan []*pb.Change, 1)
@@ -411,15 +399,10 @@ func TestGateway_CaptureSendDumpError(t *testing.T) {
 			},
 		},
 		DumpInfoPuller: &puller{
-			PullCB: func(ctx context.Context, uri string, acks chan string) chan *pb.DumpInfoResponse {
+			PullCB: func(ctx context.Context, uri string) chan DumpInfo {
 				if ctx != ctx1 || uri != URI1 {
 					t.Fatal("unexpected")
 				}
-				go func() {
-					for s := range acks {
-						dumpAcks <- s
-					}
-				}()
 				return dumps
 			},
 		},
@@ -445,7 +428,7 @@ func TestGateway_CaptureSendDumpError(t *testing.T) {
 
 	// if dump puller has dump
 	dump := &pb.DumpInfoResponse{Schema: "public", Table: "t1", PageBegin: 0, PageEnd: 0}
-	dumps <- dump
+	dumps <- DumpInfo{Resp: dump}
 	if req := <-dumpsReq; req.minLSN != 0 || req.info != dump {
 		t.Fatal("unexpected")
 	}
@@ -471,8 +454,7 @@ func TestGateway_CaptureRecvError(t *testing.T) {
 	recv := make(chan *pb.CaptureRequest, 1)
 	send := make(chan *pb.CaptureMessage, 1)
 
-	dumps := make(chan *pb.DumpInfoResponse, 1)
-	dumpAcks := make(chan string, 1)
+	dumps := make(chan DumpInfo, 1)
 
 	dumpsReq := make(chan loadDumpReq, 1)
 	dumpsRes := make(chan []*pb.Change, 1)
@@ -509,15 +491,10 @@ func TestGateway_CaptureRecvError(t *testing.T) {
 			},
 		},
 		DumpInfoPuller: &puller{
-			PullCB: func(ctx context.Context, uri string, acks chan string) chan *pb.DumpInfoResponse {
+			PullCB: func(ctx context.Context, uri string) chan DumpInfo {
 				if ctx != ctx1 || uri != URI1 {
 					t.Fatal("unexpected")
 				}
-				go func() {
-					for s := range acks {
-						dumpAcks <- s
-					}
-				}()
 				return dumps
 			},
 		},
@@ -559,8 +536,7 @@ func TestGateway_CaptureRecvClose(t *testing.T) {
 	recv := make(chan *pb.CaptureRequest, 1)
 	send := make(chan *pb.CaptureMessage, 1)
 
-	dumps := make(chan *pb.DumpInfoResponse, 1)
-	dumpAcks := make(chan string, 1)
+	dumps := make(chan DumpInfo, 1)
 
 	dumpsReq := make(chan loadDumpReq, 1)
 	dumpsRes := make(chan []*pb.Change, 1)
@@ -597,15 +573,10 @@ func TestGateway_CaptureRecvClose(t *testing.T) {
 			},
 		},
 		DumpInfoPuller: &puller{
-			PullCB: func(ctx context.Context, uri string, acks chan string) chan *pb.DumpInfoResponse {
+			PullCB: func(ctx context.Context, uri string) chan DumpInfo {
 				if ctx != ctx1 || uri != URI1 {
 					t.Fatal("unexpected")
 				}
-				go func() {
-					for s := range acks {
-						dumpAcks <- s
-					}
-				}()
 				return dumps
 			},
 		},
@@ -638,11 +609,11 @@ func TestGateway_CaptureRecvClose(t *testing.T) {
 }
 
 type puller struct {
-	PullCB func(ctx context.Context, uri string, acks chan string) chan *pb.DumpInfoResponse
+	PullCB func(ctx context.Context, uri string) chan DumpInfo
 }
 
-func (p *puller) Pull(ctx context.Context, uri string, acks chan string) chan *pb.DumpInfoResponse {
-	return p.PullCB(ctx, uri, acks)
+func (p *puller) Pull(ctx context.Context, uri string) chan DumpInfo {
+	return p.PullCB(ctx, uri)
 }
 
 type dumper struct {
@@ -732,5 +703,42 @@ func (c *capture) SendMsg(m interface{}) error {
 }
 
 func (c *capture) RecvMsg(m interface{}) error {
+	panic("implement me")
+}
+
+type pullDumpInfoClient struct {
+	acks chan string
+}
+
+func (p *pullDumpInfoClient) Send(request *pb.DumpInfoRequest) error {
+	p.acks <- request.RequeueReason
+	return nil
+}
+
+func (p *pullDumpInfoClient) Recv() (*pb.DumpInfoResponse, error) {
+	panic("implement me")
+}
+
+func (p *pullDumpInfoClient) Header() (metadata.MD, error) {
+	panic("implement me")
+}
+
+func (p *pullDumpInfoClient) Trailer() metadata.MD {
+	panic("implement me")
+}
+
+func (p *pullDumpInfoClient) CloseSend() error {
+	panic("implement me")
+}
+
+func (p *pullDumpInfoClient) Context() context.Context {
+	panic("implement me")
+}
+
+func (p *pullDumpInfoClient) SendMsg(m interface{}) error {
+	panic("implement me")
+}
+
+func (p *pullDumpInfoClient) RecvMsg(m interface{}) error {
 	panic("implement me")
 }
