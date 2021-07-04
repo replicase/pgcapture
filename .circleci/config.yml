@@ -5,7 +5,8 @@ jobs:
       image: ubuntu-2004:202010-01
     steps:
       - checkout
-      - run: docker-compose up -d
+      - run: docker-compose pull pg
+      - run: docker-compose up -d --no-build
       - run: curl -L https://golang.org/dl/go1.16.linux-amd64.tar.gz > /tmp/go1.16.linux-amd64.tar.gz
       - run: tar -C /tmp -xzf /tmp/go1.16.linux-amd64.tar.gz
       - run: export PATH=$PATH:/tmp/go/bin
