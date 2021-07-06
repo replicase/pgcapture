@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/jackc/pgconn"
@@ -39,6 +40,8 @@ type PGXSink struct {
 	schema  *decode.PGXSchemaLoader
 	log     *logrus.Entry
 	prev    source.Checkpoint
+	pgSrcID pgtype.Text
+	replLag int64
 	inTX    bool
 	skip    map[string]bool
 	inserts insertBatch
@@ -77,6 +80,8 @@ func (p *PGXSink) Setup() (cp source.Checkpoint, err error) {
 	}
 	p.raw = p.conn.PgConn()
 	p.inserts.records = make([][]*pb.Field, 2500)
+	p.pgSrcID = pgText(p.SourceID)
+	p.replLag = -1
 
 	var locked bool
 	if err := p.conn.QueryRow(ctx, "select pg_try_advisory_lock(('x' || md5(current_database()))::bit(64)::bigint)").Scan(&locked); err != nil {
@@ -531,13 +536,19 @@ func (p *PGXSink) handleCommit(cp source.Checkpoint, commit *pb.Commit) (err err
 	if _, err = p.conn.Prepare(ctx, UpdateSourceSQL, UpdateSourceSQL); err != nil {
 		return err
 	}
-	if _, err = p.conn.Exec(ctx, UpdateSourceSQL, pgText(p.SourceID), pgInt8(int64(cp.LSN)), pgInt4(int32(cp.Seq)), cp.Data, pgTz(commit.CommitTime)); err != nil {
+	commitTs := pgTz(commit.CommitTime)
+	if _, err = p.conn.Exec(ctx, UpdateSourceSQL, pgInt8(int64(cp.LSN)), pgInt4(int32(cp.Seq)), cp.Data, commitTs, p.pgSrcID); err != nil {
 		return err
 	}
 	if _, err = p.conn.Exec(ctx, "commit"); err != nil {
 		return err
 	}
+	atomic.StoreInt64(&p.replLag, time.Since(commitTs.Time).Milliseconds())
 	return
+}
+
+func (p *PGXSink) ReplicationLagMilliseconds() int64 {
+	return atomic.LoadInt64(&p.replLag)
 }
 
 func ScanCheckpointFromLog(f io.Reader) (lsn, ts string, err error) {

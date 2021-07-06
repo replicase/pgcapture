@@ -48,6 +48,7 @@ type Agent struct {
 	mu        sync.Mutex
 	params    *structpb.Struct
 	dumper    *dblog.PGXSourceDumper
+	pgSink    *sink.PGXSink
 	sinkErr   error
 	sourceErr error
 }
@@ -165,6 +166,7 @@ func (a *Agent) pulsar2pg(params *structpb.Struct) (*pb.AgentConfigResponse, err
 	}
 
 	a.dumper = dumper
+	a.pgSink = pgSink
 
 	logger := logrus.WithFields(logrus.Fields{
 		"PulsarURL":   v["PulsarURL"],
@@ -218,6 +220,7 @@ func (a *Agent) sourceToSink(src source.Source, sk sink.Sink) (err error) {
 			if a.dumper != nil && (a.sourceErr != nil || a.sinkErr != nil) {
 				a.dumper.Stop()
 				a.dumper = nil
+				a.pgSink = nil
 			}
 			return a.sinkErr == nil && a.sourceErr == nil
 		}
@@ -237,6 +240,9 @@ func (a *Agent) sourceToSink(src source.Source, sk sink.Sink) (err error) {
 func (a *Agent) report(params *structpb.Struct) (*pb.AgentConfigResponse, error) {
 	if a.sinkErr != nil || a.sourceErr != nil {
 		return nil, fmt.Errorf("sinkErr: %v, sourceErr: %v", a.sinkErr, a.sourceErr)
+	}
+	if a.pgSink != nil {
+		params.Fields["ReplicationLagMilliseconds"] = structpb.NewNumberValue(float64(a.pgSink.ReplicationLagMilliseconds()))
 	}
 	return &pb.AgentConfigResponse{Report: params}, nil
 }
