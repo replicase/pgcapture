@@ -95,6 +95,10 @@ func (p *PGXSink) Setup() (cp source.Checkpoint, err error) {
 		return cp, err
 	}
 
+	if _, err = p.conn.Exec(ctx, "insert into pgcapture.sources(id) values ($1) on conflict (id) do nothing", p.pgSrcID); err != nil {
+		return cp, err
+	}
+
 	p.schema = decode.NewPGXSchemaLoader(p.conn)
 	if err = p.schema.RefreshKeys(); err != nil {
 		return cp, err
@@ -126,7 +130,7 @@ func (p *PGXSink) findCheckpoint(ctx context.Context) (cp source.Checkpoint, err
 	var str, ts string
 	var mid []byte
 	var seq uint32
-	err = p.conn.QueryRow(ctx, "SELECT commit, seq, mid FROM pgcapture.sources WHERE id = $1", p.SourceID).Scan(&str, &seq, &mid)
+	err = p.conn.QueryRow(ctx, "SELECT commit, seq, mid FROM pgcapture.sources WHERE id = $1 AND commit IS NOT NULL AND seq IS NOT NULL AND mid IS NOT NULL", p.SourceID).Scan(&str, &seq, &mid)
 	if err == pgx.ErrNoRows {
 		err = nil
 		if p.LogReader != nil {
@@ -525,7 +529,7 @@ func (p *PGXSink) handleUpdate(ctx context.Context, m *pb.Change) (err error) {
 }
 
 const (
-	UpdateSourceSQL = "insert into pgcapture.sources(id,commit,seq,mid,commit_ts) values ($1,$2,$3,$4,$5) on conflict (id) do update set commit=EXCLUDED.commit,seq=EXCLUDED.seq,mid=EXCLUDED.mid,commit_ts=EXCLUDED.commit_ts,apply_ts=now()"
+	UpdateSourceSQL = "update pgcapture.sources set commit=$1,seq=$2,mid=$3,commit_ts=$4,apply_ts=now() where id=$5"
 )
 
 func (p *PGXSink) handleCommit(cp source.Checkpoint, commit *pb.Commit) (err error) {

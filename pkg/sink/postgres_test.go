@@ -42,6 +42,10 @@ func TestPGXSink(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if sink.ReplicationLagMilliseconds() != -1 {
+		t.Fatalf("initial replicaition lag should be -1")
+	}
+
 	// test empty checkpoint
 	if cp.LSN != 0 || len(cp.Data) != 0 {
 		t.Fatalf("checkpoint of empty topic should be zero")
@@ -86,6 +90,9 @@ func TestPGXSink(t *testing.T) {
 		}
 		if err = sink.Error(); err != nil {
 			t.Fatalf("unexpected %v", err)
+		}
+		if sink.ReplicationLagMilliseconds() == -1 {
+			t.Fatalf("replicaition lag should not be -1")
 		}
 	}
 

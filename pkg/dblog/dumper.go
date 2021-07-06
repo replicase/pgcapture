@@ -157,7 +157,7 @@ func (p *PGXSourceDumper) load(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.
 func checkLSN(ctx context.Context, tx pgx.Tx, minLSN uint64) (err error) {
 	var str string
 	var lsn pglogrepl.LSN
-	err = tx.QueryRow(ctx, "SELECT commit FROM pgcapture.sources ORDER BY commit DESC LIMIT 1").Scan(&str)
+	err = tx.QueryRow(ctx, "SELECT commit FROM pgcapture.sources WHERE commit IS NOT NULL ORDER BY commit DESC LIMIT 1").Scan(&str)
 	if err == pgx.ErrNoRows {
 		return ErrLSNMissing
 	}
