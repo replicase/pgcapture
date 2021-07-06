@@ -119,7 +119,7 @@ func (b *BaseSource) capture(readFn ReadFn, flushFn FlushFn) (chan Change, error
 	}
 
 	b.stopped = make(chan struct{})
-	changes := make(chan Change, 100)
+	changes := make(chan Change, 1000)
 
 	atomic.StoreInt64(&b.state, 2)
 

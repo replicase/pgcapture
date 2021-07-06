@@ -32,7 +32,7 @@ type GRPCDumpInfoPuller struct {
 }
 
 func (p *GRPCDumpInfoPuller) Pull(ctx context.Context, uri string) chan DumpInfo {
-	resp := make(chan DumpInfo)
+	resp := make(chan DumpInfo, 1)
 
 	go func() {
 		defer close(resp)

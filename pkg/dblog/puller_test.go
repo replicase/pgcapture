@@ -130,6 +130,7 @@ func TestPuller_RetryRecv(t *testing.T) {
 func TestPuller_SendErr(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	count := int64(0)
+	recvQ := make(chan *pb.DumpInfoResponse)
 	puller := GRPCDumpInfoPuller{
 		Client: &ctrlClient{
 			ctx: ctx,
@@ -143,16 +144,18 @@ func TestPuller_SendErr(t *testing.T) {
 				select {
 				case <-ctx.Done():
 					return nil, ctx.Err()
-				default:
-					return &pb.DumpInfoResponse{}, nil
+				case resp := <-recvQ:
+					return resp, nil
 				}
 			},
 		},
 	}
 
 	dumps := puller.Pull(context.Background(), URI1)
+	recvQ <- &pb.DumpInfoResponse{}
 	resp := <-dumps
 	resp.Ack("first ack should be called with SendCB")
+	recvQ <- &pb.DumpInfoResponse{}
 	resp = <-dumps
 	resp.Ack("second ack should also be call with SendCB even if errored")
 

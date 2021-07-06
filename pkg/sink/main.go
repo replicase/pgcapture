@@ -40,7 +40,7 @@ func (b *BaseSink) apply(changes chan source.Change, applyFn ApplyFn) (committed
 	if !atomic.CompareAndSwapInt64(&b.state, 0, 1) {
 		return nil
 	}
-	b.committed = make(chan source.Checkpoint, 100)
+	b.committed = make(chan source.Checkpoint, 1000)
 	atomic.StoreInt64(&b.state, 2)
 
 	go func() {

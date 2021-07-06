@@ -32,7 +32,7 @@ func (c *DBLogGatewayConsumer) Capture(cp source.Checkpoint) (changes chan sourc
 	}
 
 	c.stream = stream
-	changes = make(chan source.Change, 100)
+	changes = make(chan source.Change, 1000)
 
 	atomic.StoreInt64(&c.state, 1)
 
