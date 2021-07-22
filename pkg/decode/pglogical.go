@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
 
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/sirupsen/logrus"
@@ -11,13 +12,15 @@ import (
 
 const OutputPlugin = "pglogical_output"
 
-var PGLogicalParam = []string{
-	"min_proto_version '1'",
-	"max_proto_version '1'",
-	"startup_params_format '1'",
-	"\"binary.want_binary_basetypes\" '1'",
-	"\"binary.basetypes_major_version\" '906'",
-	"\"binary.bigendian\" '1'",
+func PGLogicalParam(serverVersion int64) []string {
+	return []string{
+		"min_proto_version '1'",
+		"max_proto_version '1'",
+		"startup_params_format '1'",
+		"\"binary.want_binary_basetypes\" '1'",
+		fmt.Sprintf("\"binary.basetypes_major_version\" '%d'", serverVersion/100),
+		"\"binary.bigendian\" '1'",
+	}
 }
 
 var OpMap = map[byte]pb.Change_Operation{

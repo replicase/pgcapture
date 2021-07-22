@@ -3,6 +3,7 @@ package source
 import (
 	"context"
 	"errors"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -44,6 +45,16 @@ func (p *PGXSource) Capture(cp Checkpoint) (changes chan Change, err error) {
 
 	ctx := context.Background()
 	p.setupConn, err = pgx.Connect(ctx, p.SetupConnStr)
+	if err != nil {
+		return nil, err
+	}
+
+	var sv string
+	if err = p.setupConn.QueryRow(ctx, sql.ServerVersionNum).Scan(&sv); err != nil {
+		return nil, err
+	}
+
+	svn, err := strconv.ParseInt(sv, 10, 64)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +112,13 @@ func (p *PGXSource) Capture(cp Checkpoint) (changes chan Change, err error) {
 		}).Info("start logical replication from the latest position")
 	}
 	p.Commit(Checkpoint{LSN: p.prevLsn})
-	if err = pglogrepl.StartReplication(context.Background(), p.replConn, p.ReplSlot, pglogrepl.LSN(p.prevLsn), pglogrepl.StartReplicationOptions{PluginArgs: decode.PGLogicalParam}); err != nil {
+	if err = pglogrepl.StartReplication(
+		context.Background(),
+		p.replConn,
+		p.ReplSlot,
+		pglogrepl.LSN(p.prevLsn),
+		pglogrepl.StartReplicationOptions{PluginArgs: decode.PGLogicalParam(svn)},
+	); err != nil {
 		return nil, err
 	}
 

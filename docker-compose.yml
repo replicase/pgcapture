@@ -2,7 +2,7 @@ version: "3.8"
 services:
   pg:
     build: hack/postgres
-    image: rueian/postgres:9.6-logical
+    image: rueian/postgres:11-logical
     ports:
       - "5432:5432"
     command: ["postgres", "-c", "config_file=/pgc/postgresql.conf", "-c","hba_file=/pgc/pg_hba.conf"]

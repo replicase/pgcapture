@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -30,10 +31,20 @@ func TestPGLogicalDecoder(t *testing.T) {
 	}
 	defer conn.Close(ctx)
 
-	conn.Exec(ctx, "DROP SCHEMA public CASCADE; CREATE SCHEMA public; create extension if not exists \"uuid-ossp\";")
-	conn.Exec(ctx, "create table t (id bigint primary key, uid uuid, txt text, js jsonb, ts timestamptz, bs bytea)")
-	conn.Exec(ctx, fmt.Sprintf("select pg_drop_replication_slot('%s')", TestSlot))
+	conn.Exec(ctx, "DROP SCHEMA public CASCADE; CREATE SCHEMA public; CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";")
+	conn.Exec(ctx, "CREATE TABLE t (id bigint primary key, uid uuid, txt text, js jsonb, ts timestamptz, bs bytea)")
+	conn.Exec(ctx, fmt.Sprintf("SELECT pg_drop_replication_slot('%s')", TestSlot))
 	conn.Exec(ctx, sql.CreateLogicalSlot, TestSlot, OutputPlugin)
+
+	var sv string
+	if err = conn.QueryRow(ctx, sql.ServerVersionNum).Scan(&sv); err != nil {
+		t.Fatal(err)
+	}
+
+	svn, err := strconv.ParseInt(sv, 10, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	now := time.Now()
 	changes := []*change{
@@ -113,7 +124,7 @@ func TestPGLogicalDecoder(t *testing.T) {
 	}
 	defer repl.Close(ctx)
 
-	if err = pglogrepl.StartReplication(ctx, repl, TestSlot, 0, pglogrepl.StartReplicationOptions{PluginArgs: PGLogicalParam}); err != nil {
+	if err = pglogrepl.StartReplication(ctx, repl, TestSlot, 0, pglogrepl.StartReplicationOptions{PluginArgs: PGLogicalParam(svn)}); err != nil {
 		t.Fatal(err)
 	}
 
