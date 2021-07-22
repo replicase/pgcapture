@@ -75,7 +75,7 @@ func testBounceInterval(t *testing.T, interval time.Duration) {
 	}
 
 	if decoded := <-decodeQ; decoded.Op != pb.Change_INSERT ||
-		decoded.LSN != 1 ||
+		decoded.Checkpoint.LSN != 1 ||
 		decoded.New.(*Model1).F1.Get() != "f1" ||
 		decoded.New.(*Model1).F2.Get() != nil ||
 		decoded.New.(*Model1).F3.Get() != pgtype.Undefined {
@@ -100,7 +100,7 @@ func testBounceInterval(t *testing.T, interval time.Duration) {
 		},
 	}
 
-	if decoded := <-decodeQ; decoded.Op != pb.Change_UPDATE || decoded.LSN != 2 || decoded.New.(*Model2).F1.Get() != "f1" {
+	if decoded := <-decodeQ; decoded.Op != pb.Change_UPDATE || decoded.Checkpoint.LSN != 2 || decoded.New.(*Model2).F1.Get() != "f1" {
 		t.Fatalf("unexpected decoded %v", decoded)
 	}
 
@@ -122,7 +122,7 @@ func testBounceInterval(t *testing.T, interval time.Duration) {
 		},
 	}
 
-	if decoded := <-decodeQ; decoded.Op != pb.Change_DELETE || decoded.LSN != 3 || decoded.Old.(*Model2).F1.Get() != "f1" {
+	if decoded := <-decodeQ; decoded.Op != pb.Change_DELETE || decoded.Checkpoint.LSN != 3 || decoded.Old.(*Model2).F1.Get() != "f1" {
 		t.Fatalf("unexpected decoded %v", decoded)
 	}
 

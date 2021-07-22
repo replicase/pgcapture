@@ -105,10 +105,10 @@ func (c *Consumer) Consume(mh ModelHandlers) error {
 				break
 			}
 			c.Bouncer.Handle(ref.hdl, change.Checkpoint, Change{
-				Op:  m.Change.Op,
-				LSN: change.Checkpoint.LSN,
-				New: n,
-				Old: o,
+				Op:         m.Change.Op,
+				Checkpoint: change.Checkpoint,
+				New:        n,
+				Old:        o,
 			})
 			continue
 		}

@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgtype"
 	"github.com/rueian/pgcapture/pkg/pb"
+	"github.com/rueian/pgcapture/pkg/source"
 )
 
 type Model interface {
@@ -15,10 +16,10 @@ type Model interface {
 }
 
 type Change struct {
-	Op  pb.Change_Operation
-	LSN uint64
-	New interface{}
-	Old interface{}
+	Op         pb.Change_Operation
+	Checkpoint source.Checkpoint
+	New        interface{}
+	Old        interface{}
 }
 
 type ModelHandlerFunc func(change Change) error
