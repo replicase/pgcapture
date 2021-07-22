@@ -49,6 +49,7 @@ type Agent struct {
 	params    *structpb.Struct
 	dumper    *dblog.PGXSourceDumper
 	pgSink    *sink.PGXSink
+	pgSrc     *source.PGXSource
 	sinkErr   error
 	sourceErr error
 }
@@ -128,6 +129,8 @@ func (a *Agent) pg2pulsar(params *structpb.Struct) (*pb.AgentConfigResponse, err
 	}
 	pgSrc := &source.PGXSource{SetupConnStr: v["PGConnURL"], ReplConnStr: v["PGReplURL"], ReplSlot: trimSlot(v["PulsarTopic"]), CreateSlot: true}
 	pulsarSink := &sink.PulsarSink{PulsarOption: pulsar.ClientOptions{URL: v["PulsarURL"]}, PulsarTopic: v["PulsarTopic"]}
+
+	a.pgSrc = pgSrc
 
 	logger := logrus.WithFields(logrus.Fields{
 		"PulsarURL":   v["PulsarURL"],
@@ -211,16 +214,17 @@ func (a *Agent) sourceToSink(src source.Source, sk sink.Sink) (err error) {
 			a.sourceErr = src.Error()
 			if a.sinkErr != nil {
 				a.params = nil
+				a.pgSink = nil
 				logrus.Errorf("sink error: %v", a.sinkErr)
 			}
 			if a.sourceErr != nil {
 				a.params = nil
+				a.pgSrc = nil
 				logrus.Errorf("source error: %v", a.sourceErr)
 			}
 			if a.dumper != nil && (a.sourceErr != nil || a.sinkErr != nil) {
 				a.dumper.Stop()
 				a.dumper = nil
-				a.pgSink = nil
 			}
 			return a.sinkErr == nil && a.sourceErr == nil
 		}
@@ -243,6 +247,8 @@ func (a *Agent) report(params *structpb.Struct) (*pb.AgentConfigResponse, error)
 	}
 	if a.pgSink != nil {
 		params.Fields["ReplicationLagMilliseconds"] = structpb.NewNumberValue(float64(a.pgSink.ReplicationLagMilliseconds()))
+	} else if a.pgSrc != nil {
+		params.Fields["SourceTxCounter"] = structpb.NewNumberValue(float64(a.pgSrc.TxCounter()))
 	}
 	return &pb.AgentConfigResponse{Report: params}, nil
 }

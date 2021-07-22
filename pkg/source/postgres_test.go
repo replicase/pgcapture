@@ -115,6 +115,10 @@ func TestPGXSource_Capture(t *testing.T) {
 	src.Commit(commit.Checkpoint)
 	src.Stop()
 
+	if n := src.TxCounter(); n == 0 {
+		t.Fatal("TxCounter should > 0")
+	}
+
 	var lsn string
 	if err = conn.QueryRow(ctx, "select confirmed_flush_lsn from pg_replication_slots where slot_name = $1", TestSlot).Scan(&lsn); err != nil {
 		t.Fatal(err)

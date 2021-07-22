@@ -30,10 +30,15 @@ type PGXSource struct {
 	decoder        *decode.PGLogicalDecoder
 	nextReportTime time.Time
 	ackLsn         uint64
+	txCounter      uint64
 	log            *logrus.Entry
 	first          bool
 	prevLsn        uint64
 	nextSeq        uint32
+}
+
+func (p *PGXSource) TxCounter() uint64 {
+	return atomic.LoadUint64(&p.txCounter)
 }
 
 func (p *PGXSource) Capture(cp Checkpoint) (changes chan Change, err error) {
@@ -194,6 +199,7 @@ func (p *PGXSource) fetching(ctx context.Context) (change Change, err error) {
 func (p *PGXSource) Commit(cp Checkpoint) {
 	if cp.LSN != 0 {
 		atomic.StoreUint64(&p.ackLsn, cp.LSN)
+		atomic.AddUint64(&p.txCounter, 1)
 	}
 }
 
