@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -72,6 +73,11 @@ func (b *insertBatch) flush() [][]*pb.Field {
 	return records
 }
 
+func tryRenice(logger *logrus.Entry, renice, pid int64) {
+	out, err := exec.Command("renice", "-n", strconv.FormatInt(renice, 10), "-p", strconv.FormatInt(pid, 10)).CombinedOutput()
+	logger.Infof("try renice to %d for pid %d: %s(%v)", renice, pid, string(out), err)
+}
+
 func (p *PGXSink) Setup() (cp source.Checkpoint, err error) {
 	ctx := context.Background()
 	p.conn, err = pgx.Connect(ctx, p.ConnStr)
@@ -119,8 +125,8 @@ func (p *PGXSink) Setup() (cp source.Checkpoint, err error) {
 		if err := p.conn.QueryRow(ctx, "select pg_backend_pid()").Scan(&pid); err != nil {
 			return cp, err
 		}
-		out, err := exec.Command("renice", "-n", strconv.FormatInt(p.Renice, 10), "-p", strconv.FormatInt(pid, 10)).CombinedOutput()
-		p.log.Infof("try renice to %d for pid %d: %s(%v)", p.Renice, pid, string(out), err)
+		tryRenice(p.log, p.Renice, pid)
+		tryRenice(p.log, p.Renice, int64(os.Getpid()))
 	}
 
 	return p.findCheckpoint(ctx)
