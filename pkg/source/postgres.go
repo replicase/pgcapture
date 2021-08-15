@@ -33,8 +33,8 @@ type PGXSource struct {
 	txCounter      uint64
 	log            *logrus.Entry
 	first          bool
-	prevLsn        uint64
-	nextSeq        uint32
+	currentLsn     uint64
+	currentSeq     uint32
 }
 
 func (p *PGXSource) TxCounter() uint64 {
@@ -102,26 +102,26 @@ func (p *PGXSource) Capture(cp Checkpoint) (changes chan Change, err error) {
 	}).Info("retrieved current info of source database")
 
 	if cp.LSN != 0 {
-		p.prevLsn = cp.LSN
-		p.nextSeq = cp.Seq + 1
+		p.currentLsn = cp.LSN
+		p.currentSeq = cp.Seq
 		p.log.WithFields(logrus.Fields{
 			"ReplSlot": p.ReplSlot,
-			"FromLSN":  p.prevLsn,
+			"FromLSN":  p.currentLsn,
 		}).Info("start logical replication from requested position")
 	} else {
-		p.prevLsn = uint64(ident.XLogPos)
-		p.nextSeq = 0
+		p.currentLsn = uint64(ident.XLogPos)
+		p.currentSeq = 0
 		p.log.WithFields(logrus.Fields{
 			"ReplSlot": p.ReplSlot,
-			"FromLSN":  p.prevLsn,
+			"FromLSN":  p.currentLsn,
 		}).Info("start logical replication from the latest position")
 	}
-	p.Commit(Checkpoint{LSN: p.prevLsn})
+	p.Commit(Checkpoint{LSN: p.currentLsn})
 	if err = pglogrepl.StartReplication(
 		context.Background(),
 		p.replConn,
 		p.ReplSlot,
-		pglogrepl.LSN(p.prevLsn),
+		pglogrepl.LSN(p.currentLsn),
 		pglogrepl.StartReplicationOptions{PluginArgs: decode.PGLogicalParam(svn)},
 	); err != nil {
 		return nil, err
@@ -166,20 +166,16 @@ func (p *PGXSource) fetching(ctx context.Context) (change Change, err error) {
 						return change, err
 					}
 				}
-			}
-			// use WALStart as checkpoint instead of WALStart+len(WALData),
-			// because WALStart is the only value guaranteed will only increase, not decrease.
-			// However WALStart will be duplicated, therefore there is a secondary seq field
-			checkpoint := Checkpoint{LSN: uint64(xld.WALStart), Seq: 0}
-			if checkpoint.LSN == p.prevLsn {
-				checkpoint.Seq = p.nextSeq
-				p.nextSeq++
-			} else {
-				p.prevLsn = checkpoint.LSN
-				p.nextSeq = 1
+				p.currentSeq++
+			} else if b := m.GetBegin(); b != nil {
+				p.currentLsn = b.FinalLsn
+				p.currentSeq = 0
+			} else if c := m.GetCommit(); c != nil {
+				p.currentLsn = c.EndLsn
+				p.currentSeq = 0
 			}
 			change = Change{
-				Checkpoint: checkpoint,
+				Checkpoint: Checkpoint{LSN: p.currentLsn, Seq: p.currentSeq},
 				Message:    m,
 			}
 			if !p.first {
