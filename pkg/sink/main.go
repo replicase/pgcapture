@@ -2,6 +2,7 @@ package sink
 
 import (
 	"fmt"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -81,9 +82,9 @@ func (b *BaseSink) Stop() error {
 	case 0:
 		b.cleanOnce.Do(b.CleanFn)
 	case 1, 2:
-		for atomic.LoadInt64(&b.state) != 2 {
+		for !atomic.CompareAndSwapInt64(&b.state, 2, 3) {
+			runtime.Gosched()
 		}
-		atomic.CompareAndSwapInt64(&b.state, 2, 3)
 		fallthrough
 	case 3:
 		for atomic.LoadInt64(&b.state) != 4 {

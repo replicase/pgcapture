@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -96,9 +97,9 @@ func (b *BaseSource) Commit(cp Checkpoint) {
 func (b *BaseSource) Stop() error {
 	switch atomic.LoadInt64(&b.state) {
 	case 1, 2:
-		for atomic.LoadInt64(&b.state) != 2 {
+		for !atomic.CompareAndSwapInt64(&b.state, 2, 3) {
+			runtime.Gosched()
 		}
-		atomic.CompareAndSwapInt64(&b.state, 2, 3)
 		fallthrough
 	case 3:
 		<-b.stopped

@@ -107,6 +107,9 @@ func (s *Gateway) capture(init *pb.CaptureInit, filter *regexp.Regexp, server pb
 		src.Stop()
 		logger.Infof("pulsar source stopped")
 	}()
+	defer func() {
+		src.Stop()
+	}()
 	logger.Infof("start capturing")
 
 	ongoingDumps := &dumpMap{m: make(map[uint32]DumpInfo, 2)}
