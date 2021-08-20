@@ -101,9 +101,10 @@ func (s *Gateway) capture(init *pb.CaptureInit, filter *regexp.Regexp, server pb
 	if err != nil {
 		return err
 	}
-	defer func() {
-		src.Stop()
+	go func() {
+		<-server.Context().Done()
 		logger.Infof("stop capturing")
+		src.Stop()
 	}()
 	logger.Infof("start capturing")
 
