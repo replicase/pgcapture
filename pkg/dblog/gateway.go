@@ -103,8 +103,9 @@ func (s *Gateway) capture(init *pb.CaptureInit, filter *regexp.Regexp, server pb
 	}
 	go func() {
 		<-server.Context().Done()
-		logger.Infof("stop capturing")
+		logger.Infof("stoping pulsar source")
 		src.Stop()
+		logger.Infof("pulsar source stopped")
 	}()
 	logger.Infof("start capturing")
 

@@ -224,7 +224,9 @@ func (p *PulsarConsumerSource) Capture(cp Checkpoint) (changes chan Change, err 
 		change = Change{Checkpoint: checkpoint, Message: m}
 		return
 	}, func() {
+		p.log.Info("closing pulsar consumer")
 		p.consumer.Close()
+		p.log.Info("closing pulsar client")
 		p.client.Close()
 	})
 }
