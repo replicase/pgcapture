@@ -101,14 +101,24 @@ func (s *Gateway) capture(init *pb.CaptureInit, filter *regexp.Regexp, server pb
 	if err != nil {
 		return err
 	}
-	go func() {
-		<-server.Context().Done()
+
+	once := sync.Once{}
+	cleanUp := func() {
 		logger.Infof("stoping pulsar source")
+		go func() {
+			for range changes {
+				// this loop should do nothing and only exit when the input channel is closed
+			}
+		}()
 		src.Stop()
 		logger.Infof("pulsar source stopped")
+	}
+	go func() {
+		<-server.Context().Done()
+		once.Do(cleanUp)
 	}()
 	defer func() {
-		src.Stop()
+		once.Do(cleanUp)
 	}()
 	logger.Infof("start capturing")
 
