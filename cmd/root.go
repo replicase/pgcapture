@@ -13,6 +13,7 @@ import (
 
 	"github.com/rueian/pgcapture/pkg/sink"
 	"github.com/rueian/pgcapture/pkg/source"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
 )
@@ -63,8 +64,10 @@ func sourceToSink(src source.Source, sk sink.Sink) (err error) {
 	}()
 
 	<-signals
+	logrus.Info("receive signal, stopping...")
 	sk.Stop()
 	src.Stop()
+	logrus.Info("receive signal, stopped")
 	if err := sk.Error(); err != nil {
 		return err
 	}
@@ -74,7 +77,7 @@ func sourceToSink(src source.Source, sk sink.Sink) (err error) {
 	return nil
 }
 
-func serveGRPC(desc *grpc.ServiceDesc, addr string, impl interface{}) (err error) {
+func serveGRPC(desc *grpc.ServiceDesc, addr string, impl interface{}, clean func()) (err error) {
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
@@ -87,7 +90,11 @@ func serveGRPC(desc *grpc.ServiceDesc, addr string, impl interface{}) (err error
 		signals := make(chan os.Signal, 1)
 		signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 		<-signals
+		logrus.Info("receive signal, stopping grpc server...")
 		server.GracefulStop()
+		logrus.Info("receive signal, cleaning up...")
+		clean()
+		logrus.Info("receive signal, stopped")
 	}()
 
 	return server.Serve(lis)

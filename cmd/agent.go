@@ -38,20 +38,26 @@ var agent = &cobra.Command{
 		logrus.WithFields(logrus.Fields{
 			"AgentListenAddr": AgentListenAddr,
 		}).Info("starting agent")
-		return serveGRPC(&pb.Agent_ServiceDesc, AgentListenAddr, &Agent{})
+		agent := &Agent{}
+		return serveGRPC(&pb.Agent_ServiceDesc, AgentListenAddr, agent, func() {
+			if err := agent.cleanup(); err != nil {
+				logrus.Errorf("agent failed to cleanup: %v", err)
+			}
+		})
 	},
 }
 
 type Agent struct {
 	pb.UnimplementedAgentServer
 
-	mu        sync.Mutex
-	params    *structpb.Struct
-	dumper    *dblog.PGXSourceDumper
-	pgSink    *sink.PGXSink
-	pgSrc     *source.PGXSource
-	sinkErr   error
-	sourceErr error
+	mu         sync.Mutex
+	params     *structpb.Struct
+	dumper     *dblog.PGXSourceDumper
+	pgSink     *sink.PGXSink
+	pulsarSink *sink.PulsarSink
+	pgSrc      *source.PGXSource
+	sinkErr    error
+	sourceErr  error
 }
 
 func (a *Agent) Configure(ctx context.Context, request *pb.AgentConfigRequest) (*pb.AgentConfigResponse, error) {
@@ -122,6 +128,43 @@ func (a *Agent) StreamDump(req *pb.AgentDumpRequest, server pb.Agent_StreamDumpS
 	return nil
 }
 
+func (a *Agent) cleanup() error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	defer func() {
+		a.dumper = nil
+		a.pgSink = nil
+		a.pulsarSink = nil
+		a.pgSrc = nil
+	}()
+
+	if a.dumper != nil {
+		a.dumper.Stop()
+	}
+
+	var err error
+	if a.pgSink != nil {
+		a.pgSink.Stop()
+		if err == nil {
+			err = a.pgSink.Error()
+		}
+	}
+	if a.pulsarSink != nil {
+		a.pulsarSink.Stop()
+		if err == nil {
+			err = a.pulsarSink.Error()
+		}
+	}
+	if a.pgSrc != nil {
+		a.pgSrc.Stop()
+		if err == nil {
+			err = a.pgSrc.Error()
+		}
+	}
+	return err
+}
+
 func (a *Agent) pg2pulsar(params *structpb.Struct) (*pb.AgentConfigResponse, error) {
 	v, err := extract(params, "PGConnURL", "PGReplURL", "PulsarURL", "PulsarTopic")
 	if err != nil {
@@ -130,6 +173,7 @@ func (a *Agent) pg2pulsar(params *structpb.Struct) (*pb.AgentConfigResponse, err
 	pgSrc := &source.PGXSource{SetupConnStr: v["PGConnURL"], ReplConnStr: v["PGReplURL"], ReplSlot: trimSlot(v["PulsarTopic"]), CreateSlot: true}
 	pulsarSink := &sink.PulsarSink{PulsarOption: pulsar.ClientOptions{URL: v["PulsarURL"]}, PulsarTopic: v["PulsarTopic"]}
 
+	a.pulsarSink = pulsarSink
 	a.pgSrc = pgSrc
 
 	logger := logrus.WithFields(logrus.Fields{
@@ -220,6 +264,7 @@ func (a *Agent) sourceToSink(src source.Source, sk sink.Sink) (err error) {
 			if a.sourceErr != nil {
 				a.params = nil
 				a.pgSrc = nil
+				a.pulsarSink = nil
 				logrus.Errorf("source error: %v", a.sourceErr)
 			}
 			if a.dumper != nil && (a.sourceErr != nil || a.sinkErr != nil) {

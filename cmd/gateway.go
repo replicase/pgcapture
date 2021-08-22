@@ -39,6 +39,6 @@ var gateway = &cobra.Command{
 			SourceResolver: dblog.NewStaticAgentPulsarResolver(resolverConfig),
 			DumpInfoPuller: &dblog.GRPCDumpInfoPuller{Client: pb.NewDBLogControllerClient(controlConn)},
 		}
-		return serveGRPC(&pb.DBLogGateway_ServiceDesc, GatewayListenAddr, gateway)
+		return serveGRPC(&pb.DBLogGateway_ServiceDesc, GatewayListenAddr, gateway, func() {})
 	},
 }
