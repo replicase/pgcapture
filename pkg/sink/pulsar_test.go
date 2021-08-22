@@ -35,9 +35,11 @@ func TestPulsarSink(t *testing.T) {
 	committed := sink.Apply(changes)
 
 	for i := uint64(1); i < 4; i++ {
-		changes <- source.Change{Checkpoint: source.Checkpoint{LSN: i}, Message: &pb.Message{Type: &pb.Message_Commit{Commit: &pb.Commit{EndLsn: i}}}}
-		if cp := <-committed; cp.LSN != i {
-			t.Fatalf("unexpected %v", i)
+		for j := uint32(1); j < 4; j++ {
+			changes <- source.Change{Checkpoint: source.Checkpoint{LSN: i, Seq: j}, Message: &pb.Message{Type: &pb.Message_Commit{Commit: &pb.Commit{EndLsn: i}}}}
+			if cp := <-committed; cp.LSN != i || cp.Seq != j {
+				t.Fatalf("unexpected %v", i)
+			}
 		}
 	}
 	close(changes)
@@ -55,11 +57,35 @@ func TestPulsarSink(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cp.LSN != 3 {
+	if cp.LSN != 3 || cp.Seq != 3 {
 		t.Fatalf("checkpoint of non empty topic should be last message")
 	}
+
+	changes = make(chan source.Change)
+	committed = sink.Apply(changes)
+
+	// test avoid duplicate publish
+	for i := uint64(1); i < 4; i++ {
+		for j := uint32(1); j < 4; j++ {
+			// all these changes should be ignored
+			changes <- source.Change{Checkpoint: source.Checkpoint{LSN: i, Seq: j}, Message: &pb.Message{Type: &pb.Message_Commit{Commit: &pb.Commit{EndLsn: i}}}}
+		}
+	}
+	// these new changes should be accepted
+	for i := uint64(3); i < 5; i++ {
+		for j := uint32(4); j < 5; j++ {
+			changes <- source.Change{Checkpoint: source.Checkpoint{LSN: i, Seq: j}, Message: &pb.Message{Type: &pb.Message_Commit{Commit: &pb.Commit{EndLsn: i}}}}
+			if cp := <-committed; cp.LSN != i || cp.Seq != j {
+				t.Fatalf("unexpected %v", i)
+			}
+		}
+	}
+	close(changes)
 	if err := sink.Stop(); err != nil {
 		t.Fatal("unexpected", err)
+	}
+	if _, more := <-changes; more {
+		t.Fatal("unexpected")
 	}
 }
 
