@@ -70,6 +70,7 @@ func (p *PulsarSink) Setup() (cp source.Checkpoint, err error) {
 	})
 	p.log.WithFields(logrus.Fields{
 		"SinkLastLSN": p.prev.LSN,
+		"SinkLastSeq": p.prev.Seq,
 	}).Info("start sending changes to pulsar")
 
 	p.producer, err = p.client.CreateProducer(pulsar.ProducerOptions{
@@ -100,7 +101,9 @@ func (p *PulsarSink) Apply(changes chan source.Change) chan source.Checkpoint {
 		if !first {
 			p.log.WithFields(logrus.Fields{
 				"MessageLSN":  change.Checkpoint.LSN,
+				"MessageSeq":  change.Checkpoint.Seq,
 				"SinkLastLSN": p.prev.LSN,
+				"SinkLastSeq": p.prev.Seq,
 				"Message":     change.Message.String(),
 			}).Info("applying the first message from source")
 			first = true
@@ -110,7 +113,9 @@ func (p *PulsarSink) Apply(changes chan source.Change) chan source.Checkpoint {
 		if !p.consistent {
 			p.log.WithFields(logrus.Fields{
 				"MessageLSN":  change.Checkpoint.LSN,
+				"MessageSeq":  change.Checkpoint.Seq,
 				"SinkLastLSN": p.prev.LSN,
+				"SinkLastSeq": p.prev.Seq,
 				"Message":     change.Message.String(),
 			}).Warn("message dropped due to its lsn smaller than the last lsn of sink")
 			return nil
