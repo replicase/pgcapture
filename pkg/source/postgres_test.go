@@ -100,7 +100,18 @@ func TestPGXSource_Capture(t *testing.T) {
 	}
 	src.Stop()
 
-	// test restart on un-committed position
+	// test restart on FinalLSN of Change position, should start from the beginning of the same tx
+	src = newPGXSource()
+	changes, err = src.Capture(txs[1].Tx.Changes[0].Checkpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tx := range txs[1:] {
+		tx.Check(tx)
+	}
+	src.Stop()
+
+	// test restart on EndLSN of Commit position, should start from next tx
 	src = newPGXSource()
 	changes, err = src.Capture(txs[1].Tx.Commit.Checkpoint)
 	if err != nil {
@@ -170,16 +181,26 @@ type Tx struct {
 }
 
 func readTx(t *testing.T, changes chan Change, n int) (tx Tx) {
+	var finalLSN uint64
+
 	if m := <-changes; m.Message.GetBegin() == nil {
 		t.Fatalf("unexpected %v", m.Message.String())
 	} else {
 		tx.Begin = m
+		begin := m.Message.GetBegin()
+		if m.Checkpoint.LSN != begin.FinalLsn || m.Checkpoint.Seq != 0 {
+			t.Fatalf("unexpected begin checkpoint %v", m.Checkpoint)
+		}
+		finalLSN = begin.FinalLsn
 	}
 
-	for i := 0; i < n; i++ {
+	for i := uint32(1); i <= uint32(n); i++ {
 		if m := <-changes; m.Message.GetChange() == nil {
 			t.Fatalf("unexpected %v", m.Message.String())
 		} else {
+			if m.Checkpoint.LSN != finalLSN || m.Checkpoint.Seq != i {
+				t.Fatalf("unexpected change checkpoint %v", m.Checkpoint)
+			}
 			tx.Changes = append(tx.Changes, m)
 		}
 	}
@@ -187,6 +208,10 @@ func readTx(t *testing.T, changes chan Change, n int) (tx Tx) {
 	if m := <-changes; m.Message.GetCommit() == nil {
 		t.Fatalf("unexpected %v", m.Message.String())
 	} else {
+		commit := m.Message.GetCommit()
+		if m.Checkpoint.LSN != commit.EndLsn || m.Checkpoint.Seq != 0 || commit.EndLsn <= finalLSN {
+			t.Fatalf("unexpected commit checkpoint %v", m.Checkpoint)
+		}
 		tx.Commit = m
 	}
 	return
