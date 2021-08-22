@@ -30,7 +30,7 @@ func main() {
 	}
 
 	var wg sync.WaitGroup
-	ctx, _ := context.WithCancel(context.Background())
+	ctx := context.Background()
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 

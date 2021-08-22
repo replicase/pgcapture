@@ -166,7 +166,7 @@ func TestGateway_Capture(t *testing.T) {
 		DumpInfoPuller: &puller{
 			PullCB: func(ctx context.Context, uri string) chan DumpInfo {
 				if ctx != ctx1 || uri != URI1 {
-					t.Fatal("unexpected")
+					panic("unexpected")
 				}
 				return dumps
 			},
@@ -183,7 +183,7 @@ func TestGateway_Capture(t *testing.T) {
 				return nil
 			},
 		}); err != nil {
-			t.Fatal("unexpected")
+			panic("unexpected")
 		}
 	}()
 
@@ -374,7 +374,7 @@ func TestGateway_CaptureSendSourceError(t *testing.T) {
 				return context.Canceled
 			},
 		}); err != context.Canceled {
-			t.Fatal("unexpected")
+			panic("unexpected")
 		}
 	}()
 
@@ -459,7 +459,7 @@ func TestGateway_CaptureSendDumpError(t *testing.T) {
 				return context.Canceled
 			},
 		}); err != context.Canceled {
-			t.Fatal("unexpected")
+			panic("unexpected")
 		}
 	}()
 
@@ -555,7 +555,7 @@ func TestGateway_CaptureRecvError(t *testing.T) {
 				return nil
 			},
 		}); err != context.Canceled {
-			t.Fatal("unexpected")
+			panic("unexpected")
 		}
 	}()
 
@@ -637,7 +637,7 @@ func TestGateway_CaptureRecvClose(t *testing.T) {
 				return nil
 			},
 		}); err != nil {
-			t.Fatal("unexpected")
+			panic("unexpected")
 		}
 	}()
 
