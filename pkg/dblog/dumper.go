@@ -109,6 +109,11 @@ func (p *PGXSourceDumper) Stop() {
 	p.mu.Unlock()
 }
 
+// DumpQuery try generate all possible ctids in a given page range.
+// The maximum rip_posid is caculated as current_setting('block_size')::int-24)/28
+//   where 24 is the size of PageHeaderData, and
+//   where 28 is the minimum size of a tuple which is ItemIdData(4 bytes) + HeapTupleHeaderData(23 bytes) with alignment
+//   ref: https://github.com/postgres/postgres/blob/c3b011d9918100c6ec2d72297fb51635bce70e80/src/include/access/htup_details.h#L573-L575
 const DumpQuery = `select * from "%s"."%s" where ctid = any(array(select format('(%%s,%%s)', i, j)::tid from generate_series($1::int,$2::int) as gs(i), generate_series(1,(current_setting('block_size')::int-24)/28) as gs2(j)))`
 
 func (p *PGXSourceDumper) load(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.Change, error) {
