@@ -101,8 +101,9 @@ func (s *MemoryScheduler) scheduleOne(uri string) bool {
 	if pending, ok := s.pending[uri]; ok {
 		remain = pending.Remaining()
 		stopping = pending.stopping
+		coolDown := pending.CoolDown()
 		if candidate != nil && !stopping &&
-			(pending.coolDown == 0 || time.Now().Sub(candidate.ackTs) > pending.coolDown) {
+			(coolDown == 0 || time.Now().Sub(candidate.ackTs) > coolDown) {
 			dump = pending.Pop()
 		}
 	}
@@ -160,10 +161,15 @@ func (s *MemoryScheduler) Ack(uri string, client string, requeue string) {
 	}
 	s.clientsMu.Unlock()
 
-	if dump != nil && requeue != "" {
+	if dump != nil {
 		s.pendingMu.Lock()
 		if pending, ok := s.pending[uri]; ok {
-			pending.Push(dump)
+			if requeue != "" {
+				pending.Push(dump)
+				pending.backoff++
+			} else {
+				pending.backoff = 0
+			}
 		}
 		s.pendingMu.Unlock()
 	}
@@ -195,8 +201,25 @@ type track struct {
 type pending struct {
 	dumps    []*pb.DumpInfoResponse
 	coolDown time.Duration
+	backoff  int
 	offset   int
 	stopping bool
+}
+
+const (
+	backoffGap time.Duration = 2
+	backoffMax               = 8
+)
+
+func (p *pending) CoolDown() time.Duration {
+	if p.backoff == 0 {
+		return p.coolDown
+	}
+	step := backoffGap
+	for i := 0; i < backoffMax && i < p.backoff-1; i++ {
+		step *= 2
+	}
+	return p.coolDown + (step * time.Second)
 }
 
 func (p *pending) Remaining() int {
