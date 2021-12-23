@@ -23,7 +23,15 @@ type Change struct {
 }
 
 type ModelHandlerFunc func(change Change) error
+type ModelAsyncHandlerFunc func(change Change, done func(err error))
 type ModelHandlers map[Model]ModelHandlerFunc
+type ModelAsyncHandlers map[Model]ModelAsyncHandlerFunc
+
+func toAsyncHandlerFunc(fn ModelHandlerFunc) ModelAsyncHandlerFunc {
+	return func(change Change, done func(err error)) {
+		done(fn(change))
+	}
+}
 
 func reflectModel(model Model) (ref reflection, err error) {
 	typ := reflect.TypeOf(model)
@@ -61,7 +69,7 @@ func ModelName(namespace, table string) string {
 type reflection struct {
 	idx map[string]int
 	typ reflect.Type
-	hdl ModelHandlerFunc
+	hdl ModelAsyncHandlerFunc
 }
 
 var decoderType = reflect.TypeOf((*pgtype.BinaryDecoder)(nil)).Elem()

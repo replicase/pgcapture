@@ -67,7 +67,7 @@ type Consumer struct {
 	errFn   OnDecodeError
 }
 
-func (c *Consumer) Consume(mh ModelHandlers) error {
+func (c *Consumer) ConsumeAsync(mh ModelAsyncHandlers) error {
 	if err := c.Bouncer.Initialize(c.ctx, mh); err != nil {
 		return err
 	}
@@ -115,6 +115,14 @@ func (c *Consumer) Consume(mh ModelHandlers) error {
 		c.Source.Commit(change.Checkpoint)
 	}
 	return c.Source.Error()
+}
+
+func (c *Consumer) Consume(mh ModelHandlers) error {
+	mah := make(ModelAsyncHandlers, len(mh))
+	for m, fn := range mh {
+		mah[m] = toAsyncHandlerFunc(fn)
+	}
+	return c.ConsumeAsync(mah)
 }
 
 func makeModel(ref reflection, fields []*pb.Field) (interface{}, error) {
