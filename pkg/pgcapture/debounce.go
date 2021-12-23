@@ -11,24 +11,26 @@ import (
 )
 
 type BounceHandler interface {
-	Initialize(ctx context.Context, mh ModelHandlers) error
-	Handle(fn ModelHandlerFunc, checkpoint source.Checkpoint, change Change)
+	Initialize(ctx context.Context, mh ModelAsyncHandlers) error
+	Handle(fn ModelAsyncHandlerFunc, checkpoint source.Checkpoint, change Change)
 }
 
 type NoBounceHandler struct {
 	source source.RequeueSource
 }
 
-func (b *NoBounceHandler) Initialize(ctx context.Context, mh ModelHandlers) error {
+func (b *NoBounceHandler) Initialize(ctx context.Context, mh ModelAsyncHandlers) error {
 	return nil
 }
 
-func (b *NoBounceHandler) Handle(fn ModelHandlerFunc, checkpoint source.Checkpoint, change Change) {
-	if err := fn(change); err != nil {
-		b.source.Requeue(checkpoint, err.Error())
-	} else {
-		b.source.Commit(checkpoint)
-	}
+func (b *NoBounceHandler) Handle(fn ModelAsyncHandlerFunc, checkpoint source.Checkpoint, change Change) {
+	fn(change, func(err error) {
+		if err != nil {
+			b.source.Requeue(checkpoint, err.Error())
+		} else {
+			b.source.Commit(checkpoint)
+		}
+	})
 }
 
 type DebounceModel interface {
@@ -39,7 +41,7 @@ type DebounceModel interface {
 type event struct {
 	Checkpoint source.Checkpoint
 	Change     Change
-	Handler    ModelHandlerFunc
+	Handler    ModelAsyncHandlerFunc
 }
 
 type DebounceHandler struct {
@@ -50,7 +52,7 @@ type DebounceHandler struct {
 	mu       sync.Mutex
 }
 
-func (b *DebounceHandler) Initialize(ctx context.Context, mh ModelHandlers) error {
+func (b *DebounceHandler) Initialize(ctx context.Context, mh ModelAsyncHandlers) error {
 	for model := range mh {
 		if _, ok := model.(DebounceModel); !ok {
 			schema, table := model.TableName()
@@ -81,7 +83,7 @@ func (b *DebounceHandler) Initialize(ctx context.Context, mh ModelHandlers) erro
 	return nil
 }
 
-func (b *DebounceHandler) Handle(fn ModelHandlerFunc, checkpoint source.Checkpoint, change Change) {
+func (b *DebounceHandler) Handle(fn ModelAsyncHandlerFunc, checkpoint source.Checkpoint, change Change) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -117,11 +119,13 @@ func (b *DebounceHandler) Handle(fn ModelHandlerFunc, checkpoint source.Checkpoi
 }
 
 func (b *DebounceHandler) handle(e event) {
-	if err := e.Handler(e.Change); err != nil {
-		b.source.Requeue(e.Checkpoint, err.Error())
-	} else {
-		b.source.Commit(e.Checkpoint)
-	}
+	e.Handler(e.Change, func(err error) {
+		if err != nil {
+			b.source.Requeue(e.Checkpoint, err.Error())
+		} else {
+			b.source.Commit(e.Checkpoint)
+		}
+	})
 }
 
 func debounceKey(m interface{}) string {
