@@ -568,14 +568,14 @@ func ScanCheckpointFromLog(f io.Reader) (lsn, ts string, err error) {
 			ts = match[1]
 		}
 	}
-	if lsn == "" || ts == "" {
+	if lsn == "" && ts == "" {
 		return "", "", fmt.Errorf("lsn not found in log: %w", scanner.Err())
 	}
 	return lsn, ts, nil
 }
 
 var (
-	LogLSNRegex    = regexp.MustCompile(`(?:consistent recovery state reached at|redo done at) ([0-9A-F]{2,8}\/[0-9A-F]{2,8})`)
+	LogLSNRegex    = regexp.MustCompile(`(?:consistent recovery state reached at|redo done at) ([0-9A-F]{1,8}\/[0-9A-F]{1,8})`)
 	LogTxTimeRegex = regexp.MustCompile(`last completed transaction was at log time (.*)\.?$`)
 )
 
