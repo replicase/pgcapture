@@ -575,7 +575,7 @@ func ScanCheckpointFromLog(f io.Reader) (lsn, ts string, err error) {
 }
 
 var (
-	LogLSNRegex    = regexp.MustCompile(`(?:consistent recovery state reached at|redo done at) ([0-9A-F]{2,8}\/[0-9A-F]{2,8})`)
+	LogLSNRegex    = regexp.MustCompile(`(?:consistent recovery state reached at|redo done at) ([0-9A-F]{1,8}\/[0-9A-F]{1,8})`)
 	LogTxTimeRegex = regexp.MustCompile(`last completed transaction was at log time (.*)\.?$`)
 )
 
