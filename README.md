@@ -9,21 +9,20 @@ A scalable Netflix DBLog implementation for PostgreSQL
 ![overview](./hack/images/overview.png)
 
 ## Features
-* DDL command is also captured
-* One gRPC API for consuming the latest changes and on-demand dumps
-* The changes and dumps are streamed in Postgres Binary Representation
+* DDL commands are also captured
+* One unified gRPC Streaming API for consuming the latest changes and on-demand dumps
+* The changes and dumps are streamed in Postgres Binary Representation to save bandwidth
 
 ## Improvements to Netflix DBLog
-* Dumps are not selected from source database and are not injected into the source CDC stream.
-  Instead, They are dumped from the logical replica and are injected into the downstream by the grpc gateway service.
-* In this way, the on-demand dump process can be scaled by adding more logical replicas and consumers.
-  Most importantly, dumps process will not have impact to source database as well as other downstream consumers who don't need those dumps.   
-* The replication requires a unique key on each table. However, these key aren't limited to be a single numeric column,
-  because dumps are performed by PostgreSQL TID Scan not performed on the unique key.
+* Dumps are neither queried from source database nor injected into the source CDC stream.
+  Instead, They are dumped from the logical replicas and are injected into the selected downstreams by the grpc gateway service.
+* Therefore, the on-demand dump process can be scaled by adding more logical replicas and consumers.
+  And most importantly, dumps process will not have impact to source database as well as other downstream consumers who don't need those dumps.   
+* Primary keys of tables aren't limited to be a single numeric column, because dumps are performed by PostgreSQL TID Scan instead of performed on the primary key.
   
 ## Use cases
-* Microservice Event Sourcing
-* Data synchronization, Moving data to other databases
+* Robust Microservice Event Sourcing
+* Data synchronization, Moving data to other databases (ex. for OLAP)
 * Upgrade PostgreSQL with minimum downtime
 
 ## Dependencies
@@ -61,30 +60,30 @@ func (t MyTable) MarshalJSON() ([]byte, error) {
 }
 
 func main() {
-	ctx := context.Background()
+  ctx := context.Background()
 
-	conn, _ := grpc.Dial("127.0.0.1:1000", grpc.WithInsecure())
-	defer conn.Close()
+  conn, _ := grpc.Dial("127.0.0.1:1000", grpc.WithInsecure())
+  defer conn.Close()
 
-	consumer := pgcapture.NewConsumer(ctx, conn, pgcapture.ConsumerOption{ 
-		// the uri identify which change stream you want.
-		// you can implement dblog.SourceResolver to customize gateway behavior based on uri
-		URI: "my_subscription_id", 
-	})
-	defer consumer.Stop()
+  consumer := pgcapture.NewConsumer(ctx, conn, pgcapture.ConsumerOption{ 
+    // the uri identify which change stream you want.
+    // you can implement dblog.SourceResolver to customize gateway behavior based on uri
+    URI: "my_subscription_id", 
+  })
+  defer consumer.Stop()
 	
-	consumer.Consume(map[pgcapture.Model]pgcapture.ModelHandlerFunc{
-		&MyTable{}: func(change pgcapture.Change) error {
-			row := change.New.(*MyTable) 
-			// and then handle the decoded change event
+  consumer.Consume(map[pgcapture.Model]pgcapture.ModelHandlerFunc{
+    &MyTable{}: func(change pgcapture.Change) error {
+      row := change.New.(*MyTable) 
+      // and then handle the decoded change event
 
-			if row.Value.Status == pgtype.Undefined {
-				// handle the unchanged toast field
-			}
+      if row.Value.Status == pgtype.Undefined {
+        // handle the unchanged toast field
+      }
 
-			return nil
-		},
-	})
+      return nil
+    },
+  })
 }
 ```
 
@@ -104,13 +103,13 @@ However, it is recommended to implement your own `dblog.SourceResolver` based on
 package main
 
 import (
-	"context"
-	"net"
+  "context"
+  "net"
 	
-	"github.com/rueian/pgcapture/pkg/dblog"
-	"github.com/rueian/pgcapture/pkg/pb"
-	"github.com/rueian/pgcapture/pkg/source"
-	"google.golang.org/grpc"
+  "github.com/rueian/pgcapture/pkg/dblog"
+  "github.com/rueian/pgcapture/pkg/pb"
+  "github.com/rueian/pgcapture/pkg/source"
+  "google.golang.org/grpc"
 )
 
 type MySourceResolver struct {}
@@ -124,14 +123,14 @@ func (m *MySourceResolver) Dumper(ctx context.Context, uri string) (dblog.Source
 }
 
 func main() {
-	// connect to dump controller
-	controlConn, _ := grpc.Dial("127.0.0.1:10001", grpc.WithInsecure())
+  // connect to dump controller
+  controlConn, _ := grpc.Dial("127.0.0.1:10001", grpc.WithInsecure())
 	
-	gateway := &dblog.Gateway{
-		SourceResolver: &MySourceResolver{}, 
-		DumpInfoPuller: &dblog.GRPCDumpInfoPuller{Client: pb.NewDBLogControllerClient(controlConn)},
-	}
-	serveGRPC(gateway, "0.0.0.0:10000")
+  gateway := &dblog.Gateway{
+    SourceResolver: &MySourceResolver{}, 
+    DumpInfoPuller: &dblog.GRPCDumpInfoPuller{Client: pb.NewDBLogControllerClient(controlConn)},
+  }
+  serveGRPC(gateway, "0.0.0.0:10000")
 }
 
 ```
