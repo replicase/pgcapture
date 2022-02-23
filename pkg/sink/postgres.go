@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pglogrepl"
@@ -559,17 +560,21 @@ func (p *PGXSink) ReplicationLagMilliseconds() int64 {
 }
 
 func ScanCheckpointFromLog(f io.Reader) (lsn, ts string, err error) {
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if match := LogLSNRegex.FindStringSubmatch(line); len(match) > 1 {
-			lsn = match[1]
-		} else if match = LogTxTimeRegex.FindStringSubmatch(line); len(match) > 1 {
-			ts = match[1]
+	reader := bufio.NewReader(f)
+	for {
+		var line []byte
+		if line, _, err = reader.ReadLine(); err != nil {
+			break
+		}
+		str := *(*string)(unsafe.Pointer(&line))
+		if match := LogLSNRegex.FindStringSubmatch(str); len(match) > 1 {
+			lsn = clone(match[1])
+		} else if match = LogTxTimeRegex.FindStringSubmatch(str); len(match) > 1 {
+			ts = clone(match[1])
 		}
 	}
 	if lsn == "" && ts == "" {
-		return "", "", fmt.Errorf("lsn not found in log: %w", scanner.Err())
+		return "", "", fmt.Errorf("lsn not found in log: %w", err)
 	}
 	return lsn, ts, nil
 }
@@ -598,6 +603,12 @@ func pgTz(ts uint64) pgtype.Timestamptz {
 func PGTime2Time(ts uint64) time.Time {
 	micro := microsecFromUnixEpochToY2K + int64(ts)
 	return time.Unix(micro/microInSecond, (micro%microInSecond)*nsInSecond)
+}
+
+func clone(s string) string {
+	b := make([]byte, len(s))
+	copy(b, s)
+	return *(*string)(unsafe.Pointer(&b))
 }
 
 const microInSecond = int64(1e6)
