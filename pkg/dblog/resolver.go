@@ -14,10 +14,11 @@ type SourceResolver interface {
 }
 
 type StaticAgentPulsarURIConfig struct {
-	PulsarURL          string
-	PulsarTopic        string
-	PulsarSubscription string
-	AgentURL           string
+	PulsarURL            string
+	PulsarTopic          string
+	PulsarSubscription   string
+	PulsarReplicateState bool
+	AgentURL             string
 }
 
 func NewStaticAgentPulsarResolver(config map[string]StaticAgentPulsarURIConfig) *StaticAgentPulsarResolver {
@@ -34,9 +35,10 @@ func (r *StaticAgentPulsarResolver) Source(ctx context.Context, uri string) (sou
 		return nil, ErrURINotFound
 	}
 	return &source.PulsarConsumerSource{
-		PulsarOption:       pulsar.ClientOptions{URL: config.PulsarURL},
-		PulsarTopic:        config.PulsarTopic,
-		PulsarSubscription: config.PulsarSubscription,
+		PulsarOption:         pulsar.ClientOptions{URL: config.PulsarURL},
+		PulsarTopic:          config.PulsarTopic,
+		PulsarSubscription:   config.PulsarSubscription,
+		PulsarReplicateState: config.PulsarReplicateState,
 	}, nil
 }
 
