@@ -18,6 +18,8 @@ type PulsarSink struct {
 
 	PulsarOption pulsar.ClientOptions
 	PulsarTopic  string
+	// For overriding the cluster list to be replicated to
+	ReplicatedClusters []string
 
 	client     pulsar.Client
 	producer   pulsar.Producer
@@ -100,11 +102,12 @@ func (p *PulsarSink) Apply(changes chan source.Change) chan source.Checkpoint {
 	return p.BaseSink.apply(changes, func(change source.Change, committed chan source.Checkpoint) error {
 		if !first {
 			p.log.WithFields(logrus.Fields{
-				"MessageLSN":  change.Checkpoint.LSN,
-				"MessageSeq":  change.Checkpoint.Seq,
-				"SinkLastLSN": p.prev.LSN,
-				"SinkLastSeq": p.prev.Seq,
-				"Message":     change.Message.String(),
+				"MessageLSN":         change.Checkpoint.LSN,
+				"MessageSeq":         change.Checkpoint.Seq,
+				"SinkLastLSN":        p.prev.LSN,
+				"SinkLastSeq":        p.prev.Seq,
+				"Message":            change.Message.String(),
+				"ReplicatedClusters": p.ReplicatedClusters,
 			}).Info("applying the first message from source")
 			first = true
 		}
@@ -112,11 +115,12 @@ func (p *PulsarSink) Apply(changes chan source.Change) chan source.Checkpoint {
 		p.consistent = p.consistent || change.Checkpoint.After(p.prev)
 		if !p.consistent {
 			p.log.WithFields(logrus.Fields{
-				"MessageLSN":  change.Checkpoint.LSN,
-				"MessageSeq":  change.Checkpoint.Seq,
-				"SinkLastLSN": p.prev.LSN,
-				"SinkLastSeq": p.prev.Seq,
-				"Message":     change.Message.String(),
+				"MessageLSN":         change.Checkpoint.LSN,
+				"MessageSeq":         change.Checkpoint.Seq,
+				"SinkLastLSN":        p.prev.LSN,
+				"SinkLastSeq":        p.prev.Seq,
+				"Message":            change.Message.String(),
+				"ReplicatedClusters": p.ReplicatedClusters,
 			}).Warn("message dropped due to its lsn smaller than the last lsn of sink")
 			return nil
 		}
@@ -127,8 +131,9 @@ func (p *PulsarSink) Apply(changes chan source.Change) chan source.Checkpoint {
 		}
 
 		p.producer.SendAsync(context.Background(), &pulsar.ProducerMessage{
-			Key:     change.Checkpoint.ToKey(), // for topic compaction, not routing policy
-			Payload: bs,
+			Key:                 change.Checkpoint.ToKey(), // for topic compaction, not routing policy
+			Payload:             bs,
+			ReplicationClusters: p.ReplicatedClusters,
 		}, func(id pulsar.MessageID, message *pulsar.ProducerMessage, err error) {
 			if err != nil {
 				var idHex string
@@ -136,8 +141,9 @@ func (p *PulsarSink) Apply(changes chan source.Change) chan source.Checkpoint {
 					idHex = hex.EncodeToString(id.Serialize())
 				}
 				p.log.WithFields(logrus.Fields{
-					"MessageLSN":   change.Checkpoint.LSN,
-					"MessageIDHex": idHex,
+					"MessageLSN":         change.Checkpoint.LSN,
+					"MessageIDHex":       idHex,
+					"ReplicatedClusters": p.ReplicatedClusters,
 				}).Errorf("fail to send message to pulsar: %v", err)
 				p.BaseSink.err.Store(fmt.Errorf("%w", err))
 				p.BaseSink.Stop()
