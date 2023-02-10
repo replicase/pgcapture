@@ -61,7 +61,16 @@ func (p *PulsarSink) Setup() (cp source.Checkpoint, err error) {
 			}
 			p.prev = cp
 		}
-		if err != nil && err != context.DeadlineExceeded {
+		if err != nil {
+			if err != context.DeadlineExceeded {
+				p.log.WithFields(logrus.Fields{
+					"PulsarTopic": p.PulsarTopic,
+				}).Info("fail to read last message from pulsar")
+
+				// ignore the timeout error and return the empty checkpoint
+				return cp, nil
+			}
+
 			return cp, err
 		}
 	}
