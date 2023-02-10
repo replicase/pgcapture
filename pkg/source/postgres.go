@@ -23,6 +23,7 @@ type PGXSource struct {
 	ReplConnStr  string
 	ReplSlot     string
 	CreateSlot   bool
+	StartLSN     string
 
 	setupConn      *pgx.Conn
 	replConn       *pgconn.PgConn
@@ -109,7 +110,15 @@ func (p *PGXSource) Capture(cp Checkpoint) (changes chan Change, err error) {
 			"FromLSN":  p.currentLsn,
 		}).Info("start logical replication from requested position")
 	} else {
-		p.currentLsn = uint64(ident.XLogPos)
+		if p.StartLSN != "" {
+			startLsn, err := pglogrepl.ParseLSN(p.StartLSN)
+			if err != nil {
+				return nil, err
+			}
+			p.currentLsn = uint64(startLsn)
+		} else {
+			p.currentLsn = uint64(ident.XLogPos)
+		}
 		p.currentSeq = 0
 		p.log.WithFields(logrus.Fields{
 			"ReplSlot": p.ReplSlot,
