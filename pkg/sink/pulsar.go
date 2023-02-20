@@ -77,6 +77,7 @@ func (p *PulsarSink) Setup() (cp cursor.Checkpoint, err error) {
 		p.producer.Flush()
 		p.producer.Close()
 		p.client.Close()
+		p.tracker.Close()
 	}
 
 	return cp, nil
@@ -120,11 +121,12 @@ func (p *PulsarSink) Apply(changes chan source.Change) chan cursor.Checkpoint {
 			Payload:             bs,
 			ReplicationClusters: p.ReplicatedClusters,
 		}, func(id pulsar.MessageID, message *pulsar.ProducerMessage, err error) {
+			var idHex string
+			if id != nil {
+				idHex = hex.EncodeToString(id.Serialize())
+			}
+
 			if err != nil {
-				var idHex string
-				if id != nil {
-					idHex = hex.EncodeToString(id.Serialize())
-				}
 				p.log.WithFields(logrus.Fields{
 					"MessageLSN":         change.Checkpoint.LSN,
 					"MessageIDHex":       idHex,
@@ -136,10 +138,11 @@ func (p *PulsarSink) Apply(changes chan source.Change) chan cursor.Checkpoint {
 			}
 
 			cp := change.Checkpoint
-			if err := p.tracker.Commit(cp); err != nil {
+			if err := p.tracker.Commit(cp, id); err != nil {
 				p.log.WithFields(logrus.Fields{
-					"MessageLSN": change.Checkpoint.LSN,
-					"MessageSeq": change.Checkpoint.Seq,
+					"MessageLSN":   change.Checkpoint.LSN,
+					"MessageSeq":   change.Checkpoint.Seq,
+					"MessageIDHex": idHex,
 				}).Errorf("fail to commit message to tracker: %v", err)
 			}
 			committed <- cp

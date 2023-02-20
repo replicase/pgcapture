@@ -41,7 +41,10 @@ func (p *PulsarTracker) Last() (last Checkpoint, err error) {
 	return
 }
 
-func (p *PulsarTracker) Commit(cp Checkpoint) error {
-	// TODO: implement me
+func (p *PulsarTracker) Commit(_ Checkpoint, _ pulsar.MessageID) error {
 	return nil
+}
+
+func (p *PulsarTracker) Close() {
+	// Do Nothing
 }
