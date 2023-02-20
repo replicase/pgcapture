@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgproto3/v2"
 	"github.com/jackc/pgx/v4"
+	"github.com/rueian/pgcapture/pkg/cursor"
 	"github.com/rueian/pgcapture/pkg/decode"
 	"github.com/rueian/pgcapture/pkg/sql"
 	"github.com/sirupsen/logrus"
@@ -42,7 +43,7 @@ func (p *PGXSource) TxCounter() uint64 {
 	return atomic.LoadUint64(&p.txCounter)
 }
 
-func (p *PGXSource) Capture(cp Checkpoint) (changes chan Change, err error) {
+func (p *PGXSource) Capture(cp cursor.Checkpoint) (changes chan Change, err error) {
 	defer func() {
 		if err != nil {
 			p.cleanup()
@@ -125,7 +126,7 @@ func (p *PGXSource) Capture(cp Checkpoint) (changes chan Change, err error) {
 			"FromLSN":  p.currentLsn,
 		}).Info("start logical replication from the latest position")
 	}
-	p.Commit(Checkpoint{LSN: p.currentLsn})
+	p.Commit(cursor.Checkpoint{LSN: p.currentLsn})
 	if err = pglogrepl.StartReplication(
 		context.Background(),
 		p.replConn,
@@ -184,7 +185,7 @@ func (p *PGXSource) fetching(ctx context.Context) (change Change, err error) {
 				p.currentSeq = 0
 			}
 			change = Change{
-				Checkpoint: Checkpoint{LSN: p.currentLsn, Seq: p.currentSeq},
+				Checkpoint: cursor.Checkpoint{LSN: p.currentLsn, Seq: p.currentSeq},
 				Message:    m,
 			}
 			if !p.first {
@@ -201,14 +202,14 @@ func (p *PGXSource) fetching(ctx context.Context) (change Change, err error) {
 	return change, err
 }
 
-func (p *PGXSource) Commit(cp Checkpoint) {
+func (p *PGXSource) Commit(cp cursor.Checkpoint) {
 	if cp.LSN != 0 {
 		atomic.StoreUint64(&p.ackLsn, cp.LSN)
 		atomic.AddUint64(&p.txCounter, 1)
 	}
 }
 
-func (p *PGXSource) Requeue(cp Checkpoint, reason string) {
+func (p *PGXSource) Requeue(cp cursor.Checkpoint, reason string) {
 }
 
 func (p *PGXSource) committedLSN() (lsn pglogrepl.LSN) {

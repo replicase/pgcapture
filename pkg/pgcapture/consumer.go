@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgtype"
+	"github.com/rueian/pgcapture/pkg/cursor"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/source"
 	"google.golang.org/grpc"
@@ -82,7 +83,7 @@ func (c *Consumer) ConsumeAsync(mh ModelAsyncHandlers) error {
 		refs[ModelName(m.TableName())] = ref
 	}
 
-	changes, err := c.Source.Capture(source.Checkpoint{})
+	changes, err := c.Source.Capture(cursor.Checkpoint{})
 	if err != nil {
 		return err
 	}

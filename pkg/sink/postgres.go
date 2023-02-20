@@ -22,6 +22,7 @@ import (
 	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4"
 	pg_query "github.com/pganalyze/pg_query_go/v2"
+	"github.com/rueian/pgcapture/pkg/cursor"
 	"github.com/rueian/pgcapture/pkg/decode"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/source"
@@ -41,7 +42,7 @@ type PGXSink struct {
 	raw     *pgconn.PgConn
 	schema  *decode.PGXSchemaLoader
 	log     *logrus.Entry
-	prev    source.Checkpoint
+	prev    cursor.Checkpoint
 	pgSrcID pgtype.Text
 	replLag int64
 	inTX    bool
@@ -79,7 +80,7 @@ func tryRenice(logger *logrus.Entry, renice, pid int64) {
 	logger.Infof("try renice to %d for pid %d: %s(%v)", renice, pid, string(out), err)
 }
 
-func (p *PGXSink) Setup() (cp source.Checkpoint, err error) {
+func (p *PGXSink) Setup() (cp cursor.Checkpoint, err error) {
 	ctx := context.Background()
 	p.conn, err = pgx.Connect(ctx, p.ConnStr)
 	if err != nil {
@@ -133,7 +134,7 @@ func (p *PGXSink) Setup() (cp source.Checkpoint, err error) {
 	return p.findCheckpoint(ctx)
 }
 
-func (p *PGXSink) findCheckpoint(ctx context.Context) (cp source.Checkpoint, err error) {
+func (p *PGXSink) findCheckpoint(ctx context.Context) (cp cursor.Checkpoint, err error) {
 	var str, ts string
 	var mid []byte
 	var seq uint32
@@ -177,9 +178,9 @@ func (p *PGXSink) findCheckpoint(ctx context.Context) (cp source.Checkpoint, err
 	return cp, nil
 }
 
-func (p *PGXSink) Apply(changes chan source.Change) chan source.Checkpoint {
+func (p *PGXSink) Apply(changes chan source.Change) chan cursor.Checkpoint {
 	var first bool
-	return p.BaseSink.apply(changes, func(change source.Change, committed chan source.Checkpoint) (err error) {
+	return p.BaseSink.apply(changes, func(change source.Change, committed chan cursor.Checkpoint) (err error) {
 		if !first {
 			p.log.WithFields(logrus.Fields{
 				"MessageLSN":  change.Checkpoint.LSN,
@@ -536,7 +537,7 @@ const (
 	UpdateSourceSQL = "update pgcapture.sources set commit=$1,seq=$2,mid=$3,commit_ts=$4,apply_ts=now() where id=$5"
 )
 
-func (p *PGXSink) handleCommit(cp source.Checkpoint, commit *pb.Commit) (err error) {
+func (p *PGXSink) handleCommit(cp cursor.Checkpoint, commit *pb.Commit) (err error) {
 	ctx := context.Background()
 	if err = p.flushInsert(ctx); err != nil {
 		return err

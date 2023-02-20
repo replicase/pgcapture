@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar"
+	"github.com/rueian/pgcapture/pkg/cursor"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/proto"
@@ -27,7 +28,7 @@ type PulsarReaderSource struct {
 	log        *logrus.Entry
 }
 
-func (p *PulsarReaderSource) Capture(cp Checkpoint) (changes chan Change, err error) {
+func (p *PulsarReaderSource) Capture(cp cursor.Checkpoint) (changes chan Change, err error) {
 	if p.seekOffset == 0 {
 		p.seekOffset = -1 * time.Second
 	}
@@ -90,7 +91,7 @@ func (p *PulsarReaderSource) Capture(cp Checkpoint) (changes chan Change, err er
 			return
 		}
 
-		checkpoint, err := ToCheckpoint(msg)
+		checkpoint, err := cursor.ToCheckpoint(msg)
 		if err != nil {
 			return
 		}
@@ -144,7 +145,7 @@ func (p *PulsarReaderSource) Capture(cp Checkpoint) (changes chan Change, err er
 	})
 }
 
-func (p *PulsarReaderSource) Commit(cp Checkpoint) {
+func (p *PulsarReaderSource) Commit(cp cursor.Checkpoint) {
 	return
 }
 
@@ -162,7 +163,7 @@ type PulsarConsumerSource struct {
 	log      *logrus.Entry
 }
 
-func (p *PulsarConsumerSource) Capture(cp Checkpoint) (changes chan Change, err error) {
+func (p *PulsarConsumerSource) Capture(cp cursor.Checkpoint) (changes chan Change, err error) {
 	host, err := os.Hostname()
 	if err != nil {
 		return nil, err
@@ -200,7 +201,7 @@ func (p *PulsarConsumerSource) Capture(cp Checkpoint) (changes chan Change, err 
 		if err != nil {
 			return
 		}
-		checkpoint, err := ToCheckpoint(msg)
+		checkpoint, err := cursor.ToCheckpoint(msg)
 		if err != nil {
 			return
 		}
@@ -233,13 +234,13 @@ func (p *PulsarConsumerSource) Capture(cp Checkpoint) (changes chan Change, err 
 	})
 }
 
-func (p *PulsarConsumerSource) Commit(cp Checkpoint) {
+func (p *PulsarConsumerSource) Commit(cp cursor.Checkpoint) {
 	if mid, err := pulsar.DeserializeMessageID(cp.Data); err == nil {
 		p.consumer.AckID(mid)
 	}
 }
 
-func (p *PulsarConsumerSource) Requeue(cp Checkpoint, reason string) {
+func (p *PulsarConsumerSource) Requeue(cp cursor.Checkpoint, reason string) {
 	if mid, err := pulsar.DeserializeMessageID(cp.Data); err == nil {
 		p.consumer.NackID(mid)
 	}

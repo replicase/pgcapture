@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4"
+	"github.com/rueian/pgcapture/pkg/cursor"
 	"github.com/rueian/pgcapture/pkg/decode"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/source"
@@ -59,7 +60,7 @@ func TestPGXSink(t *testing.T) {
 
 	// ignore duplicated start lsn
 	changes <- source.Change{
-		Checkpoint: source.Checkpoint{LSN: lsn},
+		Checkpoint: cursor.Checkpoint{LSN: lsn},
 		Message:    &pb.Message{Type: &pb.Message_Begin{Begin: &pb.Begin{}}},
 	}
 
@@ -68,21 +69,21 @@ func TestPGXSink(t *testing.T) {
 		ts := now.Unix()*1000000 + int64(now.Nanosecond())/1000 - microsecFromUnixEpochToY2K
 		lsn++
 		changes <- source.Change{
-			Checkpoint: source.Checkpoint{LSN: lsn, Data: []byte(now.Format(time.RFC3339Nano))},
+			Checkpoint: cursor.Checkpoint{LSN: lsn, Data: []byte(now.Format(time.RFC3339Nano))},
 			Message:    &pb.Message{Type: &pb.Message_Begin{Begin: &pb.Begin{}}},
 		}
 		for _, change := range chs {
 			now = now.Add(time.Second)
 			lsn++
 			changes <- source.Change{
-				Checkpoint: source.Checkpoint{LSN: lsn, Data: []byte(now.Format(time.RFC3339Nano))},
+				Checkpoint: cursor.Checkpoint{LSN: lsn, Data: []byte(now.Format(time.RFC3339Nano))},
 				Message:    &pb.Message{Type: &pb.Message_Change{Change: change}},
 			}
 		}
 		now = now.Add(time.Second)
 		lsn++
 		changes <- source.Change{
-			Checkpoint: source.Checkpoint{LSN: lsn, Data: []byte(now.Format(time.RFC3339Nano))},
+			Checkpoint: cursor.Checkpoint{LSN: lsn, Data: []byte(now.Format(time.RFC3339Nano))},
 			Message:    &pb.Message{Type: &pb.Message_Commit{Commit: &pb.Commit{CommitTime: uint64(ts)}}},
 		}
 		if cp := <-committed; cp.LSN != lsn || string(cp.Data) != now.Format(time.RFC3339Nano) {

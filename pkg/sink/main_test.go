@@ -2,10 +2,12 @@ package sink
 
 import (
 	"errors"
-	"github.com/rueian/pgcapture/pkg/pb"
-	"github.com/rueian/pgcapture/pkg/source"
 	"testing"
 	"time"
+
+	"github.com/rueian/pgcapture/pkg/cursor"
+	"github.com/rueian/pgcapture/pkg/pb"
+	"github.com/rueian/pgcapture/pkg/source"
 )
 
 type sink struct {
@@ -13,7 +15,7 @@ type sink struct {
 	Cleaned chan struct{}
 }
 
-func (s *sink) Setup() (cp source.Checkpoint, err error) {
+func (s *sink) Setup() (cp cursor.Checkpoint, err error) {
 	s.Cleaned = make(chan struct{})
 	s.BaseSink.CleanFn = func() {
 		close(s.Cleaned)
@@ -21,8 +23,8 @@ func (s *sink) Setup() (cp source.Checkpoint, err error) {
 	return
 }
 
-func (s *sink) Apply(changes chan source.Change) (committed chan source.Checkpoint) {
-	return s.BaseSink.apply(changes, func(message source.Change, committed chan source.Checkpoint) error {
+func (s *sink) Apply(changes chan source.Change) (committed chan cursor.Checkpoint) {
+	return s.BaseSink.apply(changes, func(message source.Change, committed chan cursor.Checkpoint) error {
 		if message.Message != nil {
 			return ErrAny
 		}
@@ -53,7 +55,7 @@ func TestBaseSink_Stop(t *testing.T) {
 
 	for i := 0; i < 1000; i++ {
 		select {
-		case changes <- source.Change{Checkpoint: source.Checkpoint{}}:
+		case changes <- source.Change{Checkpoint: cursor.Checkpoint{}}:
 		case <-time.NewTimer(time.Second).C:
 			t.Fatal("push to changes should be still successful")
 		}
@@ -85,7 +87,7 @@ func TestBaseSink_Clean(t *testing.T) {
 
 	go func() {
 		for i := 0; i < count; i++ {
-			changes <- source.Change{Checkpoint: source.Checkpoint{}}
+			changes <- source.Change{Checkpoint: cursor.Checkpoint{}}
 		}
 		close(changes)
 	}()

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rueian/pgcapture/pkg/cursor"
 	"github.com/rueian/pgcapture/pkg/pb"
 )
 
@@ -15,14 +16,14 @@ type source struct {
 	Flushed chan struct{}
 }
 
-func (s *source) Capture(cp Checkpoint) (changes chan Change, err error) {
+func (s *source) Capture(cp cursor.Checkpoint) (changes chan Change, err error) {
 	s.Flushed = make(chan struct{})
 	return s.BaseSource.capture(s.ReadFn, func() {
 		close(s.Flushed)
 	})
 }
 
-func (s *source) Commit(cp Checkpoint) {
+func (s *source) Commit(cp cursor.Checkpoint) {
 
 }
 
@@ -35,7 +36,7 @@ func TestBaseSource_Stop(t *testing.T) {
 			return Change{Message: &pb.Message{}}, ctx.Err()
 		},
 	}
-	changes, _ := source.Capture(Checkpoint{})
+	changes, _ := source.Capture(cursor.Checkpoint{})
 
 	go func() {
 		time.Sleep(time.Second / 2)
@@ -65,9 +66,9 @@ func TestBaseSource_SecondCapture(t *testing.T) {
 			return Change{Message: &pb.Message{}}, ctx.Err()
 		},
 	}
-	changes, _ := source.Capture(Checkpoint{})
+	changes, _ := source.Capture(cursor.Checkpoint{})
 
-	if second, err := source.Capture(Checkpoint{}); second != nil || err != nil {
+	if second, err := source.Capture(cursor.Checkpoint{}); second != nil || err != nil {
 		t.Fatal("second capture should be ignore")
 	}
 
@@ -101,7 +102,7 @@ func TestBaseSource_Timeout(t *testing.T) {
 			return Change{Message: &pb.Message{}}, ctx.Err()
 		},
 	}
-	changes, _ := source.Capture(Checkpoint{})
+	changes, _ := source.Capture(cursor.Checkpoint{})
 
 	go func() {
 		time.Sleep(time.Second / 2)
@@ -130,7 +131,7 @@ func TestBaseSource_Error(t *testing.T) {
 			return Change{}, ErrAny
 		},
 	}
-	changes, _ := source.Capture(Checkpoint{})
+	changes, _ := source.Capture(cursor.Checkpoint{})
 
 	if _, more := <-changes; more {
 		t.Fatal("committed channel should be closed")
@@ -147,13 +148,13 @@ func TestBaseSource_Error(t *testing.T) {
 func TestBaseSink_CapturePanic(t *testing.T) {
 	defer func() { recover() }()
 	s := BaseSource{}
-	s.Capture(Checkpoint{})
+	s.Capture(cursor.Checkpoint{})
 	t.Fatal("should panic")
 }
 
 func TestBaseSink_CommitPanic(t *testing.T) {
 	defer func() { recover() }()
 	s := BaseSource{}
-	s.Commit(Checkpoint{})
+	s.Commit(cursor.Checkpoint{})
 	t.Fatal("should panic")
 }

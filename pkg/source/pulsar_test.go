@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar"
+	"github.com/rueian/pgcapture/pkg/cursor"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"google.golang.org/protobuf/proto"
 )
@@ -34,7 +35,7 @@ func TestPulsarReaderSource(t *testing.T) {
 
 	// prepend incomplete message into topic
 	incomplete, _ := proto.Marshal(&pb.Message{Type: &pb.Message_Commit{Commit: &pb.Commit{EndLsn: 111}}})
-	cp := Checkpoint{LSN: 111}
+	cp := cursor.Checkpoint{LSN: 111}
 	if _, err = producer.Send(context.Background(), &pulsar.ProducerMessage{
 		Key:     cp.ToKey(),
 		Payload: incomplete,
@@ -44,7 +45,7 @@ func TestPulsarReaderSource(t *testing.T) {
 
 	for ; lsn < 3; lsn++ {
 		bs, _ := proto.Marshal(&pb.Message{Type: &pb.Message_Begin{Begin: &pb.Begin{FinalLsn: uint64(lsn)}}})
-		cp := Checkpoint{LSN: uint64(lsn)}
+		cp := cursor.Checkpoint{LSN: uint64(lsn)}
 		if _, err = producer.Send(context.Background(), &pulsar.ProducerMessage{
 			Key:     cp.ToKey(),
 			Payload: bs,
@@ -66,7 +67,7 @@ func TestPulsarReaderSource(t *testing.T) {
 
 	// test from start
 	src := newPulsarReaderSource()
-	changes, err := src.Capture(Checkpoint{})
+	changes, err := src.Capture(cursor.Checkpoint{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +85,7 @@ func TestPulsarReaderSource(t *testing.T) {
 
 	// continue to receive latest msg
 	latest, _ := proto.Marshal(&pb.Message{Type: &pb.Message_Begin{Begin: &pb.Begin{FinalLsn: 3}}})
-	cp = Checkpoint{LSN: 3}
+	cp = cursor.Checkpoint{LSN: 3}
 	if _, err = producer.Send(context.Background(), &pulsar.ProducerMessage{
 		Key:     cp.ToKey(),
 		Payload: latest,
@@ -102,7 +103,7 @@ func TestPulsarReaderSource(t *testing.T) {
 
 	// test from specified time and lsn, and not include specified lsn
 	src = newPulsarReaderSource()
-	changes, err = src.Capture(Checkpoint{LSN: uint64(1), Data: []byte(now.Add(time.Millisecond * 200).Format(time.RFC3339Nano))})
+	changes, err = src.Capture(cursor.Checkpoint{LSN: uint64(1), Data: []byte(now.Add(time.Millisecond * 200).Format(time.RFC3339Nano))})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,13 +148,13 @@ func TestPulsarConsumerSource(t *testing.T) {
 
 	// test from start
 	src := newPulsarConsumerSource()
-	changes, err := src.Capture(Checkpoint{})
+	changes, err := src.Capture(cursor.Checkpoint{})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// begin, commit message should be ignored
-	cp := Checkpoint{LSN: 1}
+	cp := cursor.Checkpoint{LSN: 1}
 	bs, _ := proto.Marshal(&pb.Message{Type: &pb.Message_Begin{Begin: &pb.Begin{}}})
 	if _, err = producer.Send(context.Background(), &pulsar.ProducerMessage{
 		Key:     cp.ToKey(),
@@ -161,7 +162,7 @@ func TestPulsarConsumerSource(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	cp = Checkpoint{LSN: 1}
+	cp = cursor.Checkpoint{LSN: 1}
 	bs, _ = proto.Marshal(&pb.Message{Type: &pb.Message_Commit{Commit: &pb.Commit{}}})
 	if _, err = producer.Send(context.Background(), &pulsar.ProducerMessage{
 		Key:     cp.ToKey(),
@@ -172,7 +173,7 @@ func TestPulsarConsumerSource(t *testing.T) {
 
 	lsn := 0
 	for ; lsn < 3; lsn++ {
-		cp := Checkpoint{LSN: uint64(lsn)}
+		cp := cursor.Checkpoint{LSN: uint64(lsn)}
 		bs, _ := proto.Marshal(&pb.Message{Type: &pb.Message_Change{Change: &pb.Change{Table: strconv.Itoa(lsn)}}})
 		if _, err = producer.Send(context.Background(), &pulsar.ProducerMessage{
 			Key:     cp.ToKey(),
@@ -194,7 +195,7 @@ func TestPulsarConsumerSource(t *testing.T) {
 
 	// restart to receive same messages, and commit '0' and '2', but abort '1'
 	src = newPulsarConsumerSource()
-	changes, err = src.Capture(Checkpoint{})
+	changes, err = src.Capture(cursor.Checkpoint{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +214,7 @@ func TestPulsarConsumerSource(t *testing.T) {
 
 	// the '1' message should be redelivered
 	src = newPulsarConsumerSource()
-	changes, err = src.Capture(Checkpoint{})
+	changes, err = src.Capture(cursor.Checkpoint{})
 	if err != nil {
 		t.Fatal(err)
 	}

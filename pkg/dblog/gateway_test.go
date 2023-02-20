@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/rueian/pgcapture/pkg/cursor"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/source"
 	"google.golang.org/grpc/metadata"
@@ -49,7 +50,7 @@ func TestGateway_CaptureInitError(t *testing.T) {
 		SourceResolver: &resolver{
 			SourceCB: func(ctx context.Context, uri string) (source.RequeueSource, error) {
 				return &sources{
-					CaptureCB: func(cp source.Checkpoint) (changes chan source.Change, err error) {
+					CaptureCB: func(cp cursor.Checkpoint) (changes chan source.Change, err error) {
 						return nil, context.Canceled
 					},
 				}, nil
@@ -76,12 +77,12 @@ func TestGateway_CaptureInitError(t *testing.T) {
 		SourceResolver: &resolver{
 			SourceCB: func(ctx context.Context, uri string) (source.RequeueSource, error) {
 				return &sources{
-					CaptureCB: func(cp source.Checkpoint) (chan source.Change, error) {
+					CaptureCB: func(cp cursor.Checkpoint) (chan source.Change, error) {
 						return nil, nil
 					},
-					RequeueCB: func(cp source.Checkpoint) {
+					RequeueCB: func(cp cursor.Checkpoint) {
 					},
-					CommitCB: func(cp source.Checkpoint) {
+					CommitCB: func(cp cursor.Checkpoint) {
 					},
 					StopCB: func() error {
 						return nil
@@ -112,9 +113,9 @@ func TestGateway_Capture(t *testing.T) {
 	ctx1 := context.Background()
 
 	changes := make(chan source.Change, 1)
-	checkpoints := make(chan source.Checkpoint, 1)
-	requeue := make(chan source.Checkpoint, 1)
-	commit := make(chan source.Checkpoint, 1)
+	checkpoints := make(chan cursor.Checkpoint, 1)
+	requeue := make(chan cursor.Checkpoint, 1)
+	commit := make(chan cursor.Checkpoint, 1)
 
 	recv := make(chan *pb.CaptureRequest, 1)
 	send := make(chan *pb.CaptureMessage, 1)
@@ -131,14 +132,14 @@ func TestGateway_Capture(t *testing.T) {
 		SourceResolver: &resolver{
 			SourceCB: func(ctx context.Context, uri string) (source.RequeueSource, error) {
 				return &sources{
-					CaptureCB: func(cp source.Checkpoint) (chan source.Change, error) {
+					CaptureCB: func(cp cursor.Checkpoint) (chan source.Change, error) {
 						checkpoints <- cp
 						return changes, nil
 					},
-					RequeueCB: func(cp source.Checkpoint) {
+					RequeueCB: func(cp cursor.Checkpoint) {
 						requeue <- cp
 					},
-					CommitCB: func(cp source.Checkpoint) {
+					CommitCB: func(cp cursor.Checkpoint) {
 						commit <- cp
 					},
 					StopCB: func() error {
@@ -194,7 +195,7 @@ func TestGateway_Capture(t *testing.T) {
 
 	// if source have changes, send it to client
 	change := &pb.Change{Op: pb.Change_UPDATE}
-	changes <- source.Change{Checkpoint: source.Checkpoint{LSN: 1}, Message: &pb.Message{Type: &pb.Message_Change{Change: change}}}
+	changes <- source.Change{Checkpoint: cursor.Checkpoint{LSN: 1}, Message: &pb.Message{Type: &pb.Message_Change{Change: change}}}
 	if msg := <-send; msg.Checkpoint.Lsn != 1 || msg.Change != change {
 		t.Fatal("unexpected")
 	}
@@ -212,13 +213,13 @@ func TestGateway_Capture(t *testing.T) {
 	}
 
 	// if source have begin, not send it to client, but ack
-	changes <- source.Change{Checkpoint: source.Checkpoint{LSN: 1}, Message: &pb.Message{Type: &pb.Message_Begin{Begin: &pb.Begin{}}}}
+	changes <- source.Change{Checkpoint: cursor.Checkpoint{LSN: 1}, Message: &pb.Message{Type: &pb.Message_Begin{Begin: &pb.Begin{}}}}
 	if cp := <-commit; cp.LSN != 1 {
 		t.Fatal("unexpected")
 	}
 
 	// if source have commit, not send it to client, but ack
-	changes <- source.Change{Checkpoint: source.Checkpoint{LSN: 1}, Message: &pb.Message{Type: &pb.Message_Commit{Commit: &pb.Commit{}}}}
+	changes <- source.Change{Checkpoint: cursor.Checkpoint{LSN: 1}, Message: &pb.Message{Type: &pb.Message_Commit{Commit: &pb.Commit{}}}}
 	if cp := <-commit; cp.LSN != 1 {
 		t.Fatal("unexpected")
 	}
@@ -311,9 +312,9 @@ func TestGateway_CaptureSendSourceError(t *testing.T) {
 	ctx1 := context.Background()
 
 	changes := make(chan source.Change, 1)
-	checkpoints := make(chan source.Checkpoint, 1)
-	requeue := make(chan source.Checkpoint, 1)
-	commit := make(chan source.Checkpoint, 1)
+	checkpoints := make(chan cursor.Checkpoint, 1)
+	requeue := make(chan cursor.Checkpoint, 1)
+	commit := make(chan cursor.Checkpoint, 1)
 
 	recv := make(chan *pb.CaptureRequest, 1)
 	send := make(chan *pb.CaptureMessage, 1)
@@ -329,14 +330,14 @@ func TestGateway_CaptureSendSourceError(t *testing.T) {
 		SourceResolver: &resolver{
 			SourceCB: func(ctx context.Context, uri string) (source.RequeueSource, error) {
 				return &sources{
-					CaptureCB: func(cp source.Checkpoint) (chan source.Change, error) {
+					CaptureCB: func(cp cursor.Checkpoint) (chan source.Change, error) {
 						checkpoints <- cp
 						return changes, nil
 					},
-					RequeueCB: func(cp source.Checkpoint) {
+					RequeueCB: func(cp cursor.Checkpoint) {
 						requeue <- cp
 					},
-					CommitCB: func(cp source.Checkpoint) {
+					CommitCB: func(cp cursor.Checkpoint) {
 						commit <- cp
 					},
 					StopCB: func() error {
@@ -384,7 +385,7 @@ func TestGateway_CaptureSendSourceError(t *testing.T) {
 
 	// if source have changes, send it to client
 	change := &pb.Change{Op: pb.Change_UPDATE}
-	changes <- source.Change{Checkpoint: source.Checkpoint{LSN: 1}, Message: &pb.Message{Type: &pb.Message_Change{Change: change}}}
+	changes <- source.Change{Checkpoint: cursor.Checkpoint{LSN: 1}, Message: &pb.Message{Type: &pb.Message_Change{Change: change}}}
 	if msg := <-send; msg.Checkpoint.Lsn != 1 || msg.Change != change {
 		t.Fatal("unexpected")
 	}
@@ -396,9 +397,9 @@ func TestGateway_CaptureSendDumpError(t *testing.T) {
 	ctx1 := context.Background()
 
 	changes := make(chan source.Change, 1)
-	checkpoints := make(chan source.Checkpoint, 1)
-	requeue := make(chan source.Checkpoint, 1)
-	commit := make(chan source.Checkpoint, 1)
+	checkpoints := make(chan cursor.Checkpoint, 1)
+	requeue := make(chan cursor.Checkpoint, 1)
+	commit := make(chan cursor.Checkpoint, 1)
 
 	recv := make(chan *pb.CaptureRequest, 1)
 	send := make(chan *pb.CaptureMessage, 1)
@@ -414,14 +415,14 @@ func TestGateway_CaptureSendDumpError(t *testing.T) {
 		SourceResolver: &resolver{
 			SourceCB: func(ctx context.Context, uri string) (source.RequeueSource, error) {
 				return &sources{
-					CaptureCB: func(cp source.Checkpoint) (chan source.Change, error) {
+					CaptureCB: func(cp cursor.Checkpoint) (chan source.Change, error) {
 						checkpoints <- cp
 						return changes, nil
 					},
-					RequeueCB: func(cp source.Checkpoint) {
+					RequeueCB: func(cp cursor.Checkpoint) {
 						requeue <- cp
 					},
-					CommitCB: func(cp source.Checkpoint) {
+					CommitCB: func(cp cursor.Checkpoint) {
 						commit <- cp
 					},
 					StopCB: func() error {
@@ -488,9 +489,9 @@ func TestGateway_CaptureRecvError(t *testing.T) {
 	ctx1 := context.Background()
 
 	changes := make(chan source.Change, 1)
-	checkpoints := make(chan source.Checkpoint, 1)
-	requeue := make(chan source.Checkpoint, 1)
-	commit := make(chan source.Checkpoint, 1)
+	checkpoints := make(chan cursor.Checkpoint, 1)
+	requeue := make(chan cursor.Checkpoint, 1)
+	commit := make(chan cursor.Checkpoint, 1)
 
 	recv := make(chan *pb.CaptureRequest, 1)
 	send := make(chan *pb.CaptureMessage, 1)
@@ -506,14 +507,14 @@ func TestGateway_CaptureRecvError(t *testing.T) {
 		SourceResolver: &resolver{
 			SourceCB: func(ctx context.Context, uri string) (source.RequeueSource, error) {
 				return &sources{
-					CaptureCB: func(cp source.Checkpoint) (chan source.Change, error) {
+					CaptureCB: func(cp cursor.Checkpoint) (chan source.Change, error) {
 						checkpoints <- cp
 						return changes, nil
 					},
-					RequeueCB: func(cp source.Checkpoint) {
+					RequeueCB: func(cp cursor.Checkpoint) {
 						requeue <- cp
 					},
-					CommitCB: func(cp source.Checkpoint) {
+					CommitCB: func(cp cursor.Checkpoint) {
 						commit <- cp
 					},
 					StopCB: func() error {
@@ -570,9 +571,9 @@ func TestGateway_CaptureRecvClose(t *testing.T) {
 	ctx1 := context.Background()
 
 	changes := make(chan source.Change, 1)
-	checkpoints := make(chan source.Checkpoint, 1)
-	requeue := make(chan source.Checkpoint, 1)
-	commit := make(chan source.Checkpoint, 1)
+	checkpoints := make(chan cursor.Checkpoint, 1)
+	requeue := make(chan cursor.Checkpoint, 1)
+	commit := make(chan cursor.Checkpoint, 1)
 
 	recv := make(chan *pb.CaptureRequest, 1)
 	send := make(chan *pb.CaptureMessage, 1)
@@ -588,14 +589,14 @@ func TestGateway_CaptureRecvClose(t *testing.T) {
 		SourceResolver: &resolver{
 			SourceCB: func(ctx context.Context, uri string) (source.RequeueSource, error) {
 				return &sources{
-					CaptureCB: func(cp source.Checkpoint) (chan source.Change, error) {
+					CaptureCB: func(cp cursor.Checkpoint) (chan source.Change, error) {
 						checkpoints <- cp
 						return changes, nil
 					},
-					RequeueCB: func(cp source.Checkpoint) {
+					RequeueCB: func(cp cursor.Checkpoint) {
 						requeue <- cp
 					},
-					CommitCB: func(cp source.Checkpoint) {
+					CommitCB: func(cp cursor.Checkpoint) {
 						commit <- cp
 					},
 					StopCB: func() error {
@@ -670,17 +671,17 @@ func (d *dumper) Stop() {
 }
 
 type sources struct {
-	CaptureCB func(cp source.Checkpoint) (changes chan source.Change, err error)
-	CommitCB  func(cp source.Checkpoint)
+	CaptureCB func(cp cursor.Checkpoint) (changes chan source.Change, err error)
+	CommitCB  func(cp cursor.Checkpoint)
 	StopCB    func() error
-	RequeueCB func(cp source.Checkpoint)
+	RequeueCB func(cp cursor.Checkpoint)
 }
 
-func (s *sources) Capture(cp source.Checkpoint) (changes chan source.Change, err error) {
+func (s *sources) Capture(cp cursor.Checkpoint) (changes chan source.Change, err error) {
 	return s.CaptureCB(cp)
 }
 
-func (s *sources) Commit(cp source.Checkpoint) {
+func (s *sources) Commit(cp cursor.Checkpoint) {
 	s.CommitCB(cp)
 }
 
@@ -692,7 +693,7 @@ func (s *sources) Stop() error {
 	return s.StopCB()
 }
 
-func (s *sources) Requeue(cp source.Checkpoint, reason string) {
+func (s *sources) Requeue(cp cursor.Checkpoint, reason string) {
 	s.RequeueCB(cp)
 }
 

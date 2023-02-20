@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar"
+	"github.com/rueian/pgcapture/pkg/cursor"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/source"
 )
@@ -14,6 +15,7 @@ func newPulsarSink(topic string) *PulsarSink {
 	return &PulsarSink{
 		PulsarOption: pulsar.ClientOptions{URL: "pulsar://127.0.0.1:6650"},
 		PulsarTopic:  topic,
+		// TODO: setup the pulsar tracker
 	}
 }
 
@@ -36,7 +38,7 @@ func TestPulsarSink(t *testing.T) {
 
 	for i := uint64(1); i < 4; i++ {
 		for j := uint32(1); j < 4; j++ {
-			changes <- source.Change{Checkpoint: source.Checkpoint{LSN: i, Seq: j}, Message: &pb.Message{Type: &pb.Message_Commit{Commit: &pb.Commit{EndLsn: i}}}}
+			changes <- source.Change{Checkpoint: cursor.Checkpoint{LSN: i, Seq: j}, Message: &pb.Message{Type: &pb.Message_Commit{Commit: &pb.Commit{EndLsn: i}}}}
 			if cp := <-committed; cp.LSN != i || cp.Seq != j {
 				t.Fatalf("unexpected %v", i)
 			}
@@ -68,13 +70,13 @@ func TestPulsarSink(t *testing.T) {
 	for i := uint64(1); i < 4; i++ {
 		for j := uint32(1); j < 4; j++ {
 			// all these changes should be ignored
-			changes <- source.Change{Checkpoint: source.Checkpoint{LSN: i, Seq: j}, Message: &pb.Message{Type: &pb.Message_Commit{Commit: &pb.Commit{EndLsn: i}}}}
+			changes <- source.Change{Checkpoint: cursor.Checkpoint{LSN: i, Seq: j}, Message: &pb.Message{Type: &pb.Message_Commit{Commit: &pb.Commit{EndLsn: i}}}}
 		}
 	}
 	// these new changes should be accepted
 	for i := uint64(3); i < 5; i++ {
 		for j := uint32(4); j < 5; j++ {
-			changes <- source.Change{Checkpoint: source.Checkpoint{LSN: i, Seq: j}, Message: &pb.Message{Type: &pb.Message_Commit{Commit: &pb.Commit{EndLsn: i}}}}
+			changes <- source.Change{Checkpoint: cursor.Checkpoint{LSN: i, Seq: j}, Message: &pb.Message{Type: &pb.Message_Commit{Commit: &pb.Commit{EndLsn: i}}}}
 			if cp := <-committed; cp.LSN != i || cp.Seq != j {
 				t.Fatalf("unexpected %v", i)
 			}

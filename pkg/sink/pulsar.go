@@ -5,9 +5,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar"
+	"github.com/rueian/pgcapture/pkg/cursor"
 	"github.com/rueian/pgcapture/pkg/source"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/proto"
@@ -22,13 +22,14 @@ type PulsarSink struct {
 	ReplicatedClusters []string
 
 	client     pulsar.Client
+	tracker    cursor.Tracker
 	producer   pulsar.Producer
 	log        *logrus.Entry
-	prev       source.Checkpoint
+	prev       cursor.Checkpoint
 	consistent bool
 }
 
-func (p *PulsarSink) Setup() (cp source.Checkpoint, err error) {
+func (p *PulsarSink) Setup() (cp cursor.Checkpoint, err error) {
 	p.client, err = pulsar.NewClient(p.PulsarOption)
 	if err != nil {
 		return cp, err
@@ -39,41 +40,16 @@ func (p *PulsarSink) Setup() (cp source.Checkpoint, err error) {
 		return cp, err
 	}
 
-	reader, err := p.client.CreateReader(pulsar.ReaderOptions{
-		Topic:                   p.PulsarTopic,
-		Name:                    p.PulsarTopic + "-producer",
-		StartMessageID:          pulsar.LatestMessageID(),
-		StartMessageIDInclusive: true,
-	})
+	p.tracker = &cursor.PulsarTracker{
+		Client:      p.client,
+		PulsarTopic: p.PulsarTopic,
+	}
+
+	cp, err = p.tracker.Last()
 	if err != nil {
 		return cp, err
 	}
-	defer reader.Close()
-
-	for reader.HasNext() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		msg, err := reader.Next(ctx)
-		cancel()
-		if msg != nil {
-			cp, err = source.ToCheckpoint(msg)
-			if err != nil {
-				return cp, err
-			}
-			p.prev = cp
-		}
-		if err != nil {
-			if err != context.DeadlineExceeded {
-				p.log.WithFields(logrus.Fields{
-					"PulsarTopic": p.PulsarTopic,
-				}).Info("fail to read last message from pulsar")
-
-				// ignore the timeout error and return the empty checkpoint
-				return cp, nil
-			}
-
-			return cp, err
-		}
-	}
+	p.prev = cp
 
 	p.log = logrus.WithFields(logrus.Fields{
 		"From":  "PulsarSink",
@@ -106,9 +82,9 @@ func (p *PulsarSink) Setup() (cp source.Checkpoint, err error) {
 	return cp, nil
 }
 
-func (p *PulsarSink) Apply(changes chan source.Change) chan source.Checkpoint {
+func (p *PulsarSink) Apply(changes chan source.Change) chan cursor.Checkpoint {
 	var first bool
-	return p.BaseSink.apply(changes, func(change source.Change, committed chan source.Checkpoint) error {
+	return p.BaseSink.apply(changes, func(change source.Change, committed chan cursor.Checkpoint) error {
 		if !first {
 			p.log.WithFields(logrus.Fields{
 				"MessageLSN":         change.Checkpoint.LSN,
@@ -158,7 +134,15 @@ func (p *PulsarSink) Apply(changes chan source.Change) chan source.Checkpoint {
 				p.BaseSink.Stop()
 				return
 			}
-			committed <- change.Checkpoint
+
+			cp := change.Checkpoint
+			if err := p.tracker.Commit(cp); err != nil {
+				p.log.WithFields(logrus.Fields{
+					"MessageLSN": change.Checkpoint.LSN,
+					"MessageSeq": change.Checkpoint.Seq,
+				}).Errorf("fail to commit message to tracker: %v", err)
+			}
+			committed <- cp
 		})
 		return nil
 	})
