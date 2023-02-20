@@ -134,7 +134,15 @@ func (p *PulsarSink) Apply(changes chan source.Change) chan cursor.Checkpoint {
 				p.BaseSink.Stop()
 				return
 			}
-			committed <- change.Checkpoint
+
+			cp := change.Checkpoint
+			if err := p.tracker.Commit(cp); err != nil {
+				p.log.WithFields(logrus.Fields{
+					"MessageLSN": change.Checkpoint.LSN,
+					"MessageSeq": change.Checkpoint.Seq,
+				}).Errorf("fail to commit message to tracker: %v", err)
+			}
+			committed <- cp
 		})
 		return nil
 	})
