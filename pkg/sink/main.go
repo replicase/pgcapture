@@ -7,15 +7,16 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/rueian/pgcapture/pkg/cursor"
 	"github.com/rueian/pgcapture/pkg/source"
 )
 
 type CleanFn func()
-type ApplyFn func(message source.Change, committed chan source.Checkpoint) error
+type ApplyFn func(message source.Change, committed chan cursor.Checkpoint) error
 
 type Sink interface {
-	Setup() (cp source.Checkpoint, err error)
-	Apply(changes chan source.Change) (committed chan source.Checkpoint)
+	Setup() (cp cursor.Checkpoint, err error)
+	Apply(changes chan source.Change) (committed chan cursor.Checkpoint)
 	Error() error
 	Stop() error
 }
@@ -24,24 +25,24 @@ type BaseSink struct {
 	CleanFn   CleanFn
 	cleanOnce sync.Once
 
-	committed chan source.Checkpoint
+	committed chan cursor.Checkpoint
 	state     int64
 	err       atomic.Value
 }
 
-func (b *BaseSink) Setup() (cp source.Checkpoint, err error) {
+func (b *BaseSink) Setup() (cp cursor.Checkpoint, err error) {
 	panic("implement me")
 }
 
-func (b *BaseSink) Apply(changes chan source.Change) (committed chan source.Checkpoint) {
+func (b *BaseSink) Apply(changes chan source.Change) (committed chan cursor.Checkpoint) {
 	panic("implement me")
 }
 
-func (b *BaseSink) apply(changes chan source.Change, applyFn ApplyFn) (committed chan source.Checkpoint) {
+func (b *BaseSink) apply(changes chan source.Change, applyFn ApplyFn) (committed chan cursor.Checkpoint) {
 	if !atomic.CompareAndSwapInt64(&b.state, 0, 1) {
 		return nil
 	}
-	b.committed = make(chan source.Checkpoint, 1000)
+	b.committed = make(chan cursor.Checkpoint, 1000)
 	atomic.StoreInt64(&b.state, 2)
 
 	go func() {

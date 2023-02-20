@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"sync"
 
+	"github.com/rueian/pgcapture/pkg/cursor"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/pgcapture"
 	"github.com/rueian/pgcapture/pkg/source"
@@ -62,13 +63,13 @@ func (s *Gateway) acknowledge(server pb.DBLogGateway_CaptureServer, src source.R
 			if ack := request.GetAck(); ack != nil {
 				if ack.Checkpoint.Lsn != 0 {
 					if ack.RequeueReason != "" {
-						src.Requeue(source.Checkpoint{
+						src.Requeue(cursor.Checkpoint{
 							LSN:  ack.Checkpoint.Lsn,
 							Seq:  ack.Checkpoint.Seq,
 							Data: ack.Checkpoint.Data,
 						}, ack.RequeueReason)
 					} else {
-						src.Commit(source.Checkpoint{
+						src.Commit(cursor.Checkpoint{
 							LSN:  ack.Checkpoint.Lsn,
 							Seq:  ack.Checkpoint.Seq,
 							Data: ack.Checkpoint.Data,
@@ -97,7 +98,7 @@ func (s *Gateway) capture(init *pb.CaptureInit, filter *regexp.Regexp, server pb
 	}
 	logger := logrus.WithFields(logrus.Fields{"URI": init.Uri, "From": "Gateway", "Peer": addr})
 
-	changes, err := src.Capture(source.Checkpoint{})
+	changes, err := src.Capture(cursor.Checkpoint{})
 	if err != nil {
 		return err
 	}
@@ -145,7 +146,7 @@ func (s *Gateway) capture(init *pb.CaptureInit, filter *regexp.Regexp, server pb
 					return err
 				}
 			} else {
-				src.Commit(source.Checkpoint{
+				src.Commit(cursor.Checkpoint{
 					LSN:  msg.Checkpoint.LSN,
 					Seq:  msg.Checkpoint.Seq,
 					Data: msg.Checkpoint.Data,

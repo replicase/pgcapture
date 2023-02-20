@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v4"
+	"github.com/rueian/pgcapture/pkg/cursor"
 	"github.com/rueian/pgcapture/pkg/decode"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"google.golang.org/protobuf/proto"
@@ -40,7 +41,7 @@ func TestPGXSource_Capture(t *testing.T) {
 	src.CreateSlot = true
 
 	// test from latest
-	changes, err := src.Capture(Checkpoint{})
+	changes, err := src.Capture(cursor.Checkpoint{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +155,7 @@ func TestPGXSource_DuplicatedCapture(t *testing.T) {
 
 	src := newPGXSource()
 	src.CreateSlot = true
-	_, err = src.Capture(Checkpoint{})
+	_, err = src.Capture(cursor.Checkpoint{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +163,7 @@ func TestPGXSource_DuplicatedCapture(t *testing.T) {
 
 	// duplicated
 	src2 := newPGXSource()
-	if _, err = src2.Capture(Checkpoint{}); err == nil || !strings.Contains(err.Error(), fmt.Sprintf("replication slot \"%s\" is active", TestSlot)) {
+	if _, err = src2.Capture(cursor.Checkpoint{}); err == nil || !strings.Contains(err.Error(), fmt.Sprintf("replication slot \"%s\" is active", TestSlot)) {
 		t.Fatal("duplicated pgx source")
 	}
 	src2.Stop()

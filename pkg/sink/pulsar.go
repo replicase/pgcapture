@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar"
+	"github.com/rueian/pgcapture/pkg/cursor"
 	"github.com/rueian/pgcapture/pkg/source"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/proto"
@@ -24,11 +25,11 @@ type PulsarSink struct {
 	client     pulsar.Client
 	producer   pulsar.Producer
 	log        *logrus.Entry
-	prev       source.Checkpoint
+	prev       cursor.Checkpoint
 	consistent bool
 }
 
-func (p *PulsarSink) Setup() (cp source.Checkpoint, err error) {
+func (p *PulsarSink) Setup() (cp cursor.Checkpoint, err error) {
 	p.client, err = pulsar.NewClient(p.PulsarOption)
 	if err != nil {
 		return cp, err
@@ -55,7 +56,7 @@ func (p *PulsarSink) Setup() (cp source.Checkpoint, err error) {
 		msg, err := reader.Next(ctx)
 		cancel()
 		if msg != nil {
-			cp, err = source.ToCheckpoint(msg)
+			cp, err = cursor.ToCheckpoint(msg)
 			if err != nil {
 				return cp, err
 			}
@@ -106,9 +107,9 @@ func (p *PulsarSink) Setup() (cp source.Checkpoint, err error) {
 	return cp, nil
 }
 
-func (p *PulsarSink) Apply(changes chan source.Change) chan source.Checkpoint {
+func (p *PulsarSink) Apply(changes chan source.Change) chan cursor.Checkpoint {
 	var first bool
-	return p.BaseSink.apply(changes, func(change source.Change, committed chan source.Checkpoint) error {
+	return p.BaseSink.apply(changes, func(change source.Change, committed chan cursor.Checkpoint) error {
 		if !first {
 			p.log.WithFields(logrus.Fields{
 				"MessageLSN":         change.Checkpoint.LSN,

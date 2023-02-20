@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync/atomic"
 
+	"github.com/rueian/pgcapture/pkg/cursor"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/source"
 )
@@ -19,7 +20,7 @@ type DBLogGatewayConsumer struct {
 	err    atomic.Value
 }
 
-func (c *DBLogGatewayConsumer) Capture(cp source.Checkpoint) (changes chan source.Change, err error) {
+func (c *DBLogGatewayConsumer) Capture(cp cursor.Checkpoint) (changes chan source.Change, err error) {
 	stream, err := c.client.Capture(c.ctx)
 	if err != nil {
 		c.cancel()
@@ -45,7 +46,7 @@ func (c *DBLogGatewayConsumer) Capture(cp source.Checkpoint) (changes chan sourc
 				return
 			}
 			changes <- source.Change{
-				Checkpoint: source.Checkpoint{
+				Checkpoint: cursor.Checkpoint{
 					LSN:  msg.Checkpoint.Lsn,
 					Seq:  msg.Checkpoint.Seq,
 					Data: msg.Checkpoint.Data,
@@ -58,7 +59,7 @@ func (c *DBLogGatewayConsumer) Capture(cp source.Checkpoint) (changes chan sourc
 	return changes, nil
 }
 
-func (c *DBLogGatewayConsumer) Commit(cp source.Checkpoint) {
+func (c *DBLogGatewayConsumer) Commit(cp cursor.Checkpoint) {
 	if atomic.LoadInt64(&c.state) == 1 {
 		if err := c.stream.Send(&pb.CaptureRequest{Type: &pb.CaptureRequest_Ack{Ack: &pb.CaptureAck{Checkpoint: &pb.Checkpoint{
 			Lsn:  cp.LSN,
@@ -71,7 +72,7 @@ func (c *DBLogGatewayConsumer) Commit(cp source.Checkpoint) {
 	}
 }
 
-func (c *DBLogGatewayConsumer) Requeue(cp source.Checkpoint, reason string) {
+func (c *DBLogGatewayConsumer) Requeue(cp cursor.Checkpoint, reason string) {
 	if atomic.LoadInt64(&c.state) == 1 {
 		if err := c.stream.Send(&pb.CaptureRequest{Type: &pb.CaptureRequest_Ack{Ack: &pb.CaptureAck{Checkpoint: &pb.Checkpoint{
 			Lsn:  cp.LSN,

@@ -6,13 +6,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rueian/pgcapture/pkg/cursor"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/source"
 )
 
 type BounceHandler interface {
 	Initialize(ctx context.Context, mh ModelAsyncHandlers) error
-	Handle(fn ModelAsyncHandlerFunc, checkpoint source.Checkpoint, change Change)
+	Handle(fn ModelAsyncHandlerFunc, checkpoint cursor.Checkpoint, change Change)
 }
 
 type NoBounceHandler struct {
@@ -23,7 +24,7 @@ func (b *NoBounceHandler) Initialize(ctx context.Context, mh ModelAsyncHandlers)
 	return nil
 }
 
-func (b *NoBounceHandler) Handle(fn ModelAsyncHandlerFunc, checkpoint source.Checkpoint, change Change) {
+func (b *NoBounceHandler) Handle(fn ModelAsyncHandlerFunc, checkpoint cursor.Checkpoint, change Change) {
 	fn(change, func(err error) {
 		if err != nil {
 			b.source.Requeue(checkpoint, err.Error())
@@ -39,7 +40,7 @@ type DebounceModel interface {
 }
 
 type event struct {
-	Checkpoint source.Checkpoint
+	Checkpoint cursor.Checkpoint
 	Change     Change
 	Handler    ModelAsyncHandlerFunc
 }
@@ -83,7 +84,7 @@ func (b *DebounceHandler) Initialize(ctx context.Context, mh ModelAsyncHandlers)
 	return nil
 }
 
-func (b *DebounceHandler) Handle(fn ModelAsyncHandlerFunc, checkpoint source.Checkpoint, change Change) {
+func (b *DebounceHandler) Handle(fn ModelAsyncHandlerFunc, checkpoint cursor.Checkpoint, change Change) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
