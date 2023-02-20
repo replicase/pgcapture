@@ -112,7 +112,6 @@ func (p *PulsarReaderSource) Capture(cp cursor.Checkpoint) (changes chan Change,
 		}
 
 		if !p.consistent && cp.LSN != 0 {
-			p.consistent = checkpoint.Equal(cp) || checkpoint.After(cp)
 			p.log.WithFields(logrus.Fields{
 				"MessageLSN":    checkpoint.LSN,
 				"MessageMIDHex": hex.EncodeToString(checkpoint.Data),
@@ -120,7 +119,10 @@ func (p *PulsarReaderSource) Capture(cp cursor.Checkpoint) (changes chan Change,
 				"Consistent":    p.consistent,
 				"Message":       m.String(),
 			}).Info("still catching lsn from pulsar")
-			return
+			if !checkpoint.After(cp) {
+				return
+			}
+			p.consistent = true
 		}
 
 		if !p.consistent && cp.LSN == 0 {
