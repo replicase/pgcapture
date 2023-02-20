@@ -10,12 +10,12 @@ import (
 var _ Tracker = (*PulsarTracker)(nil)
 
 type PulsarTracker struct {
-	client      pulsar.Client
+	Client      pulsar.Client
 	PulsarTopic string
 }
 
 func (p *PulsarTracker) Last() (last Checkpoint, err error) {
-	reader, err := p.client.CreateReader(pulsar.ReaderOptions{
+	reader, err := p.Client.CreateReader(pulsar.ReaderOptions{
 		Topic:                   p.PulsarTopic,
 		Name:                    p.PulsarTopic + "-producer",
 		StartMessageID:          pulsar.LatestMessageID(),

@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/rueian/pgcapture/pkg/cursor"
@@ -23,6 +22,7 @@ type PulsarSink struct {
 	ReplicatedClusters []string
 
 	client     pulsar.Client
+	tracker    cursor.Tracker
 	producer   pulsar.Producer
 	log        *logrus.Entry
 	prev       cursor.Checkpoint
@@ -40,41 +40,16 @@ func (p *PulsarSink) Setup() (cp cursor.Checkpoint, err error) {
 		return cp, err
 	}
 
-	reader, err := p.client.CreateReader(pulsar.ReaderOptions{
-		Topic:                   p.PulsarTopic,
-		Name:                    p.PulsarTopic + "-producer",
-		StartMessageID:          pulsar.LatestMessageID(),
-		StartMessageIDInclusive: true,
-	})
+	p.tracker = &cursor.PulsarTracker{
+		Client:      p.client,
+		PulsarTopic: p.PulsarTopic,
+	}
+
+	cp, err = p.tracker.Last()
 	if err != nil {
 		return cp, err
 	}
-	defer reader.Close()
-
-	for reader.HasNext() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		msg, err := reader.Next(ctx)
-		cancel()
-		if msg != nil {
-			cp, err = cursor.ToCheckpoint(msg)
-			if err != nil {
-				return cp, err
-			}
-			p.prev = cp
-		}
-		if err != nil {
-			if err != context.DeadlineExceeded {
-				p.log.WithFields(logrus.Fields{
-					"PulsarTopic": p.PulsarTopic,
-				}).Info("fail to read last message from pulsar")
-
-				// ignore the timeout error and return the empty checkpoint
-				return cp, nil
-			}
-
-			return cp, err
-		}
-	}
+	p.prev = cp
 
 	p.log = logrus.WithFields(logrus.Fields{
 		"From":  "PulsarSink",
