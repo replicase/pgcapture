@@ -15,7 +15,6 @@ func newPulsarSink(topic string) *PulsarSink {
 	return &PulsarSink{
 		PulsarOption: pulsar.ClientOptions{URL: "pulsar://127.0.0.1:6650"},
 		PulsarTopic:  topic,
-		// TODO: setup the pulsar tracker
 	}
 }
 

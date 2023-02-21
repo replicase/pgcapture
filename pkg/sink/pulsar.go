@@ -13,6 +13,15 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+type SetupTracker func(client pulsar.Client, topic string) (cursor.Tracker, error)
+
+func setupDefaultTracker(client pulsar.Client, topic string) (cursor.Tracker, error) {
+	return &cursor.PulsarTracker{
+		Client:      client,
+		PulsarTopic: topic,
+	}, nil
+}
+
 type PulsarSink struct {
 	BaseSink
 
@@ -20,6 +29,8 @@ type PulsarSink struct {
 	PulsarTopic  string
 	// For overriding the cluster list to be replicated to
 	ReplicatedClusters []string
+
+	SetupTracker SetupTracker
 
 	client     pulsar.Client
 	tracker    cursor.Tracker
@@ -40,9 +51,13 @@ func (p *PulsarSink) Setup() (cp cursor.Checkpoint, err error) {
 		return cp, err
 	}
 
-	p.tracker = &cursor.PulsarTracker{
-		Client:      p.client,
-		PulsarTopic: p.PulsarTopic,
+	if p.SetupTracker == nil {
+		p.SetupTracker = setupDefaultTracker
+	}
+
+	p.tracker, err = p.SetupTracker(p.client, p.PulsarTopic)
+	if err != nil {
+		return cp, err
 	}
 
 	cp, err = p.tracker.Last()
