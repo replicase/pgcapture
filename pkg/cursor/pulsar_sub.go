@@ -19,12 +19,18 @@ func NewPulsarSubscriptionTracker(client pulsar.Client, topic string) (*PulsarSu
 	if err != nil {
 		return nil, err
 	}
-	return &PulsarSubscriptionTracker{client: client, consumer: consumer}, nil
+
+	return &PulsarSubscriptionTracker{
+		client:   client,
+		consumer: consumer,
+		ch:       consumer.Chan(),
+	}, nil
 }
 
 type PulsarSubscriptionTracker struct {
 	client   pulsar.Client
 	consumer pulsar.Consumer
+	ch       <-chan pulsar.ConsumerMessage
 }
 
 func (p *PulsarSubscriptionTracker) Last() (cp Checkpoint, err error) {
@@ -44,7 +50,9 @@ func (p *PulsarSubscriptionTracker) Last() (cp Checkpoint, err error) {
 func (p *PulsarSubscriptionTracker) Commit(_ Checkpoint, mid pulsar.MessageID) error {
 	// TODO: might not need to ack all the times
 	if p.consumer != nil {
-		p.consumer.AckID(mid)
+		if err := p.consumer.Seek(mid); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -53,4 +61,5 @@ func (p *PulsarSubscriptionTracker) Close() {
 	if p.consumer != nil {
 		p.consumer.Close()
 	}
+	p.client.Close()
 }
