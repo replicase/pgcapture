@@ -112,13 +112,13 @@ func TestPGXSource_Capture(t *testing.T) {
 	}
 	src.Stop()
 
-	// test restart on EndLSN of Commit position, should start from next tx
+	// test restart on CommitLSN of Commit position, should start from this tx
 	src = newPGXSource()
 	changes, err = src.Capture(txs[1].Tx.Commit.Checkpoint)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, tx := range txs[2:] {
+	for _, tx := range txs[1:] {
 		tx.Check(tx)
 	}
 
@@ -210,7 +210,7 @@ func readTx(t *testing.T, changes chan Change, n int) (tx Tx) {
 		t.Fatalf("unexpected %v", m.Message.String())
 	} else {
 		commit := m.Message.GetCommit()
-		if m.Checkpoint.LSN != commit.CommitLsn || m.Checkpoint.Seq != 0 || commit.CommitLsn != finalLSN {
+		if m.Checkpoint.LSN != commit.CommitLsn || m.Checkpoint.Seq == 0 || commit.CommitLsn != finalLSN {
 			t.Fatalf("unexpected commit checkpoint %v", m.Checkpoint)
 		}
 		tx.Commit = m
