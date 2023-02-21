@@ -119,7 +119,7 @@ func (p *PulsarReaderSource) Capture(cp cursor.Checkpoint) (changes chan Change,
 				"Consistent":    p.consistent,
 				"Message":       m.String(),
 			}).Info("still catching lsn from pulsar")
-			if !checkpoint.After(cp) {
+			if checkpoint.LSN <= cp.LSN {
 				return
 			}
 			p.consistent = true
