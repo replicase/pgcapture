@@ -181,8 +181,8 @@ func (p *PGXSource) fetching(ctx context.Context) (change Change, err error) {
 				p.currentLsn = b.FinalLsn
 				p.currentSeq = 0
 			} else if c := m.GetCommit(); c != nil {
-				p.currentLsn = c.EndLsn
-				p.currentSeq = 0
+				p.currentLsn = c.CommitLsn
+				p.currentSeq++
 			}
 			change = Change{
 				Checkpoint: cursor.Checkpoint{LSN: p.currentLsn, Seq: p.currentSeq},

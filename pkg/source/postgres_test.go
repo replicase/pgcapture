@@ -210,7 +210,7 @@ func readTx(t *testing.T, changes chan Change, n int) (tx Tx) {
 		t.Fatalf("unexpected %v", m.Message.String())
 	} else {
 		commit := m.Message.GetCommit()
-		if m.Checkpoint.LSN != commit.EndLsn || m.Checkpoint.Seq != 0 || commit.EndLsn <= finalLSN {
+		if m.Checkpoint.LSN != commit.CommitLsn || m.Checkpoint.Seq != 0 || commit.CommitLsn != finalLSN {
 			t.Fatalf("unexpected commit checkpoint %v", m.Checkpoint)
 		}
 		tx.Commit = m
