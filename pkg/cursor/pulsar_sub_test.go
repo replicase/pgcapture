@@ -86,5 +86,19 @@ func TestPulsarSubscriptionTracker(t *testing.T) {
 }
 
 func TestPulsarSubscriptionTracker_Empty(t *testing.T) {
-	// TODO: add the test case
+	topic := time.Now().Format("20060102150405") + "-empty"
+
+	tracker, cancel, err := newPulsarSubscriptionTracker(topic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cancel()
+
+	last, err := tracker.Last()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if last.LSN != 0 || last.Seq != 0 {
+		t.Fatal("checkpoint of empty topic should be zero")
+	}
 }

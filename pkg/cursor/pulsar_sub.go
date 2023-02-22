@@ -33,19 +33,33 @@ type PulsarSubscriptionTracker struct {
 	ch       <-chan pulsar.ConsumerMessage
 }
 
-func (p *PulsarSubscriptionTracker) Last() (cp Checkpoint, err error) {
-	if p.consumer != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
+func (p *PulsarSubscriptionTracker) read(ctx context.Context) (cp Checkpoint, err error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 
-		// TODO: should refine the implementations to check the last message
-		msg, err := p.consumer.Receive(ctx)
-		if err != nil {
-			return cp, err
-		}
-		return ToCheckpoint(msg)
+	msg, err := p.consumer.Receive(ctx)
+	if err != nil {
+		return cp, err
 	}
-	return
+	return ToCheckpoint(msg)
+}
+
+func (p *PulsarSubscriptionTracker) Last() (Checkpoint, error) {
+	var last Checkpoint
+	if p.consumer != nil {
+		for {
+			cp, err := p.read(context.Background())
+			if err != nil {
+				// most likely that there is no message in the topic
+				if err == context.DeadlineExceeded {
+					return last, nil
+				}
+				return Checkpoint{}, err
+			}
+			last = cp
+		}
+	}
+	return Checkpoint{}, nil
 }
 
 func (p *PulsarSubscriptionTracker) Commit(_ Checkpoint, mid pulsar.MessageID) error {
