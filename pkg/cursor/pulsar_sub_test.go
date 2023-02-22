@@ -29,8 +29,72 @@ func newPulsarSubscriptionTracker(topic string) (*PulsarSubscriptionTracker, fun
 	}
 	return tracker, closeFunc, nil
 }
+func TestPulsarSubscriptionTracker_Commit(t *testing.T) {
+	topic := time.Now().Format("20060102150405") + "-commit"
 
-func TestPulsarSubscriptionTracker(t *testing.T) {
+	tracker, cancel, err := newPulsarSubscriptionTracker(topic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cancel()
+
+	client, err := pulsar.NewClient(pulsar.ClientOptions{
+		URL: "pulsar://localhost:6650",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	producer, err := client.CreateProducer(pulsar.ProducerOptions{
+		Topic: topic,
+		Name:  topic + "-producer",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		defer producer.Close()
+		_ = producer.Flush()
+	}()
+
+	var pos pulsar.MessageID
+
+	for i := 0; i < 10; i++ {
+		cp := Checkpoint{LSN: uint64(i + 100)}
+		mid, err := producer.Send(context.Background(), &pulsar.ProducerMessage{
+			Key:     cp.ToKey(),
+			Payload: []byte("test-" + strconv.Itoa(i)),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		// set the position to the 5th message
+		if i == 4 {
+			pos = mid
+		}
+	}
+
+	if err := tracker.Commit(Checkpoint{}, pos); err != nil {
+		t.Fatal(err)
+	}
+
+	read, err := tracker.consumer.Receive(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cursor, err := ToCheckpoint(read)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// the cursor should be the 4th message
+	if cursor.LSN != 104 {
+		t.Fatalf("unexpected next position: %v", cursor.LSN)
+	}
+}
+
+func TestPulsarSubscriptionTracker_Last(t *testing.T) {
 	topic := time.Now().Format("20060102150405")
 
 	tracker, cancel, err := newPulsarSubscriptionTracker(topic)
@@ -59,21 +123,15 @@ func TestPulsarSubscriptionTracker(t *testing.T) {
 		_ = producer.Flush()
 	}()
 
-	var cp Checkpoint
-	var mid pulsar.MessageID
 	for i := 0; i < 10; i++ {
-		cp = Checkpoint{LSN: uint64(i + 100)}
-		mid, err = producer.Send(context.Background(), &pulsar.ProducerMessage{
+		cp := Checkpoint{LSN: uint64(i + 100)}
+		_, err := producer.Send(context.Background(), &pulsar.ProducerMessage{
 			Key:     cp.ToKey(),
 			Payload: []byte("test-" + strconv.Itoa(i)),
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
-	}
-
-	if err := tracker.Commit(cp, mid); err != nil {
-		t.Fatal(err)
 	}
 
 	last, err := tracker.Last()
@@ -85,7 +143,7 @@ func TestPulsarSubscriptionTracker(t *testing.T) {
 	}
 }
 
-func TestPulsarSubscriptionTracker_Empty(t *testing.T) {
+func TestPulsarSubscriptionTracker_LastWithEmptyTopic(t *testing.T) {
 	topic := time.Now().Format("20060102150405") + "-empty"
 
 	tracker, cancel, err := newPulsarSubscriptionTracker(topic)
