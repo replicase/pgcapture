@@ -84,3 +84,7 @@ func TestPulsarSubscriptionTracker(t *testing.T) {
 		t.Fatalf("unexpected checkpoint.LSN: %v", last.LSN)
 	}
 }
+
+func TestPulsarSubscriptionTracker_Empty(t *testing.T) {
+	// TODO: add the test case
+}

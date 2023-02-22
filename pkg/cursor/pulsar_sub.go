@@ -38,6 +38,7 @@ func (p *PulsarSubscriptionTracker) Last() (cp Checkpoint, err error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
+		// TODO: should refine the implementations to check the last message
 		msg, err := p.consumer.Receive(ctx)
 		if err != nil {
 			return cp, err

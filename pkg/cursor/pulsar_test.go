@@ -78,3 +78,21 @@ func TestPulsarTracker(t *testing.T) {
 		t.Fatalf("unexpected checkpoint.LSN: %v", last.LSN)
 	}
 }
+
+func TestPulsarTracker_Empty(t *testing.T) {
+	topic := time.Now().Format("20060102150405") + "-empty"
+
+	tracker, cancel, err := newPulsarTracker(topic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cancel()
+
+	last, err := tracker.Last()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if last.LSN != 0 || last.Seq != 0 {
+		t.Fatal("checkpoint of empty topic should be zero")
+	}
+}
