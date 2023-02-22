@@ -51,6 +51,20 @@ func (p *PulsarSink) Setup() (cp cursor.Checkpoint, err error) {
 		return cp, err
 	}
 
+	// Set up the producer first to avoid the existence of another producer when trying to read the latest message
+	p.producer, err = p.client.CreateProducer(pulsar.ProducerOptions{
+		Topic:               p.PulsarTopic,
+		Name:                p.PulsarTopic + "-producer", // fixed for exclusive producer
+		Properties:          map[string]string{"host": host},
+		MaxPendingMessages:  2000,
+		CompressionType:     pulsar.ZSTD,
+		BatchingMaxMessages: 1000,
+		BatchingMaxSize:     1024 * 1024,
+	})
+	if err != nil {
+		return cp, err
+	}
+
 	if p.SetupTracker == nil {
 		p.SetupTracker = setupDefaultTracker
 	}
@@ -74,19 +88,6 @@ func (p *PulsarSink) Setup() (cp cursor.Checkpoint, err error) {
 		"SinkLastLSN": p.prev.LSN,
 		"SinkLastSeq": p.prev.Seq,
 	}).Info("start sending changes to pulsar")
-
-	p.producer, err = p.client.CreateProducer(pulsar.ProducerOptions{
-		Topic:               p.PulsarTopic,
-		Name:                p.PulsarTopic + "-producer", // fixed for exclusive producer
-		Properties:          map[string]string{"host": host},
-		MaxPendingMessages:  2000,
-		CompressionType:     pulsar.ZSTD,
-		BatchingMaxMessages: 1000,
-		BatchingMaxSize:     1024 * 1024,
-	})
-	if err != nil {
-		return cp, err
-	}
 
 	p.BaseSink.CleanFn = func() {
 		p.producer.Flush()

@@ -130,7 +130,6 @@ func TestPulsarSink_DuplicatedSink(t *testing.T) {
 	}
 
 	sink2 := newPulsarSink(topic, tracker)
-	tracker.EXPECT().Last().Return(cursor.Checkpoint{}, nil)
 	if _, err := sink2.Setup(); err == nil || !strings.Contains(err.Error(), "is already connected to topic") {
 		t.Fatal("should be failed with duplicated sink")
 	}
