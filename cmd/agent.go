@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar"
+	"github.com/rueian/pgcapture/pkg/cursor"
 	"github.com/rueian/pgcapture/pkg/dblog"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/sink"
@@ -167,13 +168,26 @@ func (a *Agent) cleanup() error {
 }
 
 func (a *Agent) pg2pulsar(params *structpb.Struct) (*pb.AgentConfigResponse, error) {
-	v, err := extract(params, "PGConnURL", "PGReplURL", "PulsarURL", "PulsarTopic", "?StartLSN")
+	v, err := extract(params, "PGConnURL", "PGReplURL", "PulsarURL", "PulsarTopic", "?StartLSN", "?PulsarTracker")
 	if err != nil {
 		return nil, err
 	}
 
 	pgSrc := &source.PGXSource{SetupConnStr: v["PGConnURL"], ReplConnStr: v["PGReplURL"], ReplSlot: trimSlot(v["PulsarTopic"]), CreateSlot: true, StartLSN: v["StartLSN"]}
 	pulsarSink := &sink.PulsarSink{PulsarOption: pulsar.ClientOptions{URL: v["PulsarURL"]}, PulsarTopic: v["PulsarTopic"]}
+
+	switch v["PulsarTracker"] {
+	case "pulsar", "":
+		pulsarSink.SetupTracker = func(client pulsar.Client, topic string) (cursor.Tracker, error) {
+			return &cursor.PulsarTracker{Client: client, PulsarTopic: topic}, nil
+		}
+	case "pulsarSub":
+		pulsarSink.SetupTracker = func(client pulsar.Client, topic string) (cursor.Tracker, error) {
+			return cursor.NewPulsarSubscriptionTracker(client, topic)
+		}
+	default:
+		return nil, errors.New("PulsarTracker should be one of [pulsar|pulsarSub]")
+	}
 
 	a.pulsarSink = pulsarSink
 	a.pgSrc = pgSrc
