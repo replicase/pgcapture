@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -166,7 +167,7 @@ func (a *Agent) cleanup() error {
 }
 
 func (a *Agent) pg2pulsar(params *structpb.Struct) (*pb.AgentConfigResponse, error) {
-	v, err := extract(params, "PGConnURL", "PGReplURL", "PulsarURL", "PulsarTopic", "StartLSN")
+	v, err := extract(params, "PGConnURL", "PGReplURL", "PulsarURL", "PulsarTopic", "?StartLSN")
 	if err != nil {
 		return nil, err
 	}
@@ -299,10 +300,18 @@ func (a *Agent) report(params *structpb.Struct) (*pb.AgentConfigResponse, error)
 	return &pb.AgentConfigResponse{Report: params}, nil
 }
 
+func parseKey(k string) (parsed string, optional bool) {
+	if strings.HasSuffix(k, "?") {
+		return k[:len(k)-1], true
+	}
+	return k, false
+}
+
 func extract(params *structpb.Struct, keys ...string) (map[string]string, error) {
 	values := map[string]string{}
-	for _, k := range keys {
-		if fields := params.GetFields(); fields == nil || fields[k] == nil || fields[k].GetStringValue() == "" {
+	for _, v := range keys {
+		k, optional := parseKey(v)
+		if fields := params.GetFields(); fields == nil || fields[k] == nil || fields[k].GetStringValue() == "" && optional {
 			return nil, fmt.Errorf("%s key is required in parameters", k)
 		} else {
 			values[k] = fields[k].GetStringValue()
