@@ -13,6 +13,15 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+type SetupTracker func(client pulsar.Client, topic string) (cursor.Tracker, error)
+
+func setupDefaultTracker(client pulsar.Client, topic string) (cursor.Tracker, error) {
+	return &cursor.PulsarTracker{
+		Client:      client,
+		PulsarTopic: topic,
+	}, nil
+}
+
 type PulsarSink struct {
 	BaseSink
 
@@ -20,6 +29,8 @@ type PulsarSink struct {
 	PulsarTopic  string
 	// For overriding the cluster list to be replicated to
 	ReplicatedClusters []string
+
+	SetupTracker SetupTracker
 
 	client     pulsar.Client
 	tracker    cursor.Tracker
@@ -40,9 +51,27 @@ func (p *PulsarSink) Setup() (cp cursor.Checkpoint, err error) {
 		return cp, err
 	}
 
-	p.tracker = &cursor.PulsarTracker{
-		Client:      p.client,
-		PulsarTopic: p.PulsarTopic,
+	// Set up the producer first to avoid the existence of another producer when trying to read the latest message
+	p.producer, err = p.client.CreateProducer(pulsar.ProducerOptions{
+		Topic:               p.PulsarTopic,
+		Name:                p.PulsarTopic + "-producer", // fixed for exclusive producer
+		Properties:          map[string]string{"host": host},
+		MaxPendingMessages:  2000,
+		CompressionType:     pulsar.ZSTD,
+		BatchingMaxMessages: 1000,
+		BatchingMaxSize:     1024 * 1024,
+	})
+	if err != nil {
+		return cp, err
+	}
+
+	if p.SetupTracker == nil {
+		p.SetupTracker = setupDefaultTracker
+	}
+
+	p.tracker, err = p.SetupTracker(p.client, p.PulsarTopic)
+	if err != nil {
+		return cp, err
 	}
 
 	cp, err = p.tracker.Last()
@@ -60,23 +89,11 @@ func (p *PulsarSink) Setup() (cp cursor.Checkpoint, err error) {
 		"SinkLastSeq": p.prev.Seq,
 	}).Info("start sending changes to pulsar")
 
-	p.producer, err = p.client.CreateProducer(pulsar.ProducerOptions{
-		Topic:               p.PulsarTopic,
-		Name:                p.PulsarTopic + "-producer", // fixed for exclusive producer
-		Properties:          map[string]string{"host": host},
-		MaxPendingMessages:  2000,
-		CompressionType:     pulsar.ZSTD,
-		BatchingMaxMessages: 1000,
-		BatchingMaxSize:     1024 * 1024,
-	})
-	if err != nil {
-		return cp, err
-	}
-
 	p.BaseSink.CleanFn = func() {
 		p.producer.Flush()
 		p.producer.Close()
 		p.client.Close()
+		p.tracker.Close()
 	}
 
 	return cp, nil
@@ -120,11 +137,12 @@ func (p *PulsarSink) Apply(changes chan source.Change) chan cursor.Checkpoint {
 			Payload:             bs,
 			ReplicationClusters: p.ReplicatedClusters,
 		}, func(id pulsar.MessageID, message *pulsar.ProducerMessage, err error) {
+			var idHex string
+			if id != nil {
+				idHex = hex.EncodeToString(id.Serialize())
+			}
+
 			if err != nil {
-				var idHex string
-				if id != nil {
-					idHex = hex.EncodeToString(id.Serialize())
-				}
 				p.log.WithFields(logrus.Fields{
 					"MessageLSN":         change.Checkpoint.LSN,
 					"MessageIDHex":       idHex,
@@ -136,10 +154,11 @@ func (p *PulsarSink) Apply(changes chan source.Change) chan cursor.Checkpoint {
 			}
 
 			cp := change.Checkpoint
-			if err := p.tracker.Commit(cp); err != nil {
+			if err := p.tracker.Commit(cp, id); err != nil {
 				p.log.WithFields(logrus.Fields{
-					"MessageLSN": change.Checkpoint.LSN,
-					"MessageSeq": change.Checkpoint.Seq,
+					"MessageLSN":   change.Checkpoint.LSN,
+					"MessageSeq":   change.Checkpoint.Seq,
+					"MessageIDHex": idHex,
 				}).Errorf("fail to commit message to tracker: %v", err)
 			}
 			committed <- cp

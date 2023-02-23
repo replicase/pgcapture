@@ -43,7 +43,7 @@ func (c *Controller) PullDumpInfo(server pb.DBLogController_PullDumpInfoServer) 
 		return err
 	}
 
-	log := c.log.WithFields(logrus.Fields{"URI": uri, "Client": id})
+	log := c.log.WithFields(logrus.Fields{"URI": uri, "client": id})
 	log.Infof("registered client %s from uri %s", id, uri)
 
 	defer func() {
