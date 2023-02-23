@@ -26,7 +26,9 @@ func (p *PulsarTracker) Last() (last Checkpoint, err error) {
 	}
 	defer reader.Close()
 
-	var msg pulsar.Message
+	var (
+		msg pulsar.Message
+	)
 	for reader.HasNext() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		msg, err = reader.Next(ctx)
@@ -34,7 +36,7 @@ func (p *PulsarTracker) Last() (last Checkpoint, err error) {
 		if err != nil {
 			return
 		}
-		if last, err = ToCheckpoint(msg); err == nil {
+		if last, err = ToCheckpoint(msg); err != nil {
 			return
 		}
 	}
