@@ -9,6 +9,17 @@ import (
 
 var _ Tracker = (*PulsarSubscriptionTracker)(nil)
 
+func (p *PulsarSubscriptionTracker) waitCommit() {
+	count := 0
+	for mid := range p.commit {
+		if count = count + 1; count > p.commitHoldOff-1 {
+			count = 0
+			p.consumer.Seek(mid)
+		}
+	}
+	p.stop <- struct{}{}
+}
+
 func NewPulsarSubscriptionTracker(client pulsar.Client, topic string) (*PulsarSubscriptionTracker, error) {
 	consumer, err := client.Subscribe(pulsar.ConsumerOptions{
 		Name:             "pulsar-subscription-tracker",
@@ -16,15 +27,28 @@ func NewPulsarSubscriptionTracker(client pulsar.Client, topic string) (*PulsarSu
 		SubscriptionName: topic + "-cursor-consumer",
 		Type:             pulsar.Exclusive,
 	})
+
 	if err != nil {
 		return nil, err
 	}
 
-	return &PulsarSubscriptionTracker{consumer: consumer}, nil
+	commit := make(chan pulsar.MessageID, 10)
+	stop := make(chan struct{})
+	tracker := &PulsarSubscriptionTracker{
+		consumer:      consumer,
+		commitHoldOff: 10,
+		commit:        commit,
+		stop:          stop,
+	}
+	go tracker.waitCommit()
+	return tracker, nil
 }
 
 type PulsarSubscriptionTracker struct {
-	consumer pulsar.Consumer
+	consumer      pulsar.Consumer
+	commitHoldOff int
+	commit        chan pulsar.MessageID
+	stop          chan struct{}
 }
 
 func (p *PulsarSubscriptionTracker) read(ctx context.Context) (cp Checkpoint, err error) {
@@ -57,12 +81,14 @@ func (p *PulsarSubscriptionTracker) Last() (Checkpoint, error) {
 }
 
 func (p *PulsarSubscriptionTracker) Commit(_ Checkpoint, mid pulsar.MessageID) error {
-	// TODO: might not need to ack all the times
-	return p.consumer.Seek(mid)
+	p.commit <- mid
+	return nil
 }
 
 func (p *PulsarSubscriptionTracker) Close() {
 	if p.consumer != nil {
 		p.consumer.Close()
 	}
+	close(p.commit)
+	<-p.stop
 }

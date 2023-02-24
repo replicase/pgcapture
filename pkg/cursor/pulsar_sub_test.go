@@ -23,12 +23,16 @@ func newPulsarSubscriptionTracker(topic string) (*PulsarSubscriptionTracker, fun
 		return nil, nil, err
 	}
 
+	// disable the commit hold off feature first for easy testing
+	tracker.commitHoldOff = 0
+
 	closeFunc := func() {
 		tracker.Close()
 		client.Close()
 	}
 	return tracker, closeFunc, nil
 }
+
 func TestPulsarSubscriptionTracker_Commit(t *testing.T) {
 	topic := time.Now().Format("20060102150405") + "-commit"
 
@@ -78,6 +82,9 @@ func TestPulsarSubscriptionTracker_Commit(t *testing.T) {
 	if err := tracker.Commit(Checkpoint{}, pos); err != nil {
 		t.Fatal(err)
 	}
+
+	// wait for the cursor to be updated
+	time.Sleep(time.Millisecond * 100)
 
 	read, err := tracker.consumer.Receive(context.Background())
 	if err != nil {
