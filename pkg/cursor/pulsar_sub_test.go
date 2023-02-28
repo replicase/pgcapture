@@ -17,7 +17,7 @@ func newPulsarSubscriptionTracker(topic string) (*PulsarSubscriptionTracker, fun
 		return nil, nil, err
 	}
 
-	tracker, err := NewPulsarSubscriptionTracker(client, topic)
+	tracker, err := NewPulsarSubscriptionTracker(client, topic, 100*time.Millisecond)
 	if err != nil {
 		client.Close()
 		return nil, nil, err
@@ -29,6 +29,7 @@ func newPulsarSubscriptionTracker(topic string) (*PulsarSubscriptionTracker, fun
 	}
 	return tracker, closeFunc, nil
 }
+
 func TestPulsarSubscriptionTracker_Commit(t *testing.T) {
 	topic := time.Now().Format("20060102150405") + "-commit"
 
@@ -69,6 +70,7 @@ func TestPulsarSubscriptionTracker_Commit(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		// set the position to the 5th message
 		if i == 4 {
 			pos = mid
@@ -79,18 +81,26 @@ func TestPulsarSubscriptionTracker_Commit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	read, err := tracker.consumer.Receive(context.Background())
+	time.Sleep(time.Second)
+
+	admin, err := NewAdminClient()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	cursor, err := ToCheckpoint(read)
+	cursor, err := CheckSubscriptionCursor(admin, topic, topic+"-cursor-consumer")
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	cp, err := GetCheckpointByMessageID(topic, cursor)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// the cursor should be the 4th message
-	if cursor.LSN != 104 {
-		t.Fatalf("unexpected next position: %v", cursor.LSN)
+	if cp.LSN != 104 {
+		t.Fatalf("unexpected next position: %v", cp.LSN)
 	}
 }
 

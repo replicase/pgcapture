@@ -2,6 +2,7 @@ package cursor
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar"
@@ -9,22 +10,82 @@ import (
 
 var _ Tracker = (*PulsarSubscriptionTracker)(nil)
 
-func NewPulsarSubscriptionTracker(client pulsar.Client, topic string) (*PulsarSubscriptionTracker, error) {
+func (p *PulsarSubscriptionTracker) copyCursor() pulsar.MessageID {
+	p.lock.RLock()
+	defer p.lock.RUnlock()
+
+	if p.cursor == nil {
+		return nil
+	}
+	rst, _ := pulsar.DeserializeMessageID(p.cursor.Serialize())
+	return rst
+}
+
+func equalMessageID(a pulsar.MessageID, b pulsar.MessageID) bool {
+	return a.LedgerID() == b.LedgerID() &&
+		a.EntryID() == b.EntryID() &&
+		a.PartitionIdx() == b.PartitionIdx() &&
+		a.BatchIdx() == b.BatchIdx()
+}
+
+func (p *PulsarSubscriptionTracker) trySeek() {
+	current := p.copyCursor()
+	if current == nil {
+		return
+	}
+	if p.sought == nil || !equalMessageID(current, p.sought) {
+		if err := p.consumer.Seek(current); err != nil {
+			return
+		}
+		p.sought = current
+	}
+}
+
+func (p *PulsarSubscriptionTracker) waitCommit(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			p.trySeek()
+		case <-ctx.Done():
+			p.stop <- struct{}{}
+			return
+		}
+	}
+}
+
+func NewPulsarSubscriptionTracker(client pulsar.Client, topic string, commitInterval time.Duration) (*PulsarSubscriptionTracker, error) {
 	consumer, err := client.Subscribe(pulsar.ConsumerOptions{
 		Name:             "pulsar-subscription-tracker",
 		Topic:            topic,
 		SubscriptionName: topic + "-cursor-consumer",
 		Type:             pulsar.Exclusive,
 	})
+
 	if err != nil {
 		return nil, err
 	}
 
-	return &PulsarSubscriptionTracker{consumer: consumer}, nil
+	ctx, cancel := context.WithCancel(context.Background())
+	tracker := &PulsarSubscriptionTracker{
+		consumer:     consumer,
+		stop:         make(chan struct{}),
+		lock:         sync.RWMutex{},
+		commitCancel: cancel,
+	}
+	go tracker.waitCommit(ctx, commitInterval)
+	return tracker, nil
 }
 
 type PulsarSubscriptionTracker struct {
-	consumer pulsar.Consumer
+	consumer     pulsar.Consumer
+	lock         sync.RWMutex
+	cursor       pulsar.MessageID
+	commitCancel context.CancelFunc
+	stop         chan struct{}
+	sought       pulsar.MessageID
 }
 
 func (p *PulsarSubscriptionTracker) read(ctx context.Context) (cp Checkpoint, err error) {
@@ -57,12 +118,16 @@ func (p *PulsarSubscriptionTracker) Last() (Checkpoint, error) {
 }
 
 func (p *PulsarSubscriptionTracker) Commit(_ Checkpoint, mid pulsar.MessageID) error {
-	// TODO: might not need to ack all the times
-	return p.consumer.Seek(mid)
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	p.cursor = mid
+	return nil
 }
 
 func (p *PulsarSubscriptionTracker) Close() {
 	if p.consumer != nil {
+		p.commitCancel()
+		<-p.stop
 		p.consumer.Close()
 	}
 }

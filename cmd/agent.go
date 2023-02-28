@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar"
+	"github.com/rueian/pgcapture/pkg/cursor"
 	"github.com/rueian/pgcapture/pkg/dblog"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/sink"
@@ -166,13 +168,26 @@ func (a *Agent) cleanup() error {
 }
 
 func (a *Agent) pg2pulsar(params *structpb.Struct) (*pb.AgentConfigResponse, error) {
-	v, err := extract(params, "PGConnURL", "PGReplURL", "PulsarURL", "PulsarTopic", "StartLSN")
+	v, err := extract(params, "PGConnURL", "PGReplURL", "PulsarURL", "PulsarTopic", "?StartLSN", "?PulsarTracker")
 	if err != nil {
 		return nil, err
 	}
 
 	pgSrc := &source.PGXSource{SetupConnStr: v["PGConnURL"], ReplConnStr: v["PGReplURL"], ReplSlot: trimSlot(v["PulsarTopic"]), CreateSlot: true, StartLSN: v["StartLSN"]}
 	pulsarSink := &sink.PulsarSink{PulsarOption: pulsar.ClientOptions{URL: v["PulsarURL"]}, PulsarTopic: v["PulsarTopic"]}
+
+	switch v["PulsarTracker"] {
+	case "pulsar", "":
+		pulsarSink.SetupTracker = func(client pulsar.Client, topic string) (cursor.Tracker, error) {
+			return &cursor.PulsarTracker{Client: client, PulsarTopic: topic}, nil
+		}
+	case "pulsarSub":
+		pulsarSink.SetupTracker = func(client pulsar.Client, topic string) (cursor.Tracker, error) {
+			return cursor.NewPulsarSubscriptionTracker(client, topic, 10*time.Minute)
+		}
+	default:
+		return nil, errors.New("PulsarTracker should be one of [pulsar|pulsarSub]")
+	}
 
 	a.pulsarSink = pulsarSink
 	a.pgSrc = pgSrc
@@ -299,10 +314,18 @@ func (a *Agent) report(params *structpb.Struct) (*pb.AgentConfigResponse, error)
 	return &pb.AgentConfigResponse{Report: params}, nil
 }
 
+func parseKey(k string) (parsed string, optional bool) {
+	if strings.HasPrefix(k, "?") {
+		return k[1:], true
+	}
+	return k, false
+}
+
 func extract(params *structpb.Struct, keys ...string) (map[string]string, error) {
 	values := map[string]string{}
-	for _, k := range keys {
-		if fields := params.GetFields(); fields == nil || fields[k] == nil || fields[k].GetStringValue() == "" {
+	for _, v := range keys {
+		k, optional := parseKey(v)
+		if fields := params.GetFields(); fields == nil || fields[k] == nil || fields[k].GetStringValue() == "" && optional {
 			return nil, fmt.Errorf("%s key is required in parameters", k)
 		} else {
 			values[k] = fields[k].GetStringValue()
