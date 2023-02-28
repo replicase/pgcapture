@@ -83,21 +83,27 @@ func TestPulsarSubscriptionTracker_Commit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// wait for the cursor to be updated
-	time.Sleep(time.Millisecond * 100)
-
-	read, err := tracker.consumer.Receive(context.Background())
+	admin, err := NewAdminClient()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	cursor, err := ToCheckpoint(read)
+	cursor, err := CheckSubscriptionCursor(admin, topic, topic+"-cursor-consumer")
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// wait for the message to be consumed
+	time.Sleep(500 * time.Millisecond)
+
+	cp, err := GetCheckpointByMessageID(topic, cursor)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// the cursor should be the 4th message
-	if cursor.LSN != 104 {
-		t.Fatalf("unexpected next position: %v", cursor.LSN)
+	if cp.LSN != 104 {
+		t.Fatalf("unexpected next position: %v", cp.LSN)
 	}
 }
 
