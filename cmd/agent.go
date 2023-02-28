@@ -183,7 +183,7 @@ func (a *Agent) pg2pulsar(params *structpb.Struct) (*pb.AgentConfigResponse, err
 		}
 	case "pulsarSub":
 		pulsarSink.SetupTracker = func(client pulsar.Client, topic string) (cursor.Tracker, error) {
-			return cursor.NewPulsarSubscriptionTracker(client, topic)
+			return cursor.NewPulsarSubscriptionTracker(client, topic, 10*time.Minute)
 		}
 	default:
 		return nil, errors.New("PulsarTracker should be one of [pulsar|pulsarSub]")

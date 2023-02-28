@@ -17,14 +17,11 @@ func newPulsarSubscriptionTracker(topic string) (*PulsarSubscriptionTracker, fun
 		return nil, nil, err
 	}
 
-	tracker, err := NewPulsarSubscriptionTracker(client, topic)
+	tracker, err := NewPulsarSubscriptionTracker(client, topic, 100*time.Millisecond)
 	if err != nil {
 		client.Close()
 		return nil, nil, err
 	}
-
-	// disable the commit hold off feature first for easy testing
-	tracker.commitHoldOff = 0
 
 	closeFunc := func() {
 		tracker.Close()
@@ -73,6 +70,7 @@ func TestPulsarSubscriptionTracker_Commit(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		// set the position to the 5th message
 		if i == 4 {
 			pos = mid
@@ -83,6 +81,8 @@ func TestPulsarSubscriptionTracker_Commit(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	time.Sleep(time.Second)
+
 	admin, err := NewAdminClient()
 	if err != nil {
 		t.Fatal(err)
@@ -92,9 +92,6 @@ func TestPulsarSubscriptionTracker_Commit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// wait for the message to be consumed
-	time.Sleep(500 * time.Millisecond)
 
 	cp, err := GetCheckpointByMessageID(topic, cursor)
 	if err != nil {
