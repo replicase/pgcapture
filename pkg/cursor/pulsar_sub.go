@@ -10,13 +10,34 @@ import (
 
 var _ Tracker = (*PulsarSubscriptionTracker)(nil)
 
-func (p *PulsarSubscriptionTracker) trySeek() {
-	p.lock.Lock()
-	defer p.lock.Unlock()
+func (p *PulsarSubscriptionTracker) copyCursor() pulsar.MessageID {
+	p.lock.RLock()
+	defer p.lock.RUnlock()
 
-	if p.cursor != nil {
-		p.consumer.Seek(p.cursor)
-		p.cursor = nil
+	if p.cursor == nil {
+		return nil
+	}
+	rst, _ := pulsar.DeserializeMessageID(p.cursor.Serialize())
+	return rst
+}
+
+func equalMessageID(a pulsar.MessageID, b pulsar.MessageID) bool {
+	return a.LedgerID() == b.LedgerID() &&
+		a.EntryID() == b.EntryID() &&
+		a.PartitionIdx() == b.PartitionIdx() &&
+		a.BatchIdx() == b.BatchIdx()
+}
+
+func (p *PulsarSubscriptionTracker) trySeek() {
+	current := p.copyCursor()
+	if current == nil {
+		return
+	}
+	if p.sought == nil || !equalMessageID(current, p.sought) {
+		if err := p.consumer.Seek(current); err != nil {
+			return
+		}
+		p.sought = current
 	}
 }
 
@@ -51,7 +72,7 @@ func NewPulsarSubscriptionTracker(client pulsar.Client, topic string, commitInte
 	tracker := &PulsarSubscriptionTracker{
 		consumer:     consumer,
 		stop:         make(chan struct{}),
-		lock:         sync.Mutex{},
+		lock:         sync.RWMutex{},
 		commitCancel: cancel,
 	}
 	go tracker.waitCommit(ctx, commitInterval)
@@ -60,10 +81,11 @@ func NewPulsarSubscriptionTracker(client pulsar.Client, topic string, commitInte
 
 type PulsarSubscriptionTracker struct {
 	consumer     pulsar.Consumer
-	lock         sync.Mutex
+	lock         sync.RWMutex
 	cursor       pulsar.MessageID
 	commitCancel context.CancelFunc
 	stop         chan struct{}
+	sought       pulsar.MessageID
 }
 
 func (p *PulsarSubscriptionTracker) read(ctx context.Context) (cp Checkpoint, err error) {
