@@ -316,7 +316,7 @@ func (a *Agent) report(params *structpb.Struct) (*pb.AgentConfigResponse, error)
 
 func parseKey(k string) (parsed string, optional bool) {
 	if strings.HasPrefix(k, "?") {
-		return k[:len(k)-1], true
+		return k[1:], true
 	}
 	return k, false
 }
