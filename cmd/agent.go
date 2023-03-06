@@ -325,7 +325,7 @@ func extract(params *structpb.Struct, keys ...string) (map[string]string, error)
 	values := map[string]string{}
 	for _, v := range keys {
 		k, optional := parseKey(v)
-		if fields := params.GetFields(); fields == nil || fields[k] == nil || fields[k].GetStringValue() == "" && optional {
+		if fields := params.GetFields(); (fields == nil || fields[k] == nil || fields[k].GetStringValue() == "") && !optional {
 			return nil, fmt.Errorf("%s key is required in parameters", k)
 		} else {
 			values[k] = fields[k].GetStringValue()
