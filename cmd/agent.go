@@ -179,7 +179,7 @@ func (a *Agent) pg2pulsar(params *structpb.Struct) (*pb.AgentConfigResponse, err
 	switch v["PulsarTracker"] {
 	case "pulsar", "":
 		pulsarSink.SetupTracker = func(client pulsar.Client, topic string) (cursor.Tracker, error) {
-			return &cursor.PulsarTracker{Client: client, PulsarTopic: topic}, nil
+			return cursor.NewPulsarTracker(client, topic)
 		}
 	case "pulsarSub":
 		pulsarSink.SetupTracker = func(client pulsar.Client, topic string) (cursor.Tracker, error) {
