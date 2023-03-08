@@ -54,10 +54,7 @@ func TestPulsarTracker(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		defer producer.Close()
-		_ = producer.Flush()
-	}()
+	defer producer.Close()
 
 	for i := 0; i < 10; i++ {
 		cp := Checkpoint{LSN: uint64(100 + i)}
@@ -68,6 +65,7 @@ func TestPulsarTracker(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	_ = producer.Flush()
 
 	last, err := tracker.Last()
 	if err != nil {

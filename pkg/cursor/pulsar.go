@@ -2,6 +2,7 @@ package cursor
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar"
@@ -32,10 +33,14 @@ func (p *PulsarTracker) Last() (last Checkpoint, err error) {
 	var (
 		msg pulsar.Message
 	)
-	for p.reader.HasNext() {
+	for {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		msg, err = p.reader.Next(ctx)
 		cancel()
+		if errors.Is(err, context.DeadlineExceeded) && !p.reader.HasNext() {
+			err = nil
+			return
+		}
 		if err != nil {
 			return
 		}
@@ -43,7 +48,6 @@ func (p *PulsarTracker) Last() (last Checkpoint, err error) {
 			return
 		}
 	}
-	return
 }
 
 func (p *PulsarTracker) Commit(_ Checkpoint, _ pulsar.MessageID) error {
