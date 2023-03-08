@@ -52,3 +52,18 @@ func ToCheckpoint(msg pulsar.Message) (cp Checkpoint, err error) {
 	cp.Data = msg.ID().Serialize()
 	return
 }
+
+// Since only the reader can guarantee not to create the partitioned topic(s),
+// we use the reader creation to ensure the existence of the specified topic
+func ensureTopic(client pulsar.Client, topic string) error {
+	reader, err := client.CreateReader(pulsar.ReaderOptions{
+		Name:           topic + "-temp-reader",
+		Topic:          topic,
+		StartMessageID: pulsar.LatestMessageID(),
+	})
+	if err != nil {
+		return err
+	}
+	reader.Close()
+	return nil
+}

@@ -17,9 +17,9 @@ func newPulsarTracker(topic string) (*PulsarTracker, func(), error) {
 		return nil, nil, err
 	}
 
-	tracker := &PulsarTracker{
-		Client:      client,
-		PulsarTopic: topic,
+	tracker, err := NewPulsarTracker(client, topic)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	closeFunc := func() {

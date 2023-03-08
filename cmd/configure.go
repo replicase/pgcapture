@@ -12,13 +12,15 @@ import (
 )
 
 var (
-	AgentAddr         string
-	AgentCommand      string
-	ConfigPGConnURL   string
-	ConfigPGReplURL   string
-	ConfigPulsarURL   string
-	ConfigPulsarTopic string
-	ConfigPGLogPath   string
+	AgentAddr           string
+	AgentCommand        string
+	ConfigPGConnURL     string
+	ConfigPGReplURL     string
+	ConfigPulsarURL     string
+	ConfigPulsarTopic   string
+	ConfigPGLogPath     string
+	ConfigStartLSN      string
+	ConfigPulsarTracker string
 )
 
 func init() {
@@ -30,6 +32,8 @@ func init() {
 	configure.Flags().StringVarP(&ConfigPulsarURL, "PulsarURL", "", "", "connection url to sink pulsar cluster")
 	configure.Flags().StringVarP(&ConfigPulsarTopic, "PulsarTopic", "", "", "the sink pulsar topic name and as well as the logical replication slot name")
 	configure.Flags().StringVarP(&ConfigPGLogPath, "PGLogPath", "", "", "pg log path for finding last checkpoint lsn")
+	configure.Flags().StringVarP(&ConfigStartLSN, "StartLSN", "", "", "the LSN position to start the pg2pulsar process, optional")
+	configure.Flags().StringVarP(&ConfigPulsarTracker, "PulsarTracker", "", "", "the tracker type for pg2pulsar, optional")
 	configure.MarkFlagRequired("AgentAddr")
 	configure.MarkFlagRequired("AgentCommand")
 	configure.MarkFlagRequired("PGConnURL")
@@ -42,12 +46,14 @@ var configure = &cobra.Command{
 	Short: "Poke agent's Configure endpoint repeatedly",
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
 		params, err := structpb.NewStruct(map[string]interface{}{
-			"Command":     AgentCommand,
-			"PGConnURL":   ConfigPGConnURL,
-			"PGReplURL":   ConfigPGReplURL,
-			"PulsarURL":   ConfigPulsarURL,
-			"PulsarTopic": ConfigPulsarTopic,
-			"PGLogPath":   ConfigPGLogPath,
+			"Command":       AgentCommand,
+			"PGConnURL":     ConfigPGConnURL,
+			"PGReplURL":     ConfigPGReplURL,
+			"PulsarURL":     ConfigPulsarURL,
+			"PulsarTopic":   ConfigPulsarTopic,
+			"PGLogPath":     ConfigPGLogPath,
+			"StartLSN":      ConfigStartLSN,
+			"PulsarTracker": ConfigPulsarTracker,
 		})
 		if err != nil {
 			panic(err)

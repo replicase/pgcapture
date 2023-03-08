@@ -16,10 +16,7 @@ import (
 type SetupTracker func(client pulsar.Client, topic string) (cursor.Tracker, error)
 
 func setupDefaultTracker(client pulsar.Client, topic string) (cursor.Tracker, error) {
-	return &cursor.PulsarTracker{
-		Client:      client,
-		PulsarTopic: topic,
-	}, nil
+	return cursor.NewPulsarTracker(client, topic)
 }
 
 type PulsarSink struct {
@@ -51,6 +48,15 @@ func (p *PulsarSink) Setup() (cp cursor.Checkpoint, err error) {
 		return cp, err
 	}
 
+	if p.SetupTracker == nil {
+		p.SetupTracker = setupDefaultTracker
+	}
+
+	p.tracker, err = p.SetupTracker(p.client, p.PulsarTopic)
+	if err != nil {
+		return cp, err
+	}
+
 	// Set up the producer first to avoid the existence of another producer when trying to read the latest message
 	p.producer, err = p.client.CreateProducer(pulsar.ProducerOptions{
 		Topic:               p.PulsarTopic,
@@ -61,15 +67,6 @@ func (p *PulsarSink) Setup() (cp cursor.Checkpoint, err error) {
 		BatchingMaxMessages: 1000,
 		BatchingMaxSize:     1024 * 1024,
 	})
-	if err != nil {
-		return cp, err
-	}
-
-	if p.SetupTracker == nil {
-		p.SetupTracker = setupDefaultTracker
-	}
-
-	p.tracker, err = p.SetupTracker(p.client, p.PulsarTopic)
 	if err != nil {
 		return cp, err
 	}

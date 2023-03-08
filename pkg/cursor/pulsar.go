@@ -10,28 +10,31 @@ import (
 var _ Tracker = (*PulsarTracker)(nil)
 
 type PulsarTracker struct {
-	Client      pulsar.Client
-	PulsarTopic string
+	reader pulsar.Reader
 }
 
-func (p *PulsarTracker) Last() (last Checkpoint, err error) {
-	reader, err := p.Client.CreateReader(pulsar.ReaderOptions{
-		Topic:                   p.PulsarTopic,
-		Name:                    p.PulsarTopic + "-producer",
+func NewPulsarTracker(client pulsar.Client, topic string) (*PulsarTracker, error) {
+	reader, err := client.CreateReader(pulsar.ReaderOptions{
+		Topic:                   topic,
+		Name:                    topic + "-producer",
 		StartMessageID:          pulsar.LatestMessageID(),
 		StartMessageIDInclusive: true,
 	})
 	if err != nil {
-		return last, err
+		return nil, err
 	}
-	defer reader.Close()
+	return &PulsarTracker{reader: reader}, nil
+}
+
+func (p *PulsarTracker) Last() (last Checkpoint, err error) {
+	defer p.reader.Close()
 
 	var (
 		msg pulsar.Message
 	)
-	for reader.HasNext() {
+	for p.reader.HasNext() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		msg, err = reader.Next(ctx)
+		msg, err = p.reader.Next(ctx)
 		cancel()
 		if err != nil {
 			return

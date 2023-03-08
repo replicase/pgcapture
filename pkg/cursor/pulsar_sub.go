@@ -57,6 +57,10 @@ func (p *PulsarSubscriptionTracker) waitCommit(ctx context.Context, interval tim
 }
 
 func NewPulsarSubscriptionTracker(client pulsar.Client, topic string, commitInterval time.Duration) (*PulsarSubscriptionTracker, error) {
+	if err := ensureTopic(client, topic); err != nil {
+		return nil, err
+	}
+
 	consumer, err := client.Subscribe(pulsar.ConsumerOptions{
 		Name:             "pulsar-subscription-tracker",
 		Topic:            topic,
