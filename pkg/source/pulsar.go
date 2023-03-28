@@ -190,9 +190,10 @@ func (p *PulsarConsumerSource) Capture(cp cursor.Checkpoint) (changes chan Chang
 	}
 
 	p.log = logrus.WithFields(logrus.Fields{
-		"From":         "PulsarConsumerSource",
-		"Topic":        p.PulsarTopic,
-		"Subscription": p.PulsarSubscription,
+		"From":           "PulsarConsumerSource",
+		"Topic":          p.PulsarTopic,
+		"Subscription":   p.PulsarSubscription,
+		"ReplicateState": p.PulsarReplicateState,
 	})
 
 	var first bool
