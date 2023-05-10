@@ -64,7 +64,7 @@ func NewPulsarSubscriptionTracker(client pulsar.Client, topic string, commitInte
 	consumer, err := client.Subscribe(pulsar.ConsumerOptions{
 		Name:             "pulsar-subscription-tracker",
 		Topic:            topic,
-		SubscriptionName: topic + "-cursor-consumer",
+		SubscriptionName: "pulsar-subscription-tracker-consumer",
 		Type:             pulsar.Exclusive,
 	})
 
