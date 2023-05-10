@@ -88,7 +88,7 @@ func TestPulsarSubscriptionTracker_Commit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cursor, err := CheckSubscriptionCursor(admin, topic, topic+"-cursor-consumer")
+	cursor, err := CheckSubscriptionCursor(admin, topic, "pulsar-subscription-tracker-consumer")
 	if err != nil {
 		t.Fatal(err)
 	}
