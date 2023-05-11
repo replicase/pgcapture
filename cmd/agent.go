@@ -168,7 +168,7 @@ func (a *Agent) cleanup() error {
 }
 
 func (a *Agent) pg2pulsar(params *structpb.Struct) (*pb.AgentConfigResponse, error) {
-	v, err := extract(params, "PGConnURL", "PGReplURL", "PulsarURL", "PulsarTopic", "?StartLSN", "?PulsarTracker")
+	v, err := extract(params, "PGConnURL", "PGReplURL", "PulsarURL", "PulsarTopic", "?StartLSN", "?PulsarTracker", "?PulsarTrackerInterval")
 	if err != nil {
 		return nil, err
 	}
@@ -182,8 +182,17 @@ func (a *Agent) pg2pulsar(params *structpb.Struct) (*pb.AgentConfigResponse, err
 			return cursor.NewPulsarTracker(client, topic)
 		}
 	case "pulsarSub":
+		commitInterval := 10 * time.Minute
+		if val := v["PulsarTrackerInterval"]; val != "" {
+			var err error
+			commitInterval, err = time.ParseDuration(val)
+			if err != nil {
+				return nil, fmt.Errorf("PulsarTrackerInterval should be a valid duration: %w", err)
+			}
+		}
+
 		pulsarSink.SetupTracker = func(client pulsar.Client, topic string) (cursor.Tracker, error) {
-			return cursor.NewPulsarSubscriptionTracker(client, topic, 10*time.Minute)
+			return cursor.NewPulsarSubscriptionTracker(client, topic, commitInterval)
 		}
 	default:
 		return nil, errors.New("PulsarTracker should be one of [pulsar|pulsarSub]")
