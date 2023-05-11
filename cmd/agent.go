@@ -182,7 +182,8 @@ func (a *Agent) pg2pulsar(params *structpb.Struct) (*pb.AgentConfigResponse, err
 			return cursor.NewPulsarTracker(client, topic)
 		}
 	case "pulsarSub":
-		commitInterval := 10 * time.Minute
+		// set the default value to 1min
+		commitInterval := time.Minute
 		if val := v["PulsarTrackerInterval"]; val != "" {
 			var err error
 			commitInterval, err = time.ParseDuration(val)
