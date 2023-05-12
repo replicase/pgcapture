@@ -12,15 +12,16 @@ import (
 )
 
 var (
-	AgentAddr           string
-	AgentCommand        string
-	ConfigPGConnURL     string
-	ConfigPGReplURL     string
-	ConfigPulsarURL     string
-	ConfigPulsarTopic   string
-	ConfigPGLogPath     string
-	ConfigStartLSN      string
-	ConfigPulsarTracker string
+	AgentAddr                   string
+	AgentCommand                string
+	ConfigPGConnURL             string
+	ConfigPGReplURL             string
+	ConfigPulsarURL             string
+	ConfigPulsarTopic           string
+	ConfigPGLogPath             string
+	ConfigStartLSN              string
+	ConfigPulsarTracker         string
+	ConfigPulsarTrackerInterval string
 )
 
 func init() {
@@ -34,6 +35,7 @@ func init() {
 	configure.Flags().StringVarP(&ConfigPGLogPath, "PGLogPath", "", "", "pg log path for finding last checkpoint lsn")
 	configure.Flags().StringVarP(&ConfigStartLSN, "StartLSN", "", "", "the LSN position to start the pg2pulsar process, optional")
 	configure.Flags().StringVarP(&ConfigPulsarTracker, "PulsarTracker", "", "", "the tracker type for pg2pulsar, optional")
+	configure.Flags().StringVarP(&ConfigPulsarTrackerInterval, "PulsarTrackerInterval", "", "", "the commit interval for the pg2pulsar, optional")
 	configure.MarkFlagRequired("AgentAddr")
 	configure.MarkFlagRequired("AgentCommand")
 	configure.MarkFlagRequired("PGConnURL")
@@ -46,14 +48,15 @@ var configure = &cobra.Command{
 	Short: "Poke agent's Configure endpoint repeatedly",
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
 		params, err := structpb.NewStruct(map[string]interface{}{
-			"Command":       AgentCommand,
-			"PGConnURL":     ConfigPGConnURL,
-			"PGReplURL":     ConfigPGReplURL,
-			"PulsarURL":     ConfigPulsarURL,
-			"PulsarTopic":   ConfigPulsarTopic,
-			"PGLogPath":     ConfigPGLogPath,
-			"StartLSN":      ConfigStartLSN,
-			"PulsarTracker": ConfigPulsarTracker,
+			"Command":               AgentCommand,
+			"PGConnURL":             ConfigPGConnURL,
+			"PGReplURL":             ConfigPGReplURL,
+			"PulsarURL":             ConfigPulsarURL,
+			"PulsarTopic":           ConfigPulsarTopic,
+			"PGLogPath":             ConfigPGLogPath,
+			"StartLSN":              ConfigStartLSN,
+			"PulsarTracker":         ConfigPulsarTracker,
+			"PulsarTrackerInterval": ConfigPulsarTrackerInterval,
 		})
 		if err != nil {
 			panic(err)
