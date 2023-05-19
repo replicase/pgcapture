@@ -1,6 +1,7 @@
 package pgcapture
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"reflect"
@@ -43,8 +44,8 @@ func reflectModel(model Model) (ref reflection, err error) {
 	for i := 0; i < typ.NumField(); i++ {
 		f := typ.Field(i)
 		if tag, ok := f.Tag.Lookup("pg"); ok {
-			if !reflect.PtrTo(f.Type).Implements(decoderType) {
-				return ref, fmt.Errorf("the field %s of %s should be a pgtype.BinaryDecoder", f.Name, typ.Elem())
+			if !hasImplementDecoder(reflect.PtrTo(f.Type)) {
+				return ref, fmt.Errorf("the field %s of %s should be a pgtype.BinaryDecoder or sql.Scanner", f.Name, typ.Elem())
 			}
 			if n := strings.Split(tag, ","); len(n) > 0 && n[0] != "" {
 				ref.idx[n[0]] = i
@@ -57,6 +58,15 @@ func reflectModel(model Model) (ref reflection, err error) {
 		}
 	}
 	return ref, fmt.Errorf("at least one field of %s should should have a valid pg tag", typ.Elem())
+}
+
+func hasImplementDecoder(typ reflect.Type) bool {
+	for _, t := range decoderTypes {
+		if typ.Implements(t) {
+			return true
+		}
+	}
+	return false
 }
 
 func ModelName(namespace, table string) string {
@@ -72,4 +82,7 @@ type reflection struct {
 	hdl ModelAsyncHandlerFunc
 }
 
-var decoderType = reflect.TypeOf((*pgtype.BinaryDecoder)(nil)).Elem()
+var decoderTypes = []reflect.Type{
+	reflect.TypeOf((*pgtype.BinaryDecoder)(nil)).Elem(),
+	reflect.TypeOf((*sql.Scanner)(nil)).Elem(),
+}
