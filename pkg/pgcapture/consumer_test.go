@@ -2,7 +2,9 @@ package pgcapture
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -216,6 +218,20 @@ func (m *Model2) TableName() (schema, table string) {
 	return "", "m2"
 }
 
+type Model3 struct {
+	F1 sql.NullString `pg:"f1"`
+	F2 sql.NullString `pg:"f2"`
+	F3 sql.NullString `pg:"f3"`
+}
+
+func (m *Model3) DebounceKey() string {
+	return "3"
+}
+
+func (m *Model3) TableName() (schema, table string) {
+	return "public", "m3"
+}
+
 type gatewayClient struct {
 	sendQ chan *pb.CaptureRequest
 	recvQ chan *pb.CaptureMessage
@@ -259,4 +275,50 @@ func (g *gatewayClient) RecvMsg(m interface{}) error {
 
 func (g *gatewayClient) Capture(ctx context.Context, opts ...grpc.CallOption) (pb.DBLogGateway_CaptureClient, error) {
 	return g, nil
+}
+
+func TestMakeModel(t *testing.T) {
+	fields := []*pb.Field{
+		{Name: "f1", Oid: pgtype.TextOID, Value: &pb.Field_Binary{Binary: []byte("f1")}},
+		{Name: "f2", Oid: pgtype.TextOID, Value: nil},
+		{Name: "f3", Oid: pgtype.TextOID, Value: &pb.Field_Text{Text: "f3"}},
+	}
+
+	models := []struct {
+		input    Model
+		expected Model
+	}{
+		{
+			input: (*Model1)(nil),
+			expected: &Model1{
+				F1: pgtype.Text{String: "f1", Status: pgtype.Present},
+				F2: pgtype.Text{String: "", Status: pgtype.Null},
+				F3: pgtype.Text{String: "f3", Status: pgtype.Present},
+			},
+		}, // pgtype.BinaryDecoder
+		{
+			input: (*Model3)(nil),
+			expected: &Model3{
+				F1: sql.NullString{String: "f1", Valid: true},
+				F2: sql.NullString{String: "", Valid: false},
+				F3: sql.NullString{String: "f3", Valid: true},
+			},
+		},
+	}
+
+	for _, m := range models {
+		ref, err := reflectModel(m.input)
+		if err != nil {
+			t.Fatal("unexpected error on reflect model", err)
+		}
+
+		model, err := makeModel(ref, fields)
+		if err != nil {
+			t.Fatal("unexpected error on make model", err)
+		}
+
+		if !reflect.DeepEqual(model, m.expected) {
+			t.Fatalf("unexpected output model %v", model)
+		}
+	}
 }

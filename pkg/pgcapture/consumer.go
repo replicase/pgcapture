@@ -2,6 +2,7 @@ package pgcapture
 
 import (
 	"context"
+	"database/sql"
 	"reflect"
 	"time"
 
@@ -142,12 +143,24 @@ func makeModel(ref reflection, fields []*pb.Field) (interface{}, error) {
 			continue
 		}
 		if f.Value == nil {
-			err = field.(pgtype.BinaryDecoder).DecodeBinary(ci, nil)
+			if decoder, ok := field.(pgtype.BinaryDecoder); ok {
+				err = decoder.DecodeBinary(ci, nil)
+			} else if scanner, ok := field.(sql.Scanner); ok {
+				err = scanner.Scan(nil)
+			}
 		} else {
 			if value, ok := f.Value.(*pb.Field_Binary); ok {
-				err = field.(pgtype.BinaryDecoder).DecodeBinary(ci, value.Binary)
+				if decoder, ok := field.(pgtype.BinaryDecoder); ok {
+					err = decoder.DecodeBinary(ci, value.Binary)
+				} else if scanner, ok := field.(sql.Scanner); ok {
+					err = scanner.Scan(value.Binary)
+				}
 			} else {
-				err = field.(pgtype.TextDecoder).DecodeText(ci, []byte(f.GetText()))
+				if decoder, ok := field.(pgtype.TextDecoder); ok {
+					err = decoder.DecodeText(ci, []byte(f.GetText()))
+				} else if scanner, ok := field.(sql.Scanner); ok {
+					err = scanner.Scan(f.GetText())
+				}
 			}
 		}
 		if err != nil {
