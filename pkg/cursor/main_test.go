@@ -11,13 +11,12 @@ import (
 	"strings"
 
 	"github.com/golang/protobuf/proto"
-	"github.com/streamnative/pulsarctl/pkg/pulsar"
-	"github.com/streamnative/pulsarctl/pkg/pulsar/common"
-	"github.com/streamnative/pulsarctl/pkg/pulsar/utils"
+	pulsaradmin "github.com/streamnative/pulsar-admin-go"
+	"github.com/streamnative/pulsar-admin-go/pkg/utils"
 )
 
-func NewAdminClient() (pulsar.Client, error) {
-	return pulsar.New(&common.Config{WebServiceURL: "http://localhost:8080"})
+func NewAdminClient() (pulsaradmin.Client, error) {
+	return pulsaradmin.NewClient(&pulsaradmin.Config{WebServiceURL: "http://localhost:8080"})
 }
 
 func nextMessageID(cursor utils.CursorStats) string {
@@ -26,7 +25,7 @@ func nextMessageID(cursor utils.CursorStats) string {
 	return comps[0] + ":" + strconv.FormatInt(e+1, 10)
 }
 
-func CheckSubscriptionCursor(client pulsar.Client, topicName string, subscriptionName string) (string, error) {
+func CheckSubscriptionCursor(client pulsaradmin.Client, topicName string, subscriptionName string) (string, error) {
 	topic, err := utils.GetTopicName("public/default/" + topicName)
 	if err != nil {
 		return "", err
