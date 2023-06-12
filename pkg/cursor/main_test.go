@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"strconv"
 	"strings"
@@ -59,10 +58,10 @@ func GetCheckpointByMessageID(topicName string, messageID string) (cp Checkpoint
 	if err != nil {
 		return cp, err
 	}
-	defer io.Copy(ioutil.Discard, resp.Body)
+	defer io.Copy(io.Discard, resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
-		b, _ := ioutil.ReadAll(resp.Body)
+		b, _ := io.ReadAll(resp.Body)
 		return cp, errors.New(fmt.Sprintf("error response:\n %s", string(b)))
 	}
 

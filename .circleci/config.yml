@@ -9,7 +9,6 @@ jobs:
       - run: docker-compose up -d --no-build
       - run: curl -L https://golang.org/dl/go1.20.linux-amd64.tar.gz > /tmp/go1.20.linux-amd64.tar.gz
       - run: tar -C /tmp -xzf /tmp/go1.20.linux-amd64.tar.gz
-      - run: export PATH=$PATH:/tmp/go/bin
       - run: curl -L https://codeclimate.com/downloads/test-reporter/test-reporter-latest-linux-amd64 > ./cc-test-reporter
       - run: chmod +x ./cc-test-reporter
       - run: /tmp/go/bin/go get -v -t -d ./...
