@@ -1,11 +1,8 @@
 module github.com/rueian/pgcapture
 
-go 1.18
+go 1.20
 
 replace github.com/pganalyze/pg_query_go/v2 v2.0.2 => github.com/rueian/pg_query_go/v2 v2.0.3-0.20210404160231-00fbdb47649c
-
-// 0.5.0 has been dropped by pulsarctl
-exclude github.com/streamnative/pulsarctl v0.5.0
 
 require (
 	github.com/apache/pulsar-client-go v0.10.0
