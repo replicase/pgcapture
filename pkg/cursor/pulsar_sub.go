@@ -28,16 +28,16 @@ func equalMessageID(a pulsar.MessageID, b pulsar.MessageID) bool {
 		a.BatchIdx() == b.BatchIdx()
 }
 
-func (p *PulsarSubscriptionTracker) trySeek() {
+func (p *PulsarSubscriptionTracker) tryAck() {
 	current := p.copyCursor()
 	if current == nil {
 		return
 	}
-	if p.sought == nil || !equalMessageID(current, p.sought) {
-		if err := p.consumer.Seek(current); err != nil {
+	if p.acked == nil || !equalMessageID(current, p.acked) {
+		if err := p.consumer.AckIDCumulative(current); err != nil {
 			return
 		}
-		p.sought = current
+		p.acked = current
 	}
 }
 
@@ -48,7 +48,7 @@ func (p *PulsarSubscriptionTracker) waitCommit(ctx context.Context, interval tim
 	for {
 		select {
 		case <-ticker.C:
-			p.trySeek()
+			p.tryAck()
 		case <-ctx.Done():
 			p.stop <- struct{}{}
 			return
@@ -89,7 +89,7 @@ type PulsarSubscriptionTracker struct {
 	cursor       pulsar.MessageID
 	commitCancel context.CancelFunc
 	stop         chan struct{}
-	sought       pulsar.MessageID
+	acked        pulsar.MessageID
 }
 
 func (p *PulsarSubscriptionTracker) read(ctx context.Context) (cp Checkpoint, err error) {

@@ -98,8 +98,8 @@ func TestPulsarSubscriptionTracker_Commit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// the cursor should be the 4th message
-	if cp.LSN != 104 {
+	// the next message should be the 6th message
+	if cp.LSN != 105 {
 		t.Fatalf("unexpected next position: %v", cp.LSN)
 	}
 }

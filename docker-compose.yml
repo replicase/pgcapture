@@ -11,7 +11,7 @@ services:
     volumes:
       - ./hack/postgres:/pgc
   pulsar:
-    image: apachepulsar/pulsar:2.7.1
+    image: apachepulsar/pulsar:2.10.4
     command: ["bin/pulsar", "standalone"]
     ports:
       - 6650:6650
