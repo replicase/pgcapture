@@ -422,7 +422,15 @@ func (p *PGXSink) flushInsert(ctx context.Context) (err error) {
 
 	keys, _ := p.schema.GetTableKey(p.inserts.Schema, p.inserts.Table)
 
-	return p.raw.ExecParams(ctx, sql.InsertQuery(p.inserts.Schema, p.inserts.Table, keys, batch[0], len(batch)), vals, oids, fmts, rets).Read().Err
+	opt := sql.InsertOption{
+		Namespace: p.inserts.Schema,
+		Table:     p.inserts.Table,
+		Keys:      keys,
+		Fields:    batch[0],
+		Count:     len(batch),
+		PGVersion: p.pgVersion,
+	}
+	return p.raw.ExecParams(ctx, sql.InsertQuery(opt), vals, oids, fmts, rets).Read().Err
 }
 
 func (p *PGXSink) handleInsert(ctx context.Context, m *pb.Change) (err error) {

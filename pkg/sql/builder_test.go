@@ -7,17 +7,48 @@ import (
 )
 
 func TestInsertQuery(t *testing.T) {
-	q := InsertQuery("public", "my_table", nil, []*pb.Field{{Name: "f1"}, {Name: "f2"}}, 4)
+	opt := InsertOption{
+		Namespace: "public",
+		Table:     "my_table",
+		Fields:    []*pb.Field{{Name: "f1"}, {Name: "f2"}},
+		Count:     4,
+	}
+
+	q := InsertQuery(opt)
 	if q != `insert into "public"."my_table"("f1","f2") values ($1,$2),($3,$4),($5,$6),($7,$8)` {
 		t.Fatalf("not expected %q", q)
 	}
 }
 
-func TestInsertQueryConflick(t *testing.T) {
-	q := InsertQuery("public", "my_table", []string{"id", "name"}, []*pb.Field{{Name: "f1"}, {Name: "f2"}}, 4)
+func TestInsertQueryConflict(t *testing.T) {
+	opt := InsertOption{
+		Namespace: "public",
+		Table:     "my_table",
+		Keys:      []string{"id", "name"},
+		Fields:    []*pb.Field{{Name: "f1"}, {Name: "f2"}},
+		Count:     4,
+	}
+
+	q := InsertQuery(opt)
 	if q != `insert into "public"."my_table"("f1","f2") values ($1,$2),($3,$4),($5,$6),($7,$8) ON CONFLICT (id,name) DO NOTHING` {
 		t.Fatalf("not expected %q", q)
 	}
+}
+
+func TestInsertQueryOverridingSystemValue(t *testing.T) {
+	opt := InsertOption{
+		Namespace: "public",
+		Table:     "my_table",
+		Fields:    []*pb.Field{{Name: "f1"}, {Name: "f2"}},
+		Count:     4,
+		PGVersion: 100000,
+	}
+
+	q := InsertQuery(opt)
+	if q != `insert into "public"."my_table"("f1","f2") OVERRIDING SYSTEM VALUE values ($1,$2),($3,$4),($5,$6),($7,$8)` {
+		t.Fatalf("not expected %q", q)
+	}
+
 }
 
 func TestDeleteQuery(t *testing.T) {

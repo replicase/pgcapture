@@ -1,9 +1,10 @@
 package sql
 
 import (
-	"github.com/rueian/pgcapture/pkg/pb"
 	"strconv"
 	"strings"
+
+	"github.com/rueian/pgcapture/pkg/pb"
 )
 
 func DeleteQuery(namespace, table string, fields []*pb.Field) string {
@@ -58,23 +59,44 @@ func UpdateQuery(namespace, table string, sets, keys []*pb.Field) string {
 	return query.String()
 }
 
-func InsertQuery(namespace, table string, keys []string, fields []*pb.Field, count int) string {
+type InsertOption struct {
+	Namespace string
+	Table     string
+	Count     int
+	Keys      []string
+	Fields    []*pb.Field
+	PGVersion int64
+}
+
+func InsertQuery(opt InsertOption) string {
 	var query strings.Builder
 	query.WriteString("insert into \"")
-	query.WriteString(namespace)
+	query.WriteString(opt.Namespace)
 	query.WriteString("\".\"")
-	query.WriteString(table)
+	query.WriteString(opt.Table)
 	query.WriteString("\"(\"")
+
+	fields := opt.Fields
 	for i, field := range fields {
 		query.WriteString(field.Name)
 		if i == len(fields)-1 {
-			query.WriteString("\") values (")
+			query.WriteString("\")")
 		} else {
 			query.WriteString("\",\"")
 		}
 	}
+
+	if opt.PGVersion >= 100000 {
+		// to handle the case where the target table contains the GENERATED ALWAYS constraint;
+		// according the SQL standard, the OVERRIDING SYSTEM VALUE can only be specified if an identity column that is generated always exists,
+		// but PG will allow the clause to be specified even if the target table does not contain such a column.
+		// ref: https://www.postgresql.org/docs/10/sql-insert.html
+		query.WriteString(" OVERRIDING SYSTEM VALUE")
+	}
+	query.WriteString(" values (")
+
 	i := 1
-	for j := 0; j < count; j++ {
+	for j := 0; j < opt.Count; j++ {
 		for range fields {
 			query.WriteString("$" + strconv.Itoa(i))
 			if i%len(fields) == 0 {
@@ -84,11 +106,12 @@ func InsertQuery(namespace, table string, keys []string, fields []*pb.Field, cou
 			}
 			i++
 		}
-		if j < count-1 {
+		if j < opt.Count-1 {
 			query.WriteString(",(")
 		}
 	}
 
+	keys := opt.Keys
 	if len(keys) != 0 {
 		query.WriteString(" ON CONFLICT (")
 		query.WriteString(strings.Join(keys, ","))
