@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 
 	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4"
@@ -96,6 +97,18 @@ func (p *PGXSchemaLoader) GetTableKey(namespace, table string) (keys []string, e
 		return nil, fmt.Errorf("%s.%s %w", namespace, table, ErrSchemaIdentityMissing)
 	}
 	return keys, nil
+}
+
+func (p *PGXSchemaLoader) GetVersion() (version int64, err error) {
+	var versionInfo string
+	if err = p.conn.QueryRow(context.Background(), sql.ServerVersionNum).Scan(&versionInfo); err != nil {
+		return -1, err
+	}
+	svn, err := strconv.ParseInt(versionInfo, 10, 64)
+	if err != nil {
+		return -1, err
+	}
+	return svn, nil
 }
 
 var (

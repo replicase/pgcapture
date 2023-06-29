@@ -3,7 +3,6 @@ package source
 import (
 	"context"
 	"errors"
-	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -56,22 +55,17 @@ func (p *PGXSource) Capture(cp cursor.Checkpoint) (changes chan Change, err erro
 		return nil, err
 	}
 
-	var sv string
-	if err = p.setupConn.QueryRow(ctx, sql.ServerVersionNum).Scan(&sv); err != nil {
-		return nil, err
-	}
-
-	svn, err := strconv.ParseInt(sv, 10, 64)
-	if err != nil {
-		return nil, err
-	}
-
 	if _, err = p.setupConn.Exec(ctx, sql.InstallExtension); err != nil {
 		return nil, err
 	}
 
 	p.schema = decode.NewPGXSchemaLoader(p.setupConn)
 	if err = p.schema.RefreshType(); err != nil {
+		return nil, err
+	}
+
+	svn, err := p.schema.GetVersion()
+	if err != nil {
 		return nil, err
 	}
 

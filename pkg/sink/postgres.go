@@ -38,17 +38,18 @@ type PGXSink struct {
 	Renice    int64
 	LogReader io.Reader
 
-	conn    *pgx.Conn
-	raw     *pgconn.PgConn
-	schema  *decode.PGXSchemaLoader
-	log     *logrus.Entry
-	prev    cursor.Checkpoint
-	pgSrcID pgtype.Text
-	replLag int64
-	inTX    bool
-	skip    map[string]bool
-	inserts insertBatch
-	prevDDL uint32
+	conn      *pgx.Conn
+	raw       *pgconn.PgConn
+	schema    *decode.PGXSchemaLoader
+	log       *logrus.Entry
+	prev      cursor.Checkpoint
+	pgSrcID   pgtype.Text
+	pgVersion int64
+	replLag   int64
+	inTX      bool
+	skip      map[string]bool
+	inserts   insertBatch
+	prevDDL   uint32
 }
 
 type insertBatch struct {
@@ -109,6 +110,11 @@ func (p *PGXSink) Setup() (cp cursor.Checkpoint, err error) {
 
 	p.schema = decode.NewPGXSchemaLoader(p.conn)
 	if err = p.schema.RefreshKeys(); err != nil {
+		return cp, err
+	}
+
+	p.pgVersion, err = p.schema.GetVersion()
+	if err != nil {
 		return cp, err
 	}
 
