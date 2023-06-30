@@ -109,7 +109,7 @@ func (p *PGXSink) Setup() (cp cursor.Checkpoint, err error) {
 	}
 
 	p.schema = decode.NewPGXSchemaLoader(p.conn)
-	if err = p.schema.RefreshKeys(); err != nil {
+	if err = p.schema.RefreshColumnInfo(); err != nil {
 		return cp, err
 	}
 
@@ -381,7 +381,7 @@ func (p *PGXSink) performDDL(count int, ddl string) (err error) {
 		}
 	}
 	if err == nil {
-		err = p.schema.RefreshKeys()
+		err = p.schema.RefreshColumnInfo()
 	}
 	return
 }
@@ -391,18 +391,26 @@ func (p *PGXSink) flushInsert(ctx context.Context) (err error) {
 	if len(batch) == 0 {
 		return nil
 	}
-	fields := len(batch[0])
-	rets := make([]int16, fields)
-	for i := 0; i < fields; i++ {
+
+	info, _ := p.schema.GetColumnInfo(p.inserts.Schema, p.inserts.Table)
+	cols, filtered := info.Filter(batch[0])
+
+	fCount := len(filtered)
+	rets := make([]int16, fCount)
+	for i := 0; i < fCount; i++ {
 		rets[i] = 1
 	}
-	fmts := make([]int16, fields*len(batch))
-	vals := make([][]byte, fields*len(batch))
-	oids := make([]uint32, fields*len(batch))
+	fmts := make([]int16, fCount*len(batch))
+	vals := make([][]byte, fCount*len(batch))
+	oids := make([]uint32, fCount*len(batch))
 	c := 0
 	for i := 0; i < len(batch); i++ {
-		for j := 0; j < fields; j++ {
+		for j := 0; j < fCount; j++ {
 			field := batch[i][j]
+			if !cols.Contains(field.Name) {
+				// skip the data since it's the generated column
+				continue
+			}
 			if field.Value == nil {
 				fmts[c] = 1
 				vals[c] = nil
@@ -420,13 +428,12 @@ func (p *PGXSink) flushInsert(ctx context.Context) (err error) {
 		}
 	}
 
-	keys, _ := p.schema.GetTableKey(p.inserts.Schema, p.inserts.Table)
-
+	keys := info.ListKeys()
 	opt := sql.InsertOption{
 		Namespace: p.inserts.Schema,
 		Table:     p.inserts.Table,
 		Keys:      keys,
-		Fields:    batch[0],
+		Fields:    filtered,
 		Count:     len(batch),
 		PGVersion: p.pgVersion,
 	}
@@ -476,29 +483,38 @@ func (p *PGXSink) handleUpdate(ctx context.Context, m *pb.Change) (err error) {
 		return err
 	}
 
-	var keys []*pb.Field
-	var sets []*pb.Field
+	info, err := p.schema.GetColumnInfo(m.Schema, m.Table)
+	if err != nil {
+		return err
+	}
+
+	var (
+		keys []*pb.Field
+		sets []*pb.Field
+	)
 	if m.Old != nil {
 		keys = m.Old
-		sets = m.New
-	} else {
-		kf, err := p.schema.GetTableKey(m.Schema, m.Table)
-		if err != nil {
-			return err
-		}
-		keys = make([]*pb.Field, 0, len(kf))
-		sets = make([]*pb.Field, 0, len(m.New)-len(kf))
-	nextField:
+		sets = make([]*pb.Field, 0, len(m.New))
 		for _, f := range m.New {
-			for _, k := range kf {
-				if k == f.Name {
-					keys = append(keys, f)
-					continue nextField
-				}
+			fname := f.Name
+			if !info.IsGenerated(fname) {
+				sets = append(sets, f)
 			}
-			sets = append(sets, f)
+		}
+	} else {
+		ksize := info.KeyLength()
+		keys = make([]*pb.Field, 0, ksize)
+		sets = make([]*pb.Field, 0, len(m.New)-ksize)
+		for _, f := range m.New {
+			fname := f.Name
+			if info.IsKey(fname) {
+				keys = append(keys, f)
+			} else if !info.IsGenerated(fname) {
+				sets = append(sets, f)
+			}
 		}
 	}
+
 	if len(sets) == 0 || len(keys) == 0 {
 		return nil
 	}

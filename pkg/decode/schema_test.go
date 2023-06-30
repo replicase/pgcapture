@@ -108,8 +108,8 @@ func TestSchemaLoader(t *testing.T) {
 			}
 		}
 
-		if err = schema.RefreshKeys(); err != nil {
-			t.Fatalf("RefreshKeys fail: %v", err)
+		if err = schema.RefreshColumnInfo(); err != nil {
+			t.Fatalf("RefreshColumnInfo fail: %v", err)
 		}
 		for i, table := range tables {
 			keys, err := schema.GetTableKey("public", "t"+strconv.Itoa(i))

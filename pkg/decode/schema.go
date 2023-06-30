@@ -8,11 +8,76 @@ import (
 
 	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4"
+	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/sql"
 )
 
+type fieldSet struct {
+	set map[string]struct{}
+}
+
+func (s *fieldSet) Contains(f string) bool {
+	_, ok := s.set[f]
+	return ok
+}
+
+func (s *fieldSet) append(f string) {
+	s.set[f] = struct{}{}
+}
+
+func (s *fieldSet) list() []string {
+	list := make([]string, 0, len(s.set))
+	for k := range s.set {
+		list = append(list, k)
+	}
+	return list
+}
+
+func (s *fieldSet) Len() int {
+	return len(s.set)
+}
+
+type columnInfo struct {
+	keys                  *fieldSet
+	identityGeneratedList *fieldSet
+	generatedList         *fieldSet
+}
+
+func (i *columnInfo) IsGenerated(f string) bool {
+	return i.identityGeneratedList.Contains(f) || i.generatedList.Contains(f)
+}
+
+func (i *columnInfo) IsKey(f string) bool {
+	return i.keys.Contains(f)
+}
+
+func (i *columnInfo) ListKeys() []string {
+	return i.keys.list()
+}
+
+func (i *columnInfo) KeyLength() int {
+	return i.keys.Len()
+}
+
+func (i *columnInfo) Filter(fields []*pb.Field) (fieldSet, []*pb.Field) {
+	cols := make([]string, 0, len(fields))
+	fFields := make([]*pb.Field, 0, len(fields))
+	for _, f := range fields {
+		if !i.IsGenerated(f.Name) {
+			cols = append(cols, f.Name)
+			fFields = append(fFields, f)
+		}
+	}
+
+	set := fieldSet{set: make(map[string]struct{}, len(cols))}
+	for _, f := range cols {
+		set.append(f)
+	}
+	return set, fFields
+}
+
 type TypeCache map[string]map[string]map[string]uint32
-type KeysCache map[string]map[string][]string
+type KeysCache map[string]map[string]columnInfo
 
 func NewPGXSchemaLoader(conn *pgx.Conn) *PGXSchemaLoader {
 	return &PGXSchemaLoader{conn: conn, types: make(TypeCache), iKeys: make(KeysCache)}
@@ -52,7 +117,7 @@ func (p *PGXSchemaLoader) RefreshType() error {
 	return nil
 }
 
-func (p *PGXSchemaLoader) RefreshKeys() error {
+func (p *PGXSchemaLoader) RefreshColumnInfo() error {
 	rows, err := p.conn.Query(context.Background(), sql.QueryIdentityKeys)
 	if err != nil {
 		return err
@@ -67,14 +132,18 @@ func (p *PGXSchemaLoader) RefreshKeys() error {
 		}
 		tbls, ok := p.iKeys[nspname]
 		if !ok {
-			tbls = make(map[string][]string)
+			tbls = make(map[string]columnInfo)
 			p.iKeys[nspname] = tbls
 		}
-		els := make([]string, len(keys.Elements))
-		for i, e := range keys.Elements {
-			els[i] = e.String
+
+		colInfo := columnInfo{keys: &fieldSet{set: make(map[string]struct{}, len(keys.Elements))}}
+		for _, e := range keys.Elements {
+			colInfo.keys.append(e.String)
 		}
-		tbls[relname] = els
+
+		// TODO: load other column info
+
+		tbls[relname] = colInfo
 	}
 	return nil
 }
@@ -90,13 +159,24 @@ func (p *PGXSchemaLoader) GetTypeOID(namespace, table, field string) (oid uint32
 	return oid, nil
 }
 
+func (p *PGXSchemaLoader) GetColumnInfo(namespace, table string) (*columnInfo, error) {
+	if tbls, ok := p.iKeys[namespace]; !ok {
+		return nil, fmt.Errorf("%s.%s %w", namespace, table, ErrSchemaIdentityMissing)
+	} else if info, ok := tbls[table]; !ok {
+		return nil, fmt.Errorf("%s.%s %w", namespace, table, ErrSchemaIdentityMissing)
+	} else {
+		return &info, nil
+	}
+}
+
 func (p *PGXSchemaLoader) GetTableKey(namespace, table string) (keys []string, err error) {
 	if tbls, ok := p.iKeys[namespace]; !ok {
 		return nil, fmt.Errorf("%s.%s %w", namespace, table, ErrSchemaIdentityMissing)
-	} else if keys, ok = tbls[table]; !ok {
+	} else if info, ok := tbls[table]; !ok {
 		return nil, fmt.Errorf("%s.%s %w", namespace, table, ErrSchemaIdentityMissing)
+	} else {
+		return info.ListKeys(), nil
 	}
-	return keys, nil
 }
 
 func (p *PGXSchemaLoader) GetVersion() (version int64, err error) {
