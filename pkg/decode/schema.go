@@ -16,6 +16,14 @@ type fieldSet struct {
 	set map[string]struct{}
 }
 
+func newFieldSet(list pgtype.TextArray) *fieldSet {
+	s := &fieldSet{set: make(map[string]struct{}, len(list.Elements))}
+	for _, v := range list.Elements {
+		s.append(v.String)
+	}
+	return s
+}
+
 func (s *fieldSet) Contains(f string) bool {
 	_, ok := s.set[f]
 	return ok
@@ -38,13 +46,13 @@ func (s *fieldSet) Len() int {
 }
 
 type columnInfo struct {
-	keys                  *fieldSet
-	identityGeneratedList *fieldSet
-	generatedList         *fieldSet
+	keys                   *fieldSet
+	identityGenerationList *fieldSet
+	generatedList          *fieldSet
 }
 
 func (i *columnInfo) IsGenerated(f string) bool {
-	return i.identityGeneratedList.Contains(f) || i.generatedList.Contains(f)
+	return i.identityGenerationList.Contains(f) || i.generatedList.Contains(f)
 }
 
 func (i *columnInfo) IsKey(f string) bool {
@@ -126,8 +134,12 @@ func (p *PGXSchemaLoader) RefreshColumnInfo() error {
 
 	var nspname, relname string
 	for rows.Next() {
-		var keys pgtype.TextArray
-		if err := rows.Scan(&nspname, &relname, &keys); err != nil {
+		var (
+			keys                      pgtype.TextArray
+			identityGenerationColumns pgtype.TextArray
+			generatedColumns          pgtype.TextArray
+		)
+		if err := rows.Scan(&nspname, &relname, &keys, &identityGenerationColumns, &generatedColumns); err != nil {
 			return err
 		}
 		tbls, ok := p.iKeys[nspname]
@@ -136,14 +148,11 @@ func (p *PGXSchemaLoader) RefreshColumnInfo() error {
 			p.iKeys[nspname] = tbls
 		}
 
-		colInfo := columnInfo{keys: &fieldSet{set: make(map[string]struct{}, len(keys.Elements))}}
-		for _, e := range keys.Elements {
-			colInfo.keys.append(e.String)
+		tbls[relname] = columnInfo{
+			keys:                   newFieldSet(keys),
+			identityGenerationList: newFieldSet(identityGenerationColumns),
+			generatedList:          newFieldSet(generatedColumns),
 		}
-
-		// TODO: load other column info
-
-		tbls[relname] = colInfo
 	}
 	return nil
 }
