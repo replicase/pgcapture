@@ -34,6 +34,10 @@ func (s *fieldSet) append(f string) {
 }
 
 func (s *fieldSet) list() []string {
+	if s == nil {
+		return []string{}
+	}
+
 	list := make([]string, 0, len(s.set))
 	for k := range s.set {
 		list = append(list, k)
