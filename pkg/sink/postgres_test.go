@@ -64,7 +64,13 @@ func TestPGXSink(t *testing.T) {
 		Message:    &pb.Message{Type: &pb.Message_Begin{Begin: &pb.Begin{}}},
 	}
 
-	doTx := func(chs []*pb.Change) {
+	type task struct {
+		chs    []*pb.Change
+		verify func(t *testing.T)
+	}
+
+	doTx := func(opt task) {
+		chs := opt.chs
 		now = now.Add(time.Second)
 		ts := now.Unix()*1000000 + int64(now.Nanosecond())/1000 - microsecFromUnixEpochToY2K
 		lsn++
@@ -95,82 +101,158 @@ func TestPGXSink(t *testing.T) {
 		if sink.ReplicationLagMilliseconds() == -1 {
 			t.Fatalf("replicaition lag should not be -1")
 		}
+
+		if opt.verify != nil {
+			opt.verify(t)
+		}
 	}
 
-	doTx([]*pb.Change{{
-		Op:     pb.Change_INSERT,
-		Schema: decode.ExtensionSchema,
-		Table:  decode.ExtensionDDLLogs,
-		New: []*pb.Field{
-			{Name: "query", Value: &pb.Field_Binary{Binary: []byte(`create table t3 (f1 int, f2 int, f3 text, primary key(f1, f2))`)}},
-			{Name: "tags", Value: &pb.Field_Binary{Binary: tags("CREATE TABLE")}},
-		},
-	}})
+	doTx(task{
+		chs: []*pb.Change{{
+			Op:     pb.Change_INSERT,
+			Schema: decode.ExtensionSchema,
+			Table:  decode.ExtensionDDLLogs,
+			New: []*pb.Field{
+				{Name: "query", Value: &pb.Field_Binary{Binary: []byte(`create table t3 (f1 int, f2 int, f3 text, primary key(f1, f2))`)}},
+				{Name: "tags", Value: &pb.Field_Binary{Binary: tags("CREATE TABLE")}},
+			},
+		}},
+	})
 
-	doTx([]*pb.Change{{
-		Op:     pb.Change_INSERT,
-		Schema: "public",
-		Table:  "t3",
-		New: []*pb.Field{
-			{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 1}}},
-			{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 1}}},
-			{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'A'}}},
+	doTx(task{
+		chs: []*pb.Change{{
+			Op:     pb.Change_INSERT,
+			Schema: "public",
+			Table:  "t3",
+			New: []*pb.Field{
+				{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 1}}},
+				{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 1}}},
+				{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'A'}}},
+			},
+		}},
+		verify: func(t *testing.T) {
+			var f3 string
+			err := conn.QueryRow(ctx, "select f3 from t3 where f1 = $1 and f2 = $2", 1, 1).Scan(&f3)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if f3 != "A" {
+				t.Fatalf("unexpected f3 %v", f3)
+			}
 		},
-	}})
+	})
 
-	doTx([]*pb.Change{{
-		Op:     pb.Change_UPDATE,
-		Schema: "public",
-		Table:  "t3",
-		New: []*pb.Field{
-			{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 1}}},
-			{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 1}}},
-			{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'B'}}},
+	doTx(task{
+		chs: []*pb.Change{{
+			Op:     pb.Change_UPDATE,
+			Schema: "public",
+			Table:  "t3",
+			New: []*pb.Field{
+				{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 1}}},
+				{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 1}}},
+				{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'B'}}},
+			},
+		}},
+		verify: func(t *testing.T) {
+			var f3 string
+			err := conn.QueryRow(ctx, "select f3 from t3 where f1 = $1 and f2 = $2", 1, 1).Scan(&f3)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if f3 != "B" {
+				t.Fatalf("unexpected f3 %v", f3)
+			}
 		},
-	}})
+	})
 
 	// update with key changes
-	doTx([]*pb.Change{{
-		Op:     pb.Change_UPDATE,
-		Schema: "public",
-		Table:  "t3",
-		New: []*pb.Field{
-			{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 2}}},
-			{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 3}}},
-			{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'B'}}},
+	doTx(task{
+		chs: []*pb.Change{{
+			Op:     pb.Change_UPDATE,
+			Schema: "public",
+			Table:  "t3",
+			New: []*pb.Field{
+				{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 2}}},
+				{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 3}}},
+				{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'B'}}},
+			},
+			Old: []*pb.Field{
+				{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 1}}},
+				{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 1}}},
+			},
+		}},
+		verify: func(t *testing.T) {
+			var f3 string
+			err := conn.QueryRow(ctx, "select f3 from t3 where f1 = $1 and f2 = $2", 2, 3).Scan(&f3)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if f3 != "B" {
+				t.Fatalf("unexpected f3 %v", f3)
+			}
+
+			var count int
+			err = conn.QueryRow(ctx, "select count(1) from t3 where f1 = $1 and f2 = $2", 1, 1).Scan(&count)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if count != 0 {
+				t.Fatalf("unexpected count %v", count)
+			}
 		},
-		Old: []*pb.Field{
-			{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 1}}},
-			{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 1}}},
-		},
-	}})
+	})
 
 	// handle select create case
-	doTx([]*pb.Change{{
-		Op:     pb.Change_INSERT,
-		Schema: decode.ExtensionSchema,
-		Table:  decode.ExtensionDDLLogs,
-		New:    []*pb.Field{{Name: "query", Value: &pb.Field_Binary{Binary: []byte(`select * into t4 from t3`)}}, {Name: "tags", Value: &pb.Field_Binary{Binary: tags("SELECT INTO")}}},
-	}, { // the data change after select create should be ignored
-		Op:     pb.Change_INSERT,
-		Schema: "public",
-		Table:  "t4",
-		New: []*pb.Field{
-			{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 2}}},
-			{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 3}}},
-			{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'B'}}},
+	doTx(task{
+		chs: []*pb.Change{{
+			Op:     pb.Change_INSERT,
+			Schema: decode.ExtensionSchema,
+			Table:  decode.ExtensionDDLLogs,
+			New:    []*pb.Field{{Name: "query", Value: &pb.Field_Binary{Binary: []byte(`select * into t4 from t3`)}}, {Name: "tags", Value: &pb.Field_Binary{Binary: tags("SELECT INTO")}}},
+		}, { // the data change after select create should be ignored
+			Op:     pb.Change_INSERT,
+			Schema: "public",
+			Table:  "t4",
+			New: []*pb.Field{
+				{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 2}}},
+				{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 3}}},
+				{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'X'}}},
+			},
+		}},
+		verify: func(t *testing.T) {
+			var f3 string
+			err := conn.QueryRow(ctx, "select f3 from t4 where f1 = $1 and f2 = $2", 2, 3).Scan(&f3)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if f3 != "B" {
+				// the value should not be updated
+				t.Fatalf("unexpected f3 %v", f3)
+			}
 		},
-	}})
+	})
 
-	doTx([]*pb.Change{{
-		Op:     pb.Change_DELETE,
-		Schema: "public",
-		Table:  "t3",
-		Old: []*pb.Field{
-			{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 2}}},
-			{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 3}}},
+	doTx(task{
+		chs: []*pb.Change{{
+			Op:     pb.Change_DELETE,
+			Schema: "public",
+			Table:  "t3",
+			Old: []*pb.Field{
+				{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 2}}},
+				{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 3}}},
+			},
+		}},
+		verify: func(t *testing.T) {
+			var count int
+			err := conn.QueryRow(ctx, "select count(1) from t3 where f1 = $1 and f2 = $2", 2, 3).Scan(&count)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if count != 0 {
+				t.Fatalf("unexpected count %v", count)
+			}
 		},
-	}})
+	})
 
 	sink.Stop()
 
