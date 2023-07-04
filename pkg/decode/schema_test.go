@@ -119,7 +119,13 @@ func TestSchemaLoader(t *testing.T) {
 				}
 			}
 
-			for _, c := range append(table.identityGenerations, table.generated...) {
+			for _, c := range table.identityGenerations {
+				if !info.IsIdentityGeneration(c) {
+					t.Fatalf("The column: %s should be identity generated", c)
+				}
+			}
+
+			for _, c := range table.generated {
 				if !info.IsGenerated(c) {
 					t.Fatalf("The column: %s should be generated", c)
 				}

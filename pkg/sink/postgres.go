@@ -393,7 +393,9 @@ func (p *PGXSink) flushInsert(ctx context.Context) (err error) {
 	}
 
 	info, _ := p.schema.GetColumnInfo(p.inserts.Schema, p.inserts.Table)
-	cols, filtered := info.Filter(batch[0])
+	cols, filtered := info.Filter(batch[0], func(i *decode.ColumnInfo, field string) bool {
+		return !i.IsGenerated(field)
+	})
 
 	fCount := len(filtered)
 	rets := make([]int16, fCount)
@@ -405,7 +407,7 @@ func (p *PGXSink) flushInsert(ctx context.Context) (err error) {
 	oids := make([]uint32, fCount*len(batch))
 	c := 0
 	for i := 0; i < len(batch); i++ {
-		for j := 0; j < fCount; j++ {
+		for j := 0; j < len(batch[0]); j++ {
 			field := batch[i][j]
 			if !cols.Contains(field.Name) {
 				// skip the data since it's the generated column
@@ -494,13 +496,9 @@ func (p *PGXSink) handleUpdate(ctx context.Context, m *pb.Change) (err error) {
 	)
 	if m.Old != nil {
 		keys = m.Old
-		sets = make([]*pb.Field, 0, len(m.New))
-		for _, f := range m.New {
-			fname := f.Name
-			if !info.IsGenerated(fname) {
-				sets = append(sets, f)
-			}
-		}
+		_, sets = info.Filter(m.New, func(i *decode.ColumnInfo, field string) bool {
+			return !i.IsGenerated(field) && !i.IsIdentityGeneration(field)
+		})
 	} else {
 		ksize := info.KeyLength()
 		keys = make([]*pb.Field, 0, ksize)
@@ -509,7 +507,7 @@ func (p *PGXSink) handleUpdate(ctx context.Context, m *pb.Change) (err error) {
 			fname := f.Name
 			if info.IsKey(fname) {
 				keys = append(keys, f)
-			} else if !info.IsGenerated(fname) {
+			} else if !info.IsGenerated(fname) && !info.IsIdentityGeneration(fname) {
 				sets = append(sets, f)
 			}
 		}
@@ -543,20 +541,20 @@ func (p *PGXSink) handleUpdate(ctx context.Context, m *pb.Change) (err error) {
 	}
 
 	for i := 0; i < len(keys); i++ {
-		j = i + j
+		k := i + j
 		field := keys[i]
 		if field.Value == nil {
-			fmts[j] = 1
-			vals[j] = nil
-			oids[j] = field.Oid
+			fmts[k] = 1
+			vals[k] = nil
+			oids[k] = field.Oid
 		} else if value, ok := field.Value.(*pb.Field_Binary); ok {
-			fmts[j] = 1
-			vals[j] = value.Binary
-			oids[j] = field.Oid
+			fmts[k] = 1
+			vals[k] = value.Binary
+			oids[k] = field.Oid
 		} else {
-			fmts[j] = 0
-			vals[j] = []byte(field.GetText())
-			oids[j] = 0
+			fmts[k] = 0
+			vals[k] = []byte(field.GetText())
+			oids[k] = 0
 		}
 	}
 

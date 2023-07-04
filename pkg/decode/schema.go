@@ -25,6 +25,9 @@ func newFieldSet(list pgtype.TextArray) *fieldSet {
 }
 
 func (s *fieldSet) Contains(f string) bool {
+	if s == nil {
+		return false
+	}
 	_, ok := s.set[f]
 	return ok
 }
@@ -49,33 +52,45 @@ func (s *fieldSet) Len() int {
 	return len(s.set)
 }
 
-type columnInfo struct {
+type ColumnInfo struct {
 	keys                   *fieldSet
 	identityGenerationList *fieldSet
 	generatedList          *fieldSet
 }
 
-func (i *columnInfo) IsGenerated(f string) bool {
-	return i.identityGenerationList.Contains(f) || i.generatedList.Contains(f)
+func (i *ColumnInfo) IsGenerated(f string) bool {
+	return i.generatedList.Contains(f)
 }
 
-func (i *columnInfo) IsKey(f string) bool {
+func (i *ColumnInfo) IsIdentityGeneration(f string) bool {
+	return i.identityGenerationList.Contains(f)
+}
+
+func (i *ColumnInfo) IsKey(f string) bool {
 	return i.keys.Contains(f)
 }
 
-func (i *columnInfo) ListKeys() []string {
+func (i *ColumnInfo) ListKeys() []string {
+	if i == nil {
+		return []string{}
+	}
 	return i.keys.list()
 }
 
-func (i *columnInfo) KeyLength() int {
+func (i *ColumnInfo) KeyLength() int {
 	return i.keys.Len()
 }
 
-func (i *columnInfo) Filter(fields []*pb.Field) (fieldSet, []*pb.Field) {
+type fieldSelector func(i *ColumnInfo, field string) bool
+
+func (i *ColumnInfo) Filter(fields []*pb.Field, fieldSelector fieldSelector) (fieldSet, []*pb.Field) {
+	if i == nil {
+		return fieldSet{}, fields
+	}
 	cols := make([]string, 0, len(fields))
 	fFields := make([]*pb.Field, 0, len(fields))
 	for _, f := range fields {
-		if !i.IsGenerated(f.Name) {
+		if fieldSelector(i, f.Name) {
 			cols = append(cols, f.Name)
 			fFields = append(fFields, f)
 		}
@@ -89,7 +104,7 @@ func (i *columnInfo) Filter(fields []*pb.Field) (fieldSet, []*pb.Field) {
 }
 
 type TypeCache map[string]map[string]map[string]uint32
-type KeysCache map[string]map[string]columnInfo
+type KeysCache map[string]map[string]ColumnInfo
 
 func NewPGXSchemaLoader(conn *pgx.Conn) *PGXSchemaLoader {
 	return &PGXSchemaLoader{conn: conn, types: make(TypeCache), iKeys: make(KeysCache)}
@@ -148,11 +163,11 @@ func (p *PGXSchemaLoader) RefreshColumnInfo() error {
 		}
 		tbls, ok := p.iKeys[nspname]
 		if !ok {
-			tbls = make(map[string]columnInfo)
+			tbls = make(map[string]ColumnInfo)
 			p.iKeys[nspname] = tbls
 		}
 
-		tbls[relname] = columnInfo{
+		tbls[relname] = ColumnInfo{
 			keys:                   newFieldSet(keys),
 			identityGenerationList: newFieldSet(identityGenerationColumns),
 			generatedList:          newFieldSet(generatedColumns),
@@ -172,7 +187,7 @@ func (p *PGXSchemaLoader) GetTypeOID(namespace, table, field string) (oid uint32
 	return oid, nil
 }
 
-func (p *PGXSchemaLoader) GetColumnInfo(namespace, table string) (*columnInfo, error) {
+func (p *PGXSchemaLoader) GetColumnInfo(namespace, table string) (*ColumnInfo, error) {
 	if tbls, ok := p.iKeys[namespace]; !ok {
 		return nil, fmt.Errorf("%s.%s %w", namespace, table, ErrSchemaIdentityMissing)
 	} else if info, ok := tbls[table]; !ok {

@@ -46,11 +46,11 @@ func UpdateQuery(namespace, table string, sets, keys []*pb.Field) string {
 	query.WriteString(" where \"")
 
 	for i := 0; i < len(keys); i++ {
-		j = i + j
+		k := i + j
 		field := keys[i]
 
 		query.WriteString(field.Name)
-		query.WriteString("\"=$" + strconv.Itoa(j+1))
+		query.WriteString("\"=$" + strconv.Itoa(k+1))
 		if i != len(keys)-1 {
 			query.WriteString(" and \"")
 		}

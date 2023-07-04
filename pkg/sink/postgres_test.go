@@ -254,6 +254,102 @@ func TestPGXSink(t *testing.T) {
 		},
 	})
 
+	doTx(task{
+		chs: []*pb.Change{{
+			Op:     pb.Change_INSERT,
+			Schema: decode.ExtensionSchema,
+			Table:  decode.ExtensionDDLLogs,
+			New: []*pb.Field{
+				{Name: "query", Value: &pb.Field_Binary{Binary: []byte(`create table t5 (f1 int generated always as identity primary key, f2 int, f3 text)`)}},
+				{Name: "tags", Value: &pb.Field_Binary{Binary: tags("CREATE TABLE")}},
+			},
+		}},
+	})
+
+	doTx(task{
+		chs: []*pb.Change{{
+			Op:     pb.Change_INSERT,
+			Schema: "public",
+			Table:  "t5",
+			New: []*pb.Field{
+				{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 20}}},
+				{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 20}}},
+				{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'D'}}},
+			},
+		}},
+		verify: func(t *testing.T) {
+			var (
+				f2 int
+				f3 string
+			)
+			// should override the system value for generated identity column f1
+			err := conn.QueryRow(ctx, "select f2, f3 from t5 where f1 = $1", 20).Scan(&f2, &f3)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if f2 != 20 || f3 != "D" {
+				t.Fatalf("unexpected value for (f2, f3): (%v, %v)", f2, f3)
+			}
+		},
+	})
+
+	doTx(task{
+		chs: []*pb.Change{{
+			Op:     pb.Change_UPDATE,
+			Schema: "public",
+			Table:  "t5",
+			New: []*pb.Field{
+				{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 20}}},
+				{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 21}}},
+				{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'E'}}},
+			},
+		}},
+		verify: func(t *testing.T) {
+			var (
+				f2 int
+				f3 string
+			)
+			err := conn.QueryRow(ctx, "select f2, f3 from t5 where f1 = $1", 20).Scan(&f2, &f3)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if f2 != 21 || f3 != "E" {
+				t.Fatalf("unexpected value for (f2, f3): (%v, %v)", f2, f3)
+			}
+		},
+	})
+
+	doTx(task{
+		chs: []*pb.Change{{
+			Op:     pb.Change_UPDATE,
+			Schema: "public",
+			Table:  "t5",
+			Old: []*pb.Field{
+				{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 20}}},
+				{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 21}}},
+				{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'E'}}},
+			},
+			New: []*pb.Field{
+				{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 20}}},
+				{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 22}}},
+				{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'F'}}},
+			},
+		}},
+		verify: func(t *testing.T) {
+			var (
+				f2 int
+				f3 string
+			)
+			err := conn.QueryRow(ctx, "select f2, f3 from t5 where f1 = $1", 20).Scan(&f2, &f3)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if f2 != 22 || f3 != "F" {
+				t.Fatalf("unexpected value for (f2, f3): (%v, %v)", f2, f3)
+			}
+		},
+	})
+
 	sink.Stop()
 
 	// test restart checkpoint
