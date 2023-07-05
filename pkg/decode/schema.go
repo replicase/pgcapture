@@ -16,31 +16,24 @@ type fieldSet struct {
 	set map[string]struct{}
 }
 
-func newFieldSet(list pgtype.TextArray) *fieldSet {
-	s := &fieldSet{set: make(map[string]struct{}, len(list.Elements))}
+func fieldSetWithList(list pgtype.TextArray) fieldSet {
+	s := fieldSet{set: make(map[string]struct{}, len(list.Elements))}
 	for _, v := range list.Elements {
 		s.append(v.String)
 	}
 	return s
 }
 
-func (s *fieldSet) Contains(f string) bool {
-	if s == nil {
-		return false
-	}
+func (s fieldSet) Contains(f string) bool {
 	_, ok := s.set[f]
 	return ok
 }
 
-func (s *fieldSet) append(f string) {
+func (s fieldSet) append(f string) {
 	s.set[f] = struct{}{}
 }
 
-func (s *fieldSet) list() []string {
-	if s == nil {
-		return []string{}
-	}
-
+func (s fieldSet) list() []string {
 	list := make([]string, 0, len(s.set))
 	for k := range s.set {
 		list = append(list, k)
@@ -48,43 +41,44 @@ func (s *fieldSet) list() []string {
 	return list
 }
 
-func (s *fieldSet) Len() int {
+func (s fieldSet) Len() int {
 	return len(s.set)
 }
 
 type ColumnInfo struct {
-	keys                   *fieldSet
-	identityGenerationList *fieldSet
-	generatedList          *fieldSet
+	keys                   fieldSet
+	identityGenerationList fieldSet
+	generatedList          fieldSet
 }
 
-func (i *ColumnInfo) IsGenerated(f string) bool {
+func (i ColumnInfo) IsGenerated(f string) bool {
 	return i.generatedList.Contains(f)
 }
 
-func (i *ColumnInfo) IsIdentityGeneration(f string) bool {
+func (i ColumnInfo) IsIdentityGeneration(f string) bool {
 	return i.identityGenerationList.Contains(f)
 }
 
-func (i *ColumnInfo) IsKey(f string) bool {
+func (i ColumnInfo) IsKey(f string) bool {
 	return i.keys.Contains(f)
 }
 
-func (i *ColumnInfo) ListKeys() []string {
-	if i == nil {
-		return []string{}
-	}
+func (i ColumnInfo) ListKeys() []string {
 	return i.keys.list()
 }
 
-func (i *ColumnInfo) KeyLength() int {
+func (i ColumnInfo) KeyLength() int {
 	return i.keys.Len()
 }
 
-type fieldSelector func(i *ColumnInfo, field string) bool
+func (i ColumnInfo) isEmpty() bool {
+	return i.keys.Len() == 0 && i.generatedList.Len() == 0 && i.identityGenerationList.Len() == 0
+}
 
-func (i *ColumnInfo) Filter(fields []*pb.Field, fieldSelector fieldSelector) (fieldSet, []*pb.Field) {
-	if i == nil {
+type fieldSelector func(i ColumnInfo, field string) bool
+
+func (i ColumnInfo) Filter(fields []*pb.Field, fieldSelector fieldSelector) (fieldSet, []*pb.Field) {
+	if i.isEmpty() {
 		return fieldSet{}, fields
 	}
 	cols := make([]string, 0, len(fields))
@@ -168,9 +162,9 @@ func (p *PGXSchemaLoader) RefreshColumnInfo() error {
 		}
 
 		tbls[relname] = ColumnInfo{
-			keys:                   newFieldSet(keys),
-			identityGenerationList: newFieldSet(identityGenerationColumns),
-			generatedList:          newFieldSet(generatedColumns),
+			keys:                   fieldSetWithList(keys),
+			identityGenerationList: fieldSetWithList(identityGenerationColumns),
+			generatedList:          fieldSetWithList(generatedColumns),
 		}
 	}
 	return nil

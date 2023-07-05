@@ -393,7 +393,7 @@ func (p *PGXSink) flushInsert(ctx context.Context) (err error) {
 	}
 
 	info, _ := p.schema.GetColumnInfo(p.inserts.Schema, p.inserts.Table)
-	cols, filtered := info.Filter(batch[0], func(i *decode.ColumnInfo, field string) bool {
+	cols, filtered := info.Filter(batch[0], func(i decode.ColumnInfo, field string) bool {
 		return !i.IsGenerated(field)
 	})
 
@@ -496,7 +496,7 @@ func (p *PGXSink) handleUpdate(ctx context.Context, m *pb.Change) (err error) {
 	)
 	if m.Old != nil {
 		keys = m.Old
-		_, sets = info.Filter(m.New, func(i *decode.ColumnInfo, field string) bool {
+		_, sets = info.Filter(m.New, func(i decode.ColumnInfo, field string) bool {
 			return !i.IsGenerated(field) && !i.IsIdentityGeneration(field)
 		})
 	} else {
