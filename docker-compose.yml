@@ -1,25 +1,25 @@
 version: "3.8"
+
+x-common-pg: &common-pg
+  build: hack/postgres
+  ports:
+    - "5432:5432"
+  command: [ "postgres", "-c", "config_file=/pgc/postgresql.conf", "-c","hba_file=/pgc/pg_hba.conf" ]
+  environment:
+    POSTGRES_HOST_AUTH_METHOD: trust
+  volumes:
+    - ./hack/postgres:/pgc
+
 services:
   pg_11:
-    build: hack/postgres
+    <<: *common-pg
     image: rueian/postgres:11-logical
-    ports:
-      - "5432:5432"
-    command: ["postgres", "-c", "config_file=/pgc/postgresql.conf", "-c","hba_file=/pgc/pg_hba.conf"]
-    environment:
-      POSTGRES_HOST_AUTH_METHOD: trust
-    volumes:
-      - ./hack/postgres:/pgc
   pg_12:
-    build: hack/postgres
+    <<: *common-pg
     image: dcard/postgres:12-logical
-    ports:
-      - "5432:5432"
-    command: [ "postgres", "-c", "config_file=/pgc/postgresql.conf", "-c","hba_file=/pgc/pg_hba.conf" ]
-    environment:
-      POSTGRES_HOST_AUTH_METHOD: trust
-    volumes:
-      - ./hack/postgres:/pgc
+  pg_13:
+    <<: *common-pg
+    image: dcard/postgres:13-logical
   pulsar:
     image: apachepulsar/pulsar:2.10.4
     command: ["bin/pulsar", "standalone"]

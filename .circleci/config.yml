@@ -38,9 +38,16 @@ jobs:
       - checkout
       - test-with-pg:
           version: 12
+  test-pg-13:
+    executor: default
+    steps:
+      - checkout
+      - test-with-pg:
+          version: 13
 
 workflows:
   test:
     jobs:
       - test-pg-11
       - test-pg-12
+      - test-pg-13
