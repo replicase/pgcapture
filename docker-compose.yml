@@ -1,11 +1,21 @@
 version: "3.8"
 services:
-  pg:
+  pg_11:
     build: hack/postgres
     image: rueian/postgres:11-logical
     ports:
       - "5432:5432"
     command: ["postgres", "-c", "config_file=/pgc/postgresql.conf", "-c","hba_file=/pgc/pg_hba.conf"]
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - ./hack/postgres:/pgc
+  pg_12:
+    build: hack/postgres
+    image: dcard/postgres:12-logical
+    ports:
+      - "5432:5432"
+    command: [ "postgres", "-c", "config_file=/pgc/postgresql.conf", "-c","hba_file=/pgc/pg_hba.conf" ]
     environment:
       POSTGRES_HOST_AUTH_METHOD: trust
     volumes:

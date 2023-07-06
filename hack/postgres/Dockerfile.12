@@ -1,4 +1,5 @@
-FROM postgres:12-alpine
+FROM --platform=$TARGETPLATFORM postgres:12-alpine
+ARG TARGETPLATFORM
 
 RUN wget https://github.com/rueian/pglogical/archive/REL2_3_4_no_filter.tar.gz && \
     tar -zxvf REL2_3_4_no_filter.tar.gz && \
