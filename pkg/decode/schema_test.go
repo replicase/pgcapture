@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v4"
+	"github.com/rueian/pgcapture/pkg/sql"
 )
 
 func TestSchemaLoader(t *testing.T) {
@@ -63,6 +64,16 @@ func TestSchemaLoader(t *testing.T) {
 	})
 
 	t.Run("GetColumnInfo", func(t *testing.T) {
+		var sv string
+		if err = conn.QueryRow(ctx, sql.ServerVersionNum).Scan(&sv); err != nil {
+			t.Fatal(err)
+		}
+
+		pgVersion, err := strconv.ParseInt(sv, 10, 64)
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		tables := []tableFixture{
 			{
 				// empty
@@ -81,14 +92,20 @@ func TestSchemaLoader(t *testing.T) {
 				primary:             []string{"a"},
 				identityGenerations: []string{"a"},
 			},
-			// TODO: what for the supports for pg12 and above
-			//{
-			//	primary:   []string{"a"},
-			//	generated: []string{"b", "c"},
-			//},
+			{
+				primary:   []string{"a"},
+				generated: []string{"b", "c"},
+				// since the generated column supported by pg12 or above
+				minVer: 120000,
+			},
 		}
 
 		for i, table := range tables {
+			if pgVersion < table.minVer {
+				fmt.Printf("skip table t%d due to pg version %d\n", i, pgVersion)
+				continue
+			}
+
 			if err = table.create(ctx, conn, i); err != nil {
 				t.Fatal(err)
 			}
@@ -99,6 +116,10 @@ func TestSchemaLoader(t *testing.T) {
 		}
 
 		for i, table := range tables {
+			if pgVersion < table.minVer {
+				continue
+			}
+
 			info, err := schema.GetColumnInfo("public", "t"+strconv.Itoa(i))
 			if len(table.primary) == 0 && len(table.uniques) == 0 && len(table.identityGenerations) == 0 {
 				// the empty table: should get the schema identity missing error
@@ -148,6 +169,7 @@ type tableFixture struct {
 	uniques             []string
 	identityGenerations []string
 	generated           []string
+	minVer              int64
 }
 
 func (t tableFixture) create(ctx context.Context, conn *pgx.Conn, tag int) (err error) {
@@ -193,8 +215,6 @@ func (t tableFixture) create(ctx context.Context, conn *pgx.Conn, tag int) (err 
 			return
 		}
 	}
-
-	// TODO: handle the identity generation columns
 
 	return
 }
