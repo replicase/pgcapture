@@ -38,17 +38,18 @@ type PGXSink struct {
 	Renice    int64
 	LogReader io.Reader
 
-	conn    *pgx.Conn
-	raw     *pgconn.PgConn
-	schema  *decode.PGXSchemaLoader
-	log     *logrus.Entry
-	prev    cursor.Checkpoint
-	pgSrcID pgtype.Text
-	replLag int64
-	inTX    bool
-	skip    map[string]bool
-	inserts insertBatch
-	prevDDL uint32
+	conn      *pgx.Conn
+	raw       *pgconn.PgConn
+	schema    *decode.PGXSchemaLoader
+	log       *logrus.Entry
+	prev      cursor.Checkpoint
+	pgSrcID   pgtype.Text
+	pgVersion int64
+	replLag   int64
+	inTX      bool
+	skip      map[string]bool
+	inserts   insertBatch
+	prevDDL   uint32
 }
 
 type insertBatch struct {
@@ -108,7 +109,12 @@ func (p *PGXSink) Setup() (cp cursor.Checkpoint, err error) {
 	}
 
 	p.schema = decode.NewPGXSchemaLoader(p.conn)
-	if err = p.schema.RefreshKeys(); err != nil {
+	if err = p.schema.RefreshColumnInfo(); err != nil {
+		return cp, err
+	}
+
+	p.pgVersion, err = p.schema.GetVersion()
+	if err != nil {
 		return cp, err
 	}
 
@@ -375,7 +381,7 @@ func (p *PGXSink) performDDL(count int, ddl string) (err error) {
 		}
 	}
 	if err == nil {
-		err = p.schema.RefreshKeys()
+		err = p.schema.RefreshColumnInfo()
 	}
 	return
 }
@@ -385,18 +391,28 @@ func (p *PGXSink) flushInsert(ctx context.Context) (err error) {
 	if len(batch) == 0 {
 		return nil
 	}
-	fields := len(batch[0])
-	rets := make([]int16, fields)
-	for i := 0; i < fields; i++ {
+
+	info, _ := p.schema.GetColumnInfo(p.inserts.Schema, p.inserts.Table)
+	cols, filtered := info.Filter(batch[0], func(i decode.ColumnInfo, field string) bool {
+		return !i.IsGenerated(field)
+	})
+
+	fCount := len(filtered)
+	rets := make([]int16, fCount)
+	for i := 0; i < fCount; i++ {
 		rets[i] = 1
 	}
-	fmts := make([]int16, fields*len(batch))
-	vals := make([][]byte, fields*len(batch))
-	oids := make([]uint32, fields*len(batch))
+	fmts := make([]int16, fCount*len(batch))
+	vals := make([][]byte, fCount*len(batch))
+	oids := make([]uint32, fCount*len(batch))
 	c := 0
 	for i := 0; i < len(batch); i++ {
-		for j := 0; j < fields; j++ {
+		for j := 0; j < len(batch[0]); j++ {
 			field := batch[i][j]
+			if !cols.Contains(field.Name) {
+				// skip the data since it's the generated column
+				continue
+			}
 			if field.Value == nil {
 				fmts[c] = 1
 				vals[c] = nil
@@ -414,9 +430,16 @@ func (p *PGXSink) flushInsert(ctx context.Context) (err error) {
 		}
 	}
 
-	keys, _ := p.schema.GetTableKey(p.inserts.Schema, p.inserts.Table)
-
-	return p.raw.ExecParams(ctx, sql.InsertQuery(p.inserts.Schema, p.inserts.Table, keys, batch[0], len(batch)), vals, oids, fmts, rets).Read().Err
+	keys := info.ListKeys()
+	opt := sql.InsertOption{
+		Namespace: p.inserts.Schema,
+		Table:     p.inserts.Table,
+		Keys:      keys,
+		Fields:    filtered,
+		Count:     len(batch),
+		PGVersion: p.pgVersion,
+	}
+	return p.raw.ExecParams(ctx, sql.InsertQuery(opt), vals, oids, fmts, rets).Read().Err
 }
 
 func (p *PGXSink) handleInsert(ctx context.Context, m *pb.Change) (err error) {
@@ -462,29 +485,34 @@ func (p *PGXSink) handleUpdate(ctx context.Context, m *pb.Change) (err error) {
 		return err
 	}
 
-	var keys []*pb.Field
-	var sets []*pb.Field
+	info, err := p.schema.GetColumnInfo(m.Schema, m.Table)
+	if err != nil {
+		return err
+	}
+
+	var (
+		keys []*pb.Field
+		sets []*pb.Field
+	)
 	if m.Old != nil {
 		keys = m.Old
-		sets = m.New
+		_, sets = info.Filter(m.New, func(i decode.ColumnInfo, field string) bool {
+			return !i.IsGenerated(field) && !i.IsIdentityGeneration(field)
+		})
 	} else {
-		kf, err := p.schema.GetTableKey(m.Schema, m.Table)
-		if err != nil {
-			return err
-		}
-		keys = make([]*pb.Field, 0, len(kf))
-		sets = make([]*pb.Field, 0, len(m.New)-len(kf))
-	nextField:
+		ksize := info.KeyLength()
+		keys = make([]*pb.Field, 0, ksize)
+		sets = make([]*pb.Field, 0, len(m.New)-ksize)
 		for _, f := range m.New {
-			for _, k := range kf {
-				if k == f.Name {
-					keys = append(keys, f)
-					continue nextField
-				}
+			fname := f.Name
+			if info.IsKey(fname) {
+				keys = append(keys, f)
+			} else if !info.IsGenerated(fname) && !info.IsIdentityGeneration(fname) {
+				sets = append(sets, f)
 			}
-			sets = append(sets, f)
 		}
 	}
+
 	if len(sets) == 0 || len(keys) == 0 {
 		return nil
 	}
@@ -513,20 +541,20 @@ func (p *PGXSink) handleUpdate(ctx context.Context, m *pb.Change) (err error) {
 	}
 
 	for i := 0; i < len(keys); i++ {
-		j = i + j
+		k := i + j
 		field := keys[i]
 		if field.Value == nil {
-			fmts[j] = 1
-			vals[j] = nil
-			oids[j] = field.Oid
+			fmts[k] = 1
+			vals[k] = nil
+			oids[k] = field.Oid
 		} else if value, ok := field.Value.(*pb.Field_Binary); ok {
-			fmts[j] = 1
-			vals[j] = value.Binary
-			oids[j] = field.Oid
+			fmts[k] = 1
+			vals[k] = value.Binary
+			oids[k] = field.Oid
 		} else {
-			fmts[j] = 0
-			vals[j] = []byte(field.GetText())
-			oids[j] = 0
+			fmts[k] = 0
+			vals[k] = []byte(field.GetText())
+			oids[k] = 0
 		}
 	}
 

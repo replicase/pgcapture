@@ -29,7 +29,7 @@ A scalable Netflix DBLog implementation for PostgreSQL
 * pglogical postgresql extension
 * pgcapture postgresql extension
 
-See [./hack/postgres/Dockerfile](./hack/postgres/Dockerfile) for installation guide.
+See [./hack/postgres/Dockerfile](./hack/postgres/Dockerfile.11) for installation guide.
   
 ## Consume changes with Golang
 

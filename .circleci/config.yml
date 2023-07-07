@@ -1,12 +1,21 @@
-version: 2
-jobs:
-  build:
+version: 2.1
+
+
+executors:
+  default:
     machine:
       image: ubuntu-2004:202010-01
+
+commands:
+  test-with-pg:
+    parameters:
+      version:
+        type: integer
+        default: 11
     steps:
-      - checkout
-      - run: docker-compose pull pg
-      - run: docker-compose up -d --no-build
+      - run: docker-compose pull pg_<< parameters.version >>
+      - run: docker-compose up -d --no-build pulsar
+      - run: docker-compose up -d --no-build pg_<< parameters.version >>
       - run: curl -L https://golang.org/dl/go1.20.linux-amd64.tar.gz > /tmp/go1.20.linux-amd64.tar.gz
       - run: tar -C /tmp -xzf /tmp/go1.20.linux-amd64.tar.gz
       - run: curl -L https://codeclimate.com/downloads/test-reporter/test-reporter-latest-linux-amd64 > ./cc-test-reporter
@@ -15,3 +24,30 @@ jobs:
       - run: ./cc-test-reporter before-build
       - run: /tmp/go/bin/go test -race -p 1 -coverprofile=./c.out ./...
       - run: ./cc-test-reporter after-build -p $(go list -m) --exit-code $?
+
+jobs:
+  test-pg-11:
+    executor: default
+    steps:
+      - checkout
+      - test-with-pg:
+          version: 11
+  test-pg-12:
+    executor: default
+    steps:
+      - checkout
+      - test-with-pg:
+          version: 12
+  test-pg-13:
+    executor: default
+    steps:
+      - checkout
+      - test-with-pg:
+          version: 13
+
+workflows:
+  test:
+    jobs:
+      - test-pg-11
+      - test-pg-12
+      - test-pg-13
