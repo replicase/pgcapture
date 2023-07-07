@@ -3,7 +3,9 @@ package sink
 import (
 	"context"
 	"io/ioutil"
+	"log"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +17,7 @@ import (
 	"github.com/rueian/pgcapture/pkg/decode"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/source"
+	"github.com/rueian/pgcapture/pkg/sql"
 )
 
 func newPGXSink() *PGXSink {
@@ -35,6 +38,16 @@ func TestPGXSink(t *testing.T) {
 
 	conn.Exec(ctx, "DROP SCHEMA public CASCADE; CREATE SCHEMA public")
 	conn.Exec(ctx, "DROP EXTENSION IF EXISTS pgcapture")
+
+	var sv string
+	if err = conn.QueryRow(ctx, sql.ServerVersionNum).Scan(&sv); err != nil {
+		t.Fatal(err)
+	}
+
+	pgVersion, err := strconv.ParseInt(sv, 10, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	sink := newPGXSink()
 
@@ -67,9 +80,15 @@ func TestPGXSink(t *testing.T) {
 	type task struct {
 		chs    []*pb.Change
 		verify func(t *testing.T)
+		minVer int64
 	}
 
 	doTx := func(opt task) {
+		if opt.minVer > pgVersion {
+			log.Printf("skip task due to pg version %d < %d", pgVersion, opt.minVer)
+			return
+		}
+
 		chs := opt.chs
 		now = now.Add(time.Second)
 		ts := now.Unix()*1000000 + int64(now.Nanosecond())/1000 - microsecFromUnixEpochToY2K
@@ -348,6 +367,119 @@ func TestPGXSink(t *testing.T) {
 				t.Fatalf("unexpected value for (f2, f3): (%v, %v)", f2, f3)
 			}
 		},
+	})
+
+	doTx(task{
+		chs: []*pb.Change{{
+			Op:     pb.Change_INSERT,
+			Schema: decode.ExtensionSchema,
+			Table:  decode.ExtensionDDLLogs,
+			New: []*pb.Field{
+				{Name: "query", Value: &pb.Field_Binary{Binary: []byte(`create table t6 (f1 int generated always as identity primary key, f2 int, f3 int generated always as (f2 + 1) stored, f4 text)`)}},
+				{Name: "tags", Value: &pb.Field_Binary{Binary: tags("CREATE TABLE")}},
+			},
+		}},
+		// the tests for the generated columns are only for pg12 or above
+		minVer: 120000,
+	})
+
+	doTx(task{
+		chs: []*pb.Change{{
+			Op:     pb.Change_INSERT,
+			Schema: "public",
+			Table:  "t6",
+			New: []*pb.Field{
+				{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 20}}},
+				{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 20}}},
+				{Name: "f3", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 100}}},
+				{Name: "f4", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'A'}}},
+			},
+		}},
+		verify: func(t *testing.T) {
+			var (
+				f2 int
+				f3 int
+				f4 string
+			)
+			// should override the system value for generated identity column f1
+			err := conn.QueryRow(ctx, "select f2, f3, f4 from t6 where f1 = $1", 20).Scan(&f2, &f3, &f4)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// should still get the generated value for f3
+			if f2 != 20 || f3 != 21 || f4 != "A" {
+				t.Fatalf("unexpected value for (f2, f3, f4): (%v, %v, %v)", f2, f3, f4)
+			}
+		},
+		minVer: 120000,
+	})
+
+	doTx(task{
+		chs: []*pb.Change{{
+			Op:     pb.Change_UPDATE,
+			Schema: "public",
+			Table:  "t6",
+			New: []*pb.Field{
+				{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 20}}},
+				{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 30}}},
+				{Name: "f3", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 100}}},
+				{Name: "f4", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'B'}}},
+			},
+		}},
+		verify: func(t *testing.T) {
+			var (
+				f2 int
+				f3 int
+				f4 string
+			)
+			// should override the system value for generated identity column f1
+			err := conn.QueryRow(ctx, "select f2, f3, f4 from t6 where f1 = $1", 20).Scan(&f2, &f3, &f4)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// should still get the generated value for f3
+			if f2 != 30 || f3 != 31 || f4 != "B" {
+				t.Fatalf("unexpected value for (f2, f3, f4): (%v, %v, %v)", f2, f3, f4)
+			}
+		},
+		minVer: 120000,
+	})
+
+	doTx(task{
+		chs: []*pb.Change{{
+			Op:     pb.Change_UPDATE,
+			Schema: "public",
+			Table:  "t6",
+			Old: []*pb.Field{
+				{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 20}}},
+				{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 30}}},
+				{Name: "f3", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 31}}},
+				{Name: "f4", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'B'}}},
+			},
+			New: []*pb.Field{
+				{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 20}}},
+				{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 40}}},
+				{Name: "f3", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 100}}},
+				{Name: "f4", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'C'}}},
+			},
+		}},
+		verify: func(t *testing.T) {
+			var (
+				f2 int
+				f3 int
+				f4 string
+			)
+			// should override the system value for generated identity column f1
+			err := conn.QueryRow(ctx, "select f2, f3, f4 from t6 where f1 = $1", 20).Scan(&f2, &f3, &f4)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// should still get the generated value for f3
+			if f2 != 40 || f3 != 41 || f4 != "C" {
+				t.Fatalf("unexpected value for (f2, f3, f4): (%v, %v, %v)", f2, f3, f4)
+			}
+		},
+		minVer: 120000,
 	})
 
 	sink.Stop()
