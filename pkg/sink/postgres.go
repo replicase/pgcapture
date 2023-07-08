@@ -429,6 +429,9 @@ func (p *PGXSink) flushInsert(ctx context.Context) (err error) {
 			c++
 		}
 	}
+	fmts = fmts[:c]
+	vals = vals[:c]
+	oids = oids[:c]
 
 	keys := info.ListKeys()
 	opt := sql.InsertOption{
