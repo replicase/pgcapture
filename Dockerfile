@@ -9,7 +9,7 @@ ADD . .
 
 ARG SHA
 ARG VERSION
-RUN go build -ldflags="-X github.com/rueian/pgcapture/cmd.CommitSHA=${SHA} -X github.com/rueian/pgcapture/cmd.Version=${VERSION}" -x -o pgcapture main.go
+RUN go build -ldflags="-extldflags=-static -X github.com/rueian/pgcapture/cmd.CommitSHA=${SHA} -X github.com/rueian/pgcapture/cmd.Version=${VERSION}" -x -o pgcapture main.go
 
 FROM gcr.io/distroless/base-debian10
 
