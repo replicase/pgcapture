@@ -18,39 +18,49 @@ const TableRegexOption = "TableRegex"
 
 var DefaultErrorFn = func(source source.Change, err error) {}
 
-func NewConsumer(ctx context.Context, conn *grpc.ClientConn, option ConsumerOption) *Consumer {
-	return newConsumer(ctx, pb.NewDBLogGatewayClient(conn), option)
+func NewSimpleConsumer(ctx context.Context, src source.RequeueSource, option ConsumerOption) *Consumer {
+	return newConsumer(ctx, src, option)
 }
 
-func newConsumer(ctx context.Context, client pb.DBLogGatewayClient, option ConsumerOption) *Consumer {
+func NewDBLogConsumer(ctx context.Context, conn *grpc.ClientConn, option ConsumerOption) *Consumer {
 	parameters, _ := structpb.NewStruct(map[string]interface{}{})
 	if option.TableRegex != "" {
 		parameters.Fields[TableRegexOption] = structpb.NewStringValue(option.TableRegex)
 	}
-	c := &DBLogGatewayConsumer{client: client, init: &pb.CaptureInit{
+	c := &DBLogGatewayConsumer{client: pb.NewDBLogGatewayClient(conn), init: &pb.CaptureInit{
 		Uri:        option.URI,
 		Parameters: parameters,
 	}}
 	c.ctx, c.cancel = context.WithCancel(ctx)
 
+	return newConsumer(c.ctx, c, option)
+}
+
+/*
+NewConsumer
+Deprecated: please use NewDBLogConsumer instead
+*/
+func NewConsumer(ctx context.Context, conn *grpc.ClientConn, option ConsumerOption) *Consumer {
+	return NewDBLogConsumer(ctx, conn, option)
+}
+
+func newConsumer(ctx context.Context, src source.RequeueSource, option ConsumerOption) *Consumer {
 	errFn := DefaultErrorFn
 	if option.OnDecodeError != nil {
 		errFn = option.OnDecodeError
 	}
 
+	consumer := &Consumer{ctx: ctx, Source: src, errFn: errFn}
 	if option.DebounceInterval > 0 {
-		return &Consumer{
-			Source: c,
-			Bouncer: &DebounceHandler{
-				Interval: option.DebounceInterval,
-				source:   c,
-			},
-			ctx:   c.ctx,
-			errFn: errFn,
+		consumer.Bouncer = &DebounceHandler{
+			Interval: option.DebounceInterval,
+			source:   src,
 		}
+	} else {
+		consumer.Bouncer = &NoBounceHandler{source: src}
 	}
 
-	return &Consumer{Source: c, Bouncer: &NoBounceHandler{source: c}, ctx: c.ctx, errFn: errFn}
+	return consumer
 }
 
 type OnDecodeError func(source source.Change, err error)
