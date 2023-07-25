@@ -22,18 +22,22 @@ func NewSimpleConsumer(ctx context.Context, src source.RequeueSource, option Con
 	return newConsumer(ctx, src, option)
 }
 
-func NewDBLogConsumer(ctx context.Context, conn *grpc.ClientConn, option ConsumerOption) *Consumer {
+func newDBogGatewaySource(ctx context.Context, client pb.DBLogGatewayClient, option ConsumerOption) *DBLogGatewayConsumer {
 	parameters, _ := structpb.NewStruct(map[string]interface{}{})
 	if option.TableRegex != "" {
 		parameters.Fields[TableRegexOption] = structpb.NewStringValue(option.TableRegex)
 	}
-	c := &DBLogGatewayConsumer{client: pb.NewDBLogGatewayClient(conn), init: &pb.CaptureInit{
+	c := &DBLogGatewayConsumer{client: client, init: &pb.CaptureInit{
 		Uri:        option.URI,
 		Parameters: parameters,
 	}}
 	c.ctx, c.cancel = context.WithCancel(ctx)
+	return c
+}
 
-	return newConsumer(c.ctx, c, option)
+func NewDBLogConsumer(ctx context.Context, conn *grpc.ClientConn, option ConsumerOption) *Consumer {
+	s := newDBogGatewaySource(ctx, pb.NewDBLogGatewayClient(conn), option)
+	return newConsumer(s.ctx, s, option)
 }
 
 /*

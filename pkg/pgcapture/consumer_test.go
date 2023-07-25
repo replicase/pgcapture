@@ -33,9 +33,11 @@ func testBounceInterval(t *testing.T, interval time.Duration) {
 		sendQ: make(chan *pb.CaptureRequest),
 		recvQ: make(chan *pb.CaptureMessage),
 	}
-	consumer := newConsumer(ctx, mock, ConsumerOption{
-		URI:              "uri",
-		TableRegex:       "regex",
+	src := newDBogGatewaySource(ctx, mock, ConsumerOption{
+		URI:        "uri",
+		TableRegex: "regex",
+	})
+	consumer := newConsumer(ctx, src, ConsumerOption{
 		DebounceInterval: interval,
 		OnDecodeError: func(source source.Change, err error) {
 		},
@@ -148,9 +150,11 @@ func testBounceIntervalRequeue(t *testing.T, interval time.Duration) {
 		sendQ: make(chan *pb.CaptureRequest),
 		recvQ: make(chan *pb.CaptureMessage),
 	}
-	consumer := newConsumer(ctx, mock, ConsumerOption{
-		URI:              "uri",
-		TableRegex:       "regex",
+	src := newDBogGatewaySource(ctx, mock, ConsumerOption{
+		URI:        "uri",
+		TableRegex: "regex",
+	})
+	consumer := newConsumer(ctx, src, ConsumerOption{
 		DebounceInterval: interval,
 		OnDecodeError: func(source source.Change, err error) {
 		},
