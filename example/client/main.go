@@ -32,7 +32,7 @@ func main() {
 	}
 	defer conn.Close()
 
-	consumer := pgcapture.NewConsumer(context.Background(), conn, pgcapture.ConsumerOption{
+	consumer := pgcapture.NewDBLogConsumer(context.Background(), conn, pgcapture.ConsumerOption{
 		URI:              example.SrcDB.DB,
 		TableRegex:       example.TestTable,
 		DebounceInterval: time.Second,
