@@ -20,6 +20,9 @@ services:
   pg_13:
     <<: *common-pg
     image: dcard/postgres:13-logical
+  pg_14:
+    <<: *common-pg
+    image: dcard/postgres:14-logical
   pulsar:
     image: apachepulsar/pulsar:2.10.4
     command: ["bin/pulsar", "standalone"]
