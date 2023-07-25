@@ -168,12 +168,12 @@ func (a *Agent) cleanup() error {
 }
 
 func (a *Agent) pg2pulsar(params *structpb.Struct) (*pb.AgentConfigResponse, error) {
-	v, err := extract(params, "PGConnURL", "PGReplURL", "PulsarURL", "PulsarTopic", "?StartLSN", "?PulsarTracker", "?PulsarTrackerInterval")
+	v, err := extract(params, "PGConnURL", "PGReplURL", "PulsarURL", "PulsarTopic", "DecodePlugin", "?StartLSN", "?PulsarTracker", "?PulsarTrackerInterval")
 	if err != nil {
 		return nil, err
 	}
 
-	pgSrc := &source.PGXSource{SetupConnStr: v["PGConnURL"], ReplConnStr: v["PGReplURL"], ReplSlot: trimSlot(v["PulsarTopic"]), CreateSlot: true, StartLSN: v["StartLSN"]}
+	pgSrc := &source.PGXSource{SetupConnStr: v["PGConnURL"], ReplConnStr: v["PGReplURL"], ReplSlot: trimSlot(v["PulsarTopic"]), CreateSlot: true, CreatePublication: true, StartLSN: v["StartLSN"], DecodePlugin: v["DecodePlugin"]}
 	pulsarSink := &sink.PulsarSink{PulsarOption: pulsar.ClientOptions{URL: v["PulsarURL"]}, PulsarTopic: v["PulsarTopic"]}
 
 	switch v["PulsarTracker"] {

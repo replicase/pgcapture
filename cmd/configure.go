@@ -5,6 +5,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/rueian/pgcapture/pkg/decode"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
@@ -22,6 +23,7 @@ var (
 	ConfigStartLSN              string
 	ConfigPulsarTracker         string
 	ConfigPulsarTrackerInterval string
+	ConfigDecodePlugin          string
 )
 
 func init() {
@@ -36,6 +38,7 @@ func init() {
 	configure.Flags().StringVarP(&ConfigStartLSN, "StartLSN", "", "", "the LSN position to start the pg2pulsar process, optional")
 	configure.Flags().StringVarP(&ConfigPulsarTracker, "PulsarTracker", "", "", "the tracker type for pg2pulsar, optional")
 	configure.Flags().StringVarP(&ConfigPulsarTrackerInterval, "PulsarTrackerInterval", "", "", "the commit interval for the pg2pulsar, optional")
+	configure.Flags().StringVarP(&ConfigDecodePlugin, "DecodePlugin", "", decode.PGOutputPlugin, "the logical decoding plugin name")
 	configure.MarkFlagRequired("AgentAddr")
 	configure.MarkFlagRequired("AgentCommand")
 	configure.MarkFlagRequired("PGConnURL")
@@ -57,6 +60,7 @@ var configure = &cobra.Command{
 			"StartLSN":              ConfigStartLSN,
 			"PulsarTracker":         ConfigPulsarTracker,
 			"PulsarTrackerInterval": ConfigPulsarTrackerInterval,
+			"DecodePlugin":          ConfigDecodePlugin,
 		})
 		if err != nil {
 			panic(err)

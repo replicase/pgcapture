@@ -10,37 +10,27 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var StringEnd = []byte{0}
-
-func NewPGLogicalDecoder(schema *PGXSchemaLoader) (Decoder, error) {
-	svn, err := schema.GetVersion()
-	if err != nil {
-		return nil, err
-	}
-
-	return &PGLogicalDecoder{
+func NewPGOutputDecoder(schema *PGXSchemaLoader, slotName string) *PGOutputDecoder {
+	return &PGOutputDecoder{
 		schema:    schema,
 		relations: make(map[uint32]Relation),
 		pluginArgs: []string{
-			"min_proto_version '1'",
-			"max_proto_version '1'",
-			"startup_params_format '1'",
-			"\"binary.want_binary_basetypes\" '1'",
-			fmt.Sprintf("\"binary.basetypes_major_version\" '%d'", svn/100),
-			"\"binary.bigendian\" '1'",
+			"proto_version '1'",
+			fmt.Sprintf("publication_names '%s'", slotName),
+			"binary 'true'",
 		},
-		log: logrus.WithFields(logrus.Fields{"From": "PGLogicalDecoder"}),
-	}, nil
+		log: logrus.WithFields(logrus.Fields{"From": "PGOutputDecoder"}),
+	}
 }
 
-type PGLogicalDecoder struct {
+type PGOutputDecoder struct {
 	schema     *PGXSchemaLoader
 	relations  map[uint32]Relation
 	pluginArgs []string
 	log        *logrus.Entry
 }
 
-func (p *PGLogicalDecoder) Decode(in []byte) (m *pb.Message, err error) {
+func (p *PGOutputDecoder) Decode(in []byte) (m *pb.Message, err error) {
 	switch in[0] {
 	case 'B':
 		return p.ReadBegin(in)
@@ -74,11 +64,11 @@ func (p *PGLogicalDecoder) Decode(in []byte) (m *pb.Message, err error) {
 	return nil, err
 }
 
-func (p *PGLogicalDecoder) GetPluginArgs() []string {
+func (p *PGOutputDecoder) GetPluginArgs() []string {
 	return p.pluginArgs
 }
 
-func (p *PGLogicalDecoder) makePBTuple(rel Relation, src []Field, noNull bool) (fields []*pb.Field) {
+func (p *PGOutputDecoder) makePBTuple(rel Relation, src []Field, noNull bool) (fields []*pb.Field) {
 	if src == nil {
 		return nil
 	}
@@ -106,18 +96,18 @@ func (p *PGLogicalDecoder) makePBTuple(rel Relation, src []Field, noNull bool) (
 	return fields
 }
 
-func (p *PGLogicalDecoder) ReadBegin(in []byte) (*pb.Message, error) {
-	if len(in) != 1+1+8+8+4 {
+func (p *PGOutputDecoder) ReadBegin(in []byte) (*pb.Message, error) {
+	if len(in) != 1+1+8+8+3 {
 		return nil, errors.New("begin wrong length")
 	}
 	return &pb.Message{Type: &pb.Message_Begin{Begin: &pb.Begin{
-		FinalLsn:   binary.BigEndian.Uint64(in[2:10]),
-		CommitTime: binary.BigEndian.Uint64(in[10:18]),
-		RemoteXid:  binary.BigEndian.Uint32(in[18:]),
+		FinalLsn:   binary.BigEndian.Uint64(in[1:9]),
+		CommitTime: binary.BigEndian.Uint64(in[9:17]),
+		RemoteXid:  binary.BigEndian.Uint32(in[17:]),
 	}}}, nil
 }
 
-func (p *PGLogicalDecoder) ReadCommit(in []byte) (*pb.Message, error) {
+func (p *PGOutputDecoder) ReadCommit(in []byte) (*pb.Message, error) {
 	if len(in) != 1+1+8+8+8 {
 		return nil, errors.New("commit wrong length")
 	}
@@ -128,37 +118,35 @@ func (p *PGLogicalDecoder) ReadCommit(in []byte) (*pb.Message, error) {
 	}}}, nil
 }
 
-func (p *PGLogicalDecoder) ReadRelation(in []byte, m *Relation) (err error) {
+func (p *PGOutputDecoder) ReadRelation(in []byte, m *Relation) (err error) {
 	reader := NewBytesReader(in)
-	reader.Skip(2) // skip op and flags
+	reader.Skip(1) // skip op and flags
 
 	m.Rel, err = reader.Uint32()
-	m.NspName, err = reader.String8()
-	m.RelName, err = reader.String8()
+	m.NspName, err = reader.StringEnd()
+	m.RelName, err = reader.StringEnd()
 
-	if t, err := reader.Byte(); err != nil || t != 'A' {
-		return errors.New("relation expected A, got " + string(t))
+	// d = default, n = nothing, f = full, i = index
+	if replicaIdentity, err := reader.Byte(); err != nil || (replicaIdentity != 'd' && replicaIdentity != 'n' && replicaIdentity != 'f' && replicaIdentity != 'i') {
+		return errors.New("relation expected replicaIdentity equal d or n or f or i, got " + string(replicaIdentity))
 	}
 
 	n, err := reader.Int16()
 	m.Fields = make([]string, n)
 	for i := 0; i < n; i++ {
-		if t, err := reader.Byte(); err != nil || t != 'C' {
-			return errors.New("relation expected C, got " + string(t))
+		reader.Skip(1) // skip flag
+		m.Fields[i], err = reader.StringEnd()
+		if err != nil {
+			return err
 		}
-		reader.Skip(1) // skip flags
-		if t, err := reader.Byte(); err != nil || t != 'N' {
-			return errors.New("relation expected N, got " + string(t))
-		}
-		m.Fields[i], err = reader.String16()
+		reader.Skip(8) // skip data type and type modifier
 	}
 	return err
 }
 
-func (p *PGLogicalDecoder) ReadRowChange(in []byte, m *RowChange) (err error) {
+func (p *PGOutputDecoder) ReadRowChange(in []byte, m *RowChange) (err error) {
 	reader := NewBytesReader(in)
 	m.Op, err = reader.Byte()
-	reader.Skip(1) // skip flags
 	m.Rel, err = reader.Uint32()
 
 	kind, err := reader.Byte()
@@ -174,11 +162,7 @@ func (p *PGLogicalDecoder) ReadRowChange(in []byte, m *RowChange) (err error) {
 	return err
 }
 
-func (p *PGLogicalDecoder) readTuple(reader *BytesReader) (fields []Field, err error) {
-	if t, err := reader.Byte(); err != nil || t != 'T' {
-		return nil, errors.New("expect T for tuple message, got " + string(t))
-	}
-
+func (p *PGOutputDecoder) readTuple(reader *BytesReader) (fields []Field, err error) {
 	if n, err := reader.Int16(); err == nil {
 		fields = make([]Field, n)
 	}

@@ -3,6 +3,7 @@ package source
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync/atomic"
 	"time"
 
@@ -19,16 +20,18 @@ import (
 type PGXSource struct {
 	BaseSource
 
-	SetupConnStr string
-	ReplConnStr  string
-	ReplSlot     string
-	CreateSlot   bool
-	StartLSN     string
+	SetupConnStr      string
+	ReplConnStr       string
+	ReplSlot          string
+	CreateSlot        bool
+	CreatePublication bool
+	StartLSN          string
+	DecodePlugin      string
 
 	setupConn      *pgx.Conn
 	replConn       *pgconn.PgConn
 	schema         *decode.PGXSchemaLoader
-	decoder        *decode.PGLogicalDecoder
+	decoder        decode.Decoder
 	nextReportTime time.Time
 	ackLsn         uint64
 	txCounter      uint64
@@ -64,15 +67,27 @@ func (p *PGXSource) Capture(cp cursor.Checkpoint) (changes chan Change, err erro
 		return nil, err
 	}
 
-	svn, err := p.schema.GetVersion()
-	if err != nil {
-		return nil, err
+	switch p.DecodePlugin {
+	case decode.PGLogicalOutputPlugin:
+		p.decoder, err = decode.NewPGLogicalDecoder(p.schema)
+		if err != nil {
+			return nil, err
+		}
+	case decode.PGOutputPlugin:
+		p.decoder = decode.NewPGOutputDecoder(p.schema, p.ReplSlot)
+		if p.CreatePublication {
+			if _, err = p.setupConn.Exec(ctx, fmt.Sprintf(sql.CreatePublication, p.ReplSlot)); err != nil {
+				if pge, ok := err.(*pgconn.PgError); !ok || pge.Code != "42710" {
+					return nil, err
+				}
+			}
+		}
+	default:
+		return nil, errors.New("unknown decode plugin")
 	}
 
-	p.decoder = decode.NewPGLogicalDecoder(p.schema)
-
 	if p.CreateSlot {
-		if _, err = p.setupConn.Exec(ctx, sql.CreateLogicalSlot, p.ReplSlot, decode.OutputPlugin); err != nil {
+		if _, err = p.setupConn.Exec(ctx, sql.CreateLogicalSlot, p.ReplSlot, p.DecodePlugin); err != nil {
 			if pge, ok := err.(*pgconn.PgError); !ok || pge.Code != "42710" {
 				return nil, err
 			}
@@ -95,6 +110,7 @@ func (p *PGXSource) Capture(cp cursor.Checkpoint) (changes chan Change, err erro
 		"Timeline": ident.Timeline,
 		"XLogPos":  int64(ident.XLogPos),
 		"DBName":   ident.DBName,
+		"Decoder":  p.DecodePlugin,
 	}).Info("retrieved current info of source database")
 
 	if cp.LSN != 0 {
@@ -126,7 +142,7 @@ func (p *PGXSource) Capture(cp cursor.Checkpoint) (changes chan Change, err erro
 		p.replConn,
 		p.ReplSlot,
 		pglogrepl.LSN(p.currentLsn),
-		pglogrepl.StartReplicationOptions{PluginArgs: decode.PGLogicalParam(svn)},
+		pglogrepl.StartReplicationOptions{PluginArgs: p.decoder.GetPluginArgs()},
 	); err != nil {
 		return nil, err
 	}

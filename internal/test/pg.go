@@ -3,6 +3,9 @@ package test
 import (
 	"context"
 	"fmt"
+	"os"
+	"strconv"
+	"testing"
 
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v4"
@@ -74,4 +77,13 @@ func CreateDB(u DBURL, n DBURL) (DBURL, error) {
 		}
 	}
 	return n, nil
+}
+
+func ShouldSkipTestByPGVersion(t *testing.T, minimumVersion float64) {
+	if v := os.Getenv("PG_VERSION"); v != "" && minimumVersion != 0 {
+		version, _ := strconv.ParseFloat(v, 64)
+		if version < minimumVersion {
+			t.Skipf("Skip test for PG_VERSION %.1f < %.1f", version, minimumVersion)
+		}
+	}
 }
