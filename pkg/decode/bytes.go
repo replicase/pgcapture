@@ -64,8 +64,12 @@ func (b *BytesReader) Int8() (v int, err error) {
 	return int(uv), err
 }
 
-func (b *BytesReader) IntEndIdx() (v int) {
-	return bytes.IndexByte(b.data[b.off:], byte(0))
+func (b *BytesReader) IntEndIdx() (v int, err error) {
+	idx := bytes.IndexByte(b.data[b.off:], byte(0))
+	if idx == -1 {
+		return 0, io.EOF
+	}
+	return idx, nil
 }
 
 func (b *BytesReader) stringN(n int) (v string, err error) {
@@ -109,5 +113,10 @@ func (b *BytesReader) Bytes32() (v []byte, err error) {
 }
 
 func (b *BytesReader) StringEnd() (v string, err error) {
-	return b.stringN(b.IntEndIdx() + 1)
+	idx, err := b.IntEndIdx()
+	if err != nil {
+		return "", err
+	}
+
+	return b.stringN(idx + 1)
 }
