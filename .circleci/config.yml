@@ -22,7 +22,7 @@ commands:
       - run: chmod +x ./cc-test-reporter
       - run: /tmp/go/bin/go get -v -t -d ./...
       - run: ./cc-test-reporter before-build
-      - run: /tmp/go/bin/go test -race -p 1 -coverprofile=./c.out ./...
+      - run: PG_VERSION=<< parameters.version >> /tmp/go/bin/go test -race -p 1 -coverprofile=./c.out ./...
       - run: ./cc-test-reporter after-build -p $(go list -m) --exit-code $?
 
 jobs:
@@ -44,6 +44,12 @@ jobs:
       - checkout
       - test-with-pg:
           version: 13
+  test-pg-14:
+    executor: default
+    steps:
+      - checkout
+      - test-with-pg:
+          version: 14
 
 workflows:
   test:
@@ -51,3 +57,4 @@ workflows:
       - test-pg-11
       - test-pg-12
       - test-pg-13
+      - test-pg-14

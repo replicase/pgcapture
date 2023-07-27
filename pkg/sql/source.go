@@ -19,6 +19,8 @@ WHERE (i.indisprimary OR i.indisunique) AND i.indisvalid AND i.indpred IS NULL O
 
 var CreateLogicalSlot = `SELECT pg_create_logical_replication_slot($1, $2);`
 
+var CreatePublication = `CREATE PUBLICATION %s FOR ALL TABLES;`
+
 var InstallExtension = `CREATE EXTENSION IF NOT EXISTS pgcapture;`
 
 var ServerVersionNum = `SHOW server_version_num;`

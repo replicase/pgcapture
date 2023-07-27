@@ -1,0 +1,34 @@
+diff -Naur old/pglogical_output_plugin.c new/pglogical_output_plugin.c
+--- old/pglogical_output_plugin.c	2023-07-24 16:14:59.000000000 +0800
++++ new/pglogical_output_plugin.c	2023-07-24 16:15:55.000000000 +0800
+@@ -189,7 +189,7 @@
+ 	{
+ 		int		params_format;
+ 		bool	started_tx = false;
+-		PGLogicalLocalNode *node;
++//		PGLogicalLocalNode *node;
+ 		MemoryContext oldctx;
+ 
+ 		/*
+@@ -208,8 +208,8 @@
+ 			StartTransactionCommand();
+ 			started_tx = true;
+ 		}
+-		node = get_local_node(false, false);
+-		data->local_node_id	= node->node->id;
++//		node = get_local_node(false, false);
++//		data->local_node_id	= node->node->id;
+ 
+ 		 /*
+ 		 * Ideally we'd send the startup message immediately. That way
+@@ -668,8 +668,8 @@
+ 	old = MemoryContextSwitchTo(data->context);
+ 
+ 	/* First check the table filter */
+-	if (!pglogical_change_filter(data, relation, change, &att_list))
+-		return;
++//	if (!pglogical_change_filter(data, relation, change, &att_list))
++//		return;
+ 
+ 	/*
+ 	 * If the protocol wants to write relation information and the client

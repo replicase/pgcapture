@@ -17,8 +17,8 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func TestPGLogicalDecoder(t *testing.T) {
-	test.ShouldSkipTestByPGVersion(t, 9.6)
+func TestPGOutputDecoder(t *testing.T) {
+	test.ShouldSkipTestByPGVersion(t, 14)
 
 	ctx := context.Background()
 	conn, err := pgx.Connect(ctx, "postgres://postgres@127.0.0.1/postgres?sslmode=disable")
@@ -30,18 +30,17 @@ func TestPGLogicalDecoder(t *testing.T) {
 	conn.Exec(ctx, "DROP SCHEMA public CASCADE; CREATE SCHEMA public; CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";")
 	conn.Exec(ctx, "CREATE TABLE t (id bigint primary key, uid uuid, txt text, js jsonb, ts timestamptz, bs bytea)")
 	conn.Exec(ctx, fmt.Sprintf("SELECT pg_drop_replication_slot('%s')", TestSlot))
-	conn.Exec(ctx, sql.CreateLogicalSlot, TestSlot, PGLogicalOutputPlugin)
+	conn.Exec(ctx, fmt.Sprintf("CREATE PUBLICATION %s FOR ALL TABLES;", TestSlot))
+	conn.Exec(ctx, sql.CreateLogicalSlot, TestSlot, PGOutputPlugin)
 
 	schema := NewPGXSchemaLoader(conn)
 	if err = schema.RefreshType(); err != nil {
 		t.Fatal(err)
 	}
-	decoder, err := NewPGLogicalDecoder(schema)
-	if err != nil {
-		t.Fatal(err)
-	}
+	decoder := NewPGOutputDecoder(schema, TestSlot)
 
 	now := time.Now()
+
 	changes := []*change{
 		{
 			Expect: &pb.Change{Op: pb.Change_INSERT, Schema: "public", Table: "t",
@@ -80,15 +79,15 @@ func TestPGLogicalDecoder(t *testing.T) {
 		},
 		{
 			Expect: &pb.Change{Op: pb.Change_UPDATE, Schema: "public", Table: "t",
+				Old: []*pb.Field{
+					{Name: "id", Oid: 20, Value: &pb.Field_Binary{Binary: b(Int8(2))}},
+				},
 				New: []*pb.Field{
 					{Name: "id", Oid: 20, Value: &pb.Field_Binary{Binary: b(Int8(3))}},
 					{Name: "uid", Oid: 2950, Value: &pb.Field_Binary{Binary: b(UUID("f0d3ad8e-709f-4f67-9860-e149c671d82a"))}},
-					{Name: "txt", Oid: 25, Value: &pb.Field_Binary{Binary: b(Text(nT(5)))}},
+					{Name: "txt", Oid: 25, Value: &pb.Field_Binary{Binary: b(Text(nT(6)))}},
 					{Name: "js", Oid: 3802, Value: &pb.Field_Binary{Binary: b(JSON(`{"a": {"b": {"c": {"d": null}}}}`))}},
 					{Name: "ts", Oid: 1184, Value: &pb.Field_Binary{Binary: b(Tstz(now.Add(time.Second)))}},
-				},
-				Old: []*pb.Field{
-					{Name: "id", Oid: 20, Value: &pb.Field_Binary{Binary: b(Int8(2))}},
 				},
 			},
 		},

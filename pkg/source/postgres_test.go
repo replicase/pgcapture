@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v4"
+	"github.com/rueian/pgcapture/internal/test"
 	"github.com/rueian/pgcapture/pkg/cursor"
 	"github.com/rueian/pgcapture/pkg/decode"
 	"github.com/rueian/pgcapture/pkg/pb"
@@ -17,156 +18,221 @@ import (
 
 const TestSlot = "test_slot"
 
-func newPGXSource() *PGXSource {
+func newPGXSource(decodePlugin string) *PGXSource {
 	return &PGXSource{
 		SetupConnStr: "postgres://postgres@127.0.0.1/postgres?sslmode=disable",
 		ReplConnStr:  "postgres://postgres@127.0.0.1/postgres?replication=database",
 		ReplSlot:     TestSlot,
+		DecodePlugin: decodePlugin,
 	}
 }
 
-func TestPGXSource_Capture(t *testing.T) {
-	ctx := context.Background()
+func newPGConn(ctx context.Context) (*pgx.Conn, error) {
 	conn, err := pgx.Connect(ctx, "postgres://postgres@127.0.0.1/postgres?sslmode=disable")
 	if err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
-	defer conn.Close(ctx)
 
 	conn.Exec(ctx, "DROP SCHEMA public CASCADE; CREATE SCHEMA public;")
 	conn.Exec(ctx, "DROP EXTENSION IF EXISTS pgcapture")
-	conn.Exec(ctx, fmt.Sprintf("select pg_drop_replication_slot('%s')", TestSlot))
 
-	src := newPGXSource()
-	src.CreateSlot = true
+	return conn, nil
+}
 
-	// test from latest
-	changes, err := src.Capture(cursor.Checkpoint{})
-	if err != nil {
-		t.Fatal(err)
-	}
+type PGXSourceTest struct {
+	decodePlugin string
+	shouldSkip   func(t *testing.T)
+	newPGConn    func(ctx context.Context) (*pgx.Conn, error)
+	newPGXSource func() *PGXSource
+}
 
-	txs := []*TxTest{
-		{
-			SQL: "create table t1 (id1 bigint)",
-			Check: func(tx *TxTest) {
-				tx.Tx = readTx(t, changes, 1)
-				if change := tx.Tx.Changes[0].Message.GetChange(); !expectedDDL(change, "create table t1 (id1 bigint)") {
-					t.Fatalf("unexpected %v", change.String())
-				}
-			},
+var pgxSourceTests = []PGXSourceTest{
+	{
+		decodePlugin: decode.PGLogicalOutputPlugin,
+		shouldSkip: func(t *testing.T) {
+			test.ShouldSkipTestByPGVersion(t, 9.6)
 		},
-		{
-			SQL: "insert into t1 values (1)",
-			Check: func(tx *TxTest) {
-				tx.Tx = readTx(t, changes, 1)
-				change := tx.Tx.Changes[0].Message.GetChange()
-				expect := &pb.Change{Op: pb.Change_INSERT, Schema: "public", Table: "t1", New: []*pb.Field{{Name: "id1", Oid: 20, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 0, 0, 0, 0, 1}}}}}
-				if !proto.Equal(change, expect) {
-					t.Fatalf("unexpected %v", change.String())
-				}
-			},
+		newPGConn: func(ctx context.Context) (*pgx.Conn, error) {
+			conn, err := newPGConn(ctx)
+			if err != nil {
+				return nil, err
+			}
+			conn.Exec(ctx, fmt.Sprintf("select pg_drop_replication_slot('%s')", TestSlot))
+
+			return conn, nil
 		},
-		{
-			SQL: "create table t2 (id2 text)",
-			Check: func(tx *TxTest) {
-				tx.Tx = readTx(t, changes, 1)
-				if change := tx.Tx.Changes[0].Message.GetChange(); !expectedDDL(change, "create table t2 (id2 text)") {
-					t.Fatalf("unexpected %v", change.String())
-				}
-			},
+		newPGXSource: func() *PGXSource {
+			src := newPGXSource(decode.PGLogicalOutputPlugin)
+			src.CreateSlot = true
+			return src
 		},
-		{
-			SQL: "insert into t2 values ('id2')",
-			Check: func(tx *TxTest) {
-				tx.Tx = readTx(t, changes, 1)
-				change := tx.Tx.Changes[0].Message.GetChange()
-				expect := &pb.Change{Op: pb.Change_INSERT, Schema: "public", Table: "t2", New: []*pb.Field{{Name: "id2", Oid: 25, Value: &pb.Field_Binary{Binary: []byte("id2")}}}}
-				if !proto.Equal(change, expect) {
-					t.Fatalf("unexpected %v", change.String())
-				}
-			},
+	},
+	{
+		decodePlugin: decode.PGOutputPlugin,
+		shouldSkip: func(t *testing.T) {
+			test.ShouldSkipTestByPGVersion(t, 14)
 		},
-	}
+		newPGConn: func(ctx context.Context) (*pgx.Conn, error) {
+			conn, err := newPGConn(ctx)
+			if err != nil {
+				return nil, err
+			}
+			conn.Exec(ctx, fmt.Sprintf("select pg_drop_replication_slot('%s')", TestSlot))
+			conn.Exec(ctx, fmt.Sprintf("DROP PUBLICATION %s", TestSlot))
 
-	for _, tx := range txs {
-		if _, err := conn.Exec(ctx, tx.SQL); err != nil {
-			t.Fatal(err)
-		}
-	}
+			return conn, nil
+		},
+		newPGXSource: func() *PGXSource {
+			src := newPGXSource(decode.PGOutputPlugin)
+			src.CreateSlot = true
+			src.CreatePublication = true
+			return src
+		},
+	},
+}
 
-	// test schema refresh
-	for _, tx := range txs {
-		tx.Check(tx)
-	}
-	src.Stop()
+func TestPGXSource_Capture(t *testing.T) {
+	for _, te := range pgxSourceTests {
+		t.Run(te.decodePlugin, func(t *testing.T) {
+			te.shouldSkip(t)
 
-	// test restart on FinalLSN of Change position, should start from the beginning of the same tx
-	src = newPGXSource()
-	changes, err = src.Capture(txs[1].Tx.Changes[0].Checkpoint)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, tx := range txs[1:] {
-		tx.Check(tx)
-	}
-	src.Stop()
+			ctx := context.Background()
+			src := te.newPGXSource()
+			conn, err := te.newPGConn(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer conn.Close(ctx)
 
-	// test restart on CommitLSN of Commit position, should start from this tx
-	src = newPGXSource()
-	changes, err = src.Capture(txs[1].Tx.Commit.Checkpoint)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, tx := range txs[1:] {
-		tx.Check(tx)
-	}
+			// test from latest
+			changes, err := src.Capture(cursor.Checkpoint{})
+			if err != nil {
+				t.Fatal(err)
+			}
 
-	// test commit lsn
-	commit := txs[len(txs)-1].Tx.Commit
-	src.Commit(commit.Checkpoint)
-	src.Stop()
+			txs := []*TxTest{
+				{
+					SQL: "create table t1 (id1 bigint)",
+					Check: func(tx *TxTest) {
+						tx.Tx = readTx(t, changes, 1)
+						if change := tx.Tx.Changes[0].Message.GetChange(); !expectedDDL(change, "create table t1 (id1 bigint)") {
+							t.Fatalf("unexpected %v", change.String())
+						}
+					},
+				},
+				{
+					SQL: "insert into t1 values (1)",
+					Check: func(tx *TxTest) {
+						tx.Tx = readTx(t, changes, 1)
+						change := tx.Tx.Changes[0].Message.GetChange()
+						expect := &pb.Change{Op: pb.Change_INSERT, Schema: "public", Table: "t1", New: []*pb.Field{{Name: "id1", Oid: 20, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 0, 0, 0, 0, 1}}}}}
+						if !proto.Equal(change, expect) {
+							t.Fatalf("unexpected %v", change.String())
+						}
+					},
+				},
+				{
+					SQL: "create table t2 (id2 text)",
+					Check: func(tx *TxTest) {
+						tx.Tx = readTx(t, changes, 1)
+						if change := tx.Tx.Changes[0].Message.GetChange(); !expectedDDL(change, "create table t2 (id2 text)") {
+							t.Fatalf("unexpected %v", change.String())
+						}
+					},
+				},
+				{
+					SQL: "insert into t2 values ('id2')",
+					Check: func(tx *TxTest) {
+						tx.Tx = readTx(t, changes, 1)
+						change := tx.Tx.Changes[0].Message.GetChange()
+						expect := &pb.Change{Op: pb.Change_INSERT, Schema: "public", Table: "t2", New: []*pb.Field{{Name: "id2", Oid: 25, Value: &pb.Field_Binary{Binary: []byte("id2")}}}}
+						if !proto.Equal(change, expect) {
+							t.Fatalf("unexpected %v", change.String())
+						}
+					},
+				},
+			}
 
-	if n := src.TxCounter(); n == 0 {
-		t.Fatal("TxCounter should > 0")
-	}
+			for _, tx := range txs {
+				if _, err := conn.Exec(ctx, tx.SQL); err != nil {
+					t.Fatal(err)
+				}
+			}
 
-	var lsn string
-	if err = conn.QueryRow(ctx, "select confirmed_flush_lsn from pg_replication_slots where slot_name = $1", TestSlot).Scan(&lsn); err != nil {
-		t.Fatal(err)
-	}
+			// test schema refresh
+			for _, tx := range txs {
+				tx.Check(tx)
+			}
+			src.Stop()
 
-	if lsn != pglogrepl.LSN(commit.Checkpoint.LSN).String() {
-		t.Fatalf("unexpected %v", lsn)
+			// test restart on FinalLSN of Change position, should start from the beginning of the same tx
+			src = newPGXSource(src.DecodePlugin)
+			changes, err = src.Capture(txs[1].Tx.Changes[0].Checkpoint)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, tx := range txs[1:] {
+				tx.Check(tx)
+			}
+			src.Stop()
+
+			// test restart on CommitLSN of Commit position, should start from this tx
+			src = newPGXSource(src.DecodePlugin)
+			changes, err = src.Capture(txs[1].Tx.Commit.Checkpoint)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, tx := range txs[1:] {
+				tx.Check(tx)
+			}
+
+			// test commit lsn
+			commit := txs[len(txs)-1].Tx.Commit
+			src.Commit(commit.Checkpoint)
+			src.Stop()
+
+			if n := src.TxCounter(); n == 0 {
+				t.Fatal("TxCounter should > 0")
+			}
+
+			var lsn string
+			if err = conn.QueryRow(ctx, "select confirmed_flush_lsn from pg_replication_slots where slot_name = $1", TestSlot).Scan(&lsn); err != nil {
+				t.Fatal(err)
+			}
+
+			if lsn != pglogrepl.LSN(commit.Checkpoint.LSN).String() {
+				t.Fatalf("unexpected %v", lsn)
+			}
+		})
 	}
 }
 
 func TestPGXSource_DuplicatedCapture(t *testing.T) {
-	ctx := context.Background()
-	conn, err := pgx.Connect(ctx, "postgres://postgres@127.0.0.1/postgres?sslmode=disable")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer conn.Close(ctx)
+	for _, te := range pgxSourceTests {
+		t.Run(te.decodePlugin, func(t *testing.T) {
+			te.shouldSkip(t)
 
-	conn.Exec(ctx, "DROP SCHEMA public CASCADE; CREATE SCHEMA public;")
-	conn.Exec(ctx, "DROP EXTENSION IF EXISTS pgcapture")
-	conn.Exec(ctx, fmt.Sprintf("select pg_drop_replication_slot('%s')", TestSlot))
+			ctx := context.Background()
+			conn, err := te.newPGConn(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer conn.Close(ctx)
+			src := te.newPGXSource()
+			_, err = src.Capture(cursor.Checkpoint{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer src.Stop()
 
-	src := newPGXSource()
-	src.CreateSlot = true
-	_, err = src.Capture(cursor.Checkpoint{})
-	if err != nil {
-		t.Fatal(err)
+			// duplicated
+			src2 := newPGXSource(src.DecodePlugin)
+			if _, err = src2.Capture(cursor.Checkpoint{}); err == nil || !strings.Contains(err.Error(), fmt.Sprintf("replication slot \"%s\" is active", TestSlot)) {
+				t.Fatal("duplicated pgx source")
+			}
+			src2.Stop()
+		})
 	}
-	defer src.Stop()
-
-	// duplicated
-	src2 := newPGXSource()
-	if _, err = src2.Capture(cursor.Checkpoint{}); err == nil || !strings.Contains(err.Error(), fmt.Sprintf("replication slot \"%s\" is active", TestSlot)) {
-		t.Fatal("duplicated pgx source")
-	}
-	src2.Stop()
 }
 
 type TxTest struct {
