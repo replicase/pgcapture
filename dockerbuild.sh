@@ -1,9 +1,22 @@
 #!/bin/bash
 
-SHA=$(git rev-parse --short HEAD)
-VERSION=$(git describe --tags)
-PLATFORM=${1:-linux/amd64}
+set -e
 
-echo "building rueian/pgcapture:$VERSION in $PLATFORM platform"
+export LOCAL_GOPATH=$(echo "${GOPATH:-~/go}" | cut -d ':' -f 1) # take the first GOPATH to mount into docker compose
+export PLATFORM=${PLATFORM:-linux/amd64}
+export PG_VERSION=${PG_VERSION:-14}
 
-docker buildx build --platform $PLATFORM --build-arg SHA=$SHA  --build-arg VERSION=$VERSION -t rueian/pgcapture:latest -t rueian/pgcapture:$VERSION .
+[ ! -d "$LOCAL_GOPATH/pkg/mod/cache" ] && mkdir -p "$LOCAL_GOPATH/pkg/mod/cache"
+
+case "$1" in
+  test)
+    docker-compose run --rm test-deps
+    docker-compose run --rm test
+    ;;
+  clean)
+    docker-compose down
+    ;;
+  *)
+    echo "\"$1\" is an unknown command"
+    ;;
+esac

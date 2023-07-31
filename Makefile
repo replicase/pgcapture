@@ -6,3 +6,7 @@ proto: pb/*.proto
 .PHONY: generate
 generate:
 	go generate ./...
+
+.PHONY: test
+test:
+	go test -v -race -p 1 -coverprofile=./c.out ./...
