@@ -7,13 +7,15 @@ import (
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4"
+	"github.com/rueian/pgcapture/internal/test"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/sql"
 )
 
 func TestPGXSourceDumper(t *testing.T) {
 	ctx := context.Background()
-	conn, err := pgx.Connect(ctx, "postgres://postgres@127.0.0.1/postgres?sslmode=disable")
+	postgresURL := test.GetPostgresURL()
+	conn, err := pgx.Connect(ctx, postgresURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,7 +26,7 @@ func TestPGXSourceDumper(t *testing.T) {
 	conn.Exec(ctx, sql.InstallExtension)
 	conn.Exec(ctx, "CREATE TABLE t1 AS SELECT * FROM generate_series(1,100000) AS id; ANALYZE t1")
 
-	dumper, err := NewPGXSourceDumper(ctx, "postgres://postgres@127.0.0.1/postgres?sslmode=disable")
+	dumper, err := NewPGXSourceDumper(ctx, postgresURL)
 	if err != nil {
 		t.Fatal(err)
 	}

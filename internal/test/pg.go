@@ -87,3 +87,11 @@ func ShouldSkipTestByPGVersion(t *testing.T, minimumVersion float64) {
 		}
 	}
 }
+
+func GetPostgresURL() string {
+	return Env("POSTGRES_URL", "postgres://postgres@127.0.0.1:5432/postgres?sslmode=disable")
+}
+
+func GetPostgresReplURL() string {
+	return fmt.Sprintf("%s&replication=database", GetPostgresURL())
+}

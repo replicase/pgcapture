@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4"
+	"github.com/rueian/pgcapture/internal/test"
 	"github.com/rueian/pgcapture/pkg/cursor"
 	"github.com/rueian/pgcapture/pkg/decode"
 	"github.com/rueian/pgcapture/pkg/pb"
@@ -22,7 +23,7 @@ import (
 
 func newPGXSink() *PGXSink {
 	return &PGXSink{
-		ConnStr:  "postgres://postgres@127.0.0.1/postgres?sslmode=disable",
+		ConnStr:  test.GetPostgresURL(),
 		SourceID: "repl_test",
 		Renice:   -10,
 	}
@@ -30,7 +31,7 @@ func newPGXSink() *PGXSink {
 
 func TestPGXSink(t *testing.T) {
 	ctx := context.Background()
-	conn, err := pgx.Connect(ctx, "postgres://postgres@127.0.0.1/postgres?sslmode=disable")
+	conn, err := pgx.Connect(ctx, test.GetPostgresURL())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -519,7 +520,7 @@ func TestPGXSink_DuplicatedSink(t *testing.T) {
 
 func TestPGXSink_ScanCheckpointFromLog(t *testing.T) {
 	ctx := context.Background()
-	conn, err := pgx.Connect(ctx, "postgres://postgres@127.0.0.1/postgres?sslmode=disable")
+	conn, err := pgx.Connect(ctx, test.GetPostgresURL())
 	if err != nil {
 		t.Fatal(err)
 	}
