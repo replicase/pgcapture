@@ -52,6 +52,7 @@ services:
   pulsar:
     image: apachepulsar/pulsar:2.10.4
     container_name: pulsar
+    platform: ${PLATFORM}
     command: ["bin/pulsar", "standalone"]
     ports:
       - 6650:6650
