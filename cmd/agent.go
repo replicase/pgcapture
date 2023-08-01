@@ -174,7 +174,11 @@ func (a *Agent) pg2pulsar(params *structpb.Struct) (*pb.AgentConfigResponse, err
 	}
 
 	pgSrc := &source.PGXSource{SetupConnStr: v["PGConnURL"], ReplConnStr: v["PGReplURL"], ReplSlot: trimSlot(v["PulsarTopic"]), CreateSlot: true, CreatePublication: true, StartLSN: v["StartLSN"], DecodePlugin: v["DecodePlugin"]}
-	pulsarSink := &sink.PulsarSink{PulsarOption: pulsar.ClientOptions{URL: v["PulsarURL"]}, PulsarTopic: v["PulsarTopic"]}
+	pulsarSink := &sink.PulsarSink{PulsarOption: pulsar.ClientOptions{
+		URL: v["PulsarURL"],
+		// one for the producer and one for the tracker
+		MaxConnectionsPerBroker: 2,
+	}, PulsarTopic: v["PulsarTopic"]}
 
 	switch v["PulsarTracker"] {
 	case "pulsar", "":
