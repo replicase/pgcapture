@@ -23,23 +23,32 @@ import (
 )
 
 var (
-	AgentListenAddr string
-	AgentRenice     int64
+	AgentListenAddr  string
+	AgentRenice      int64
+	ExportPrometheus bool
+	PrometheusAddr   string
 )
 
 func init() {
 	rootCmd.AddCommand(agent)
 	agent.Flags().StringVarP(&AgentListenAddr, "ListenAddr", "", ":10000", "the tcp address for agent server to listen")
 	agent.Flags().Int64VarP(&AgentRenice, "Renice", "", -10, "try renice the sink pg process")
+	agent.Flags().BoolVarP(&ExportPrometheus, "ExportPrometheus", "", false, "export the prometheus metrics or not")
+	agent.Flags().StringVarP(&PrometheusAddr, "PrometheusAddr", "", ":2112", "the tcp address for prometheus server to listen")
 }
 
 var agent = &cobra.Command{
 	Use:   "agent",
 	Short: "run as a agent accepting remote config",
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
+		if ExportPrometheus {
+			startPrometheusServer(PrometheusAddr)
+		}
+
 		logrus.WithFields(logrus.Fields{
 			"AgentListenAddr": AgentListenAddr,
 		}).Info("starting agent")
+
 		agent := &Agent{}
 		return serveGRPC(&pb.Agent_ServiceDesc, AgentListenAddr, agent, func() {
 			if err := agent.cleanup(); err != nil {

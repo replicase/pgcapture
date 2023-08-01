@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rueian/pgcapture/pkg/sink"
 	"github.com/rueian/pgcapture/pkg/source"
 	"github.com/sirupsen/logrus"
@@ -105,4 +106,25 @@ func trimSlot(topic string) string {
 	topic = strings.ReplaceAll(topic, "/", "_")
 	topic = strings.ReplaceAll(topic, "-", "_")
 	return topic
+}
+
+func startPrometheusServer(addr string) {
+	handler := promhttp.Handler()
+	server := &http.Server{
+		Addr: addr,
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			if req.Method == http.MethodGet && req.URL.Path == "/metrics" {
+				handler.ServeHTTP(w, req)
+			} else {
+				http.NotFound(w, req)
+			}
+		}),
+	}
+
+	logrus.WithFields(logrus.Fields{"addr": addr}).Info("starting prometheus server")
+	go func() {
+		if err := server.ListenAndServe(); err != nil {
+			logrus.Error(err)
+		}
+	}()
 }
