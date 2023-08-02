@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar"
+	"github.com/rueian/pgcapture/internal/test"
 	"github.com/rueian/pgcapture/pkg/cursor"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"google.golang.org/protobuf/proto"
@@ -15,7 +16,7 @@ import (
 func TestPulsarReaderSource(t *testing.T) {
 	topic := time.Now().Format("20060102150405")
 
-	option := pulsar.ClientOptions{URL: "pulsar://127.0.0.1:6650"}
+	option := pulsar.ClientOptions{URL: test.GetPulsarURL()}
 	client, err := pulsar.NewClient(option)
 	if err != nil {
 		t.Fatal(err)
@@ -42,6 +43,7 @@ func TestPulsarReaderSource(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	time.Sleep(time.Millisecond * 200)
 
 	for ; lsn < 3; lsn++ {
 		bs, _ := proto.Marshal(&pb.Message{Type: &pb.Message_Begin{Begin: &pb.Begin{FinalLsn: uint64(lsn)}}})
@@ -103,7 +105,7 @@ func TestPulsarReaderSource(t *testing.T) {
 
 	// test from specified time and lsn, and not include specified lsn
 	src = newPulsarReaderSource()
-	changes, err = src.Capture(cursor.Checkpoint{LSN: uint64(1), Data: []byte(now.Add(time.Millisecond * 200).Format(time.RFC3339Nano))})
+	changes, err = src.Capture(cursor.Checkpoint{LSN: uint64(1), Data: []byte(now.Add(time.Millisecond * 500).Format(time.RFC3339Nano))})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +124,7 @@ func TestPulsarReaderSource(t *testing.T) {
 func TestPulsarConsumerSource(t *testing.T) {
 	topic := time.Now().Format("20060102150405")
 
-	option := pulsar.ClientOptions{URL: "pulsar://127.0.0.1:6650"}
+	option := pulsar.ClientOptions{URL: test.GetPulsarURL()}
 	client, err := pulsar.NewClient(option)
 	if err != nil {
 		t.Fatal(err)

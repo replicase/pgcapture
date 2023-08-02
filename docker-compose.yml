@@ -1,7 +1,10 @@
 version: "3.8"
 
 x-common-pg: &common-pg
-  build: hack/postgres
+  build:
+    context: hack/postgres
+    dockerfile: ${PG_VERSION}/Dockerfile
+  platform: ${PLATFORM}
   ports:
     - "5432:5432"
   command: [ "postgres", "-c", "config_file=/pgc/postgresql.conf", "-c","hba_file=/pgc/pg_hba.conf" ]
@@ -10,22 +13,56 @@ x-common-pg: &common-pg
   volumes:
     - ./hack/postgres:/pgc
 
+x-common-env: &common-env
+  PG_VERSION: ${PG_VERSION}
+  POSTGRES_URL: postgres://postgres@postgres:5432/postgres?sslmode=disable
+  PULSAR_URL: pulsar://pulsar:6650
+  PULSAR_ADMIN_URL: http://pulsar:8080
+
+x-common-build: &common-build
+  build:
+    context: .
+    dockerfile: Dockerfile.build
+  working_dir: /src
+  environment: *common-env
+  volumes:
+    - .:/src
+    - ${LOCAL_GOPATH}/pkg/mod/cache:/go/pkg/mod/cache
+  depends_on:
+    - pg_${PG_VERSION}
+    - pulsar
+
 services:
   pg_11:
     <<: *common-pg
     image: rueian/postgres:11-logical
+    container_name: postgres
   pg_12:
     <<: *common-pg
     image: dcard/postgres:12-logical
+    container_name: postgres
   pg_13:
     <<: *common-pg
     image: dcard/postgres:13-logical
+    container_name: postgres
   pg_14:
     <<: *common-pg
     image: dcard/postgres:14-logical
+    container_name: postgres
   pulsar:
     image: apachepulsar/pulsar:2.10.4
+    container_name: pulsar
+    platform: ${PLATFORM}
     command: ["bin/pulsar", "standalone"]
     ports:
       - 6650:6650
       - 8080:8080
+  test:
+    <<: *common-build
+    command: [ "make", "test" ]
+  test-deps:
+    image: dadarek/wait-for-dependencies
+    depends_on:
+      - pg_${PG_VERSION}
+      - pulsar
+    command: [ "pulsar:6650", "pulsar:8080", "postgres:5432" ]

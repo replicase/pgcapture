@@ -4,7 +4,7 @@ version: 2.1
 executors:
   default:
     machine:
-      image: ubuntu-2004:202010-01
+      image: ubuntu-2004:202201-02
 
 commands:
   test-with-pg:
@@ -13,16 +13,10 @@ commands:
         type: integer
         default: 11
     steps:
-      - run: docker-compose pull pg_<< parameters.version >>
-      - run: docker-compose up -d --no-build pulsar
-      - run: docker-compose up -d --no-build pg_<< parameters.version >>
-      - run: curl -L https://golang.org/dl/go1.20.linux-amd64.tar.gz > /tmp/go1.20.linux-amd64.tar.gz
-      - run: tar -C /tmp -xzf /tmp/go1.20.linux-amd64.tar.gz
       - run: curl -L https://codeclimate.com/downloads/test-reporter/test-reporter-latest-linux-amd64 > ./cc-test-reporter
       - run: chmod +x ./cc-test-reporter
-      - run: /tmp/go/bin/go get -v -t -d ./...
       - run: ./cc-test-reporter before-build
-      - run: PG_VERSION=<< parameters.version >> /tmp/go/bin/go test -race -p 1 -coverprofile=./c.out ./...
+      - run: PG_VERSION=<< parameters.version >> ./dockerbuild.sh test
       - run: ./cc-test-reporter after-build -p $(go list -m) --exit-code $?
 
 jobs:

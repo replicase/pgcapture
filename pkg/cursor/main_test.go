@@ -10,12 +10,13 @@ import (
 	"strings"
 
 	"github.com/golang/protobuf/proto"
+	"github.com/rueian/pgcapture/internal/test"
 	pulsaradmin "github.com/streamnative/pulsar-admin-go"
 	"github.com/streamnative/pulsar-admin-go/pkg/utils"
 )
 
 func NewAdminClient() (pulsaradmin.Client, error) {
-	return pulsaradmin.NewClient(&pulsaradmin.Config{WebServiceURL: "http://localhost:8080"})
+	return pulsaradmin.NewClient(&pulsaradmin.Config{WebServiceURL: test.GetPulsarAdminURL()})
 }
 
 func nextMessageID(cursor utils.CursorStats) string {
@@ -50,7 +51,7 @@ func GetCheckpointByMessageID(topicName string, messageID string) (cp Checkpoint
 	}
 
 	resp, err := http.Get(
-		"http://localhost:8080/admin/v2/persistent/public/default/" +
+		fmt.Sprintf("%s/admin/v2/persistent/public/default/", test.GetPulsarAdminURL()) +
 			topicName + "/ledger/" +
 			strconv.FormatInt(mid.LedgerID, 10) +
 			"/entry/" +

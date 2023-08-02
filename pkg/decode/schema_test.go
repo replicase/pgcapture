@@ -9,12 +9,13 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v4"
+	"github.com/rueian/pgcapture/internal/test"
 	"github.com/rueian/pgcapture/pkg/sql"
 )
 
 func TestSchemaLoader(t *testing.T) {
 	ctx := context.Background()
-	conn, err := pgx.Connect(ctx, "postgres://postgres@127.0.0.1/postgres?sslmode=disable")
+	conn, err := pgx.Connect(ctx, test.GetPostgresURL())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -7,11 +7,12 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar"
+	"github.com/rueian/pgcapture/internal/test"
 )
 
 func newPulsarTracker(topic string) (*PulsarTracker, func(), error) {
 	client, err := pulsar.NewClient(pulsar.ClientOptions{
-		URL: "pulsar://localhost:6650",
+		URL: test.GetPulsarURL(),
 	})
 	if err != nil {
 		return nil, nil, err
@@ -40,7 +41,7 @@ func TestPulsarTracker(t *testing.T) {
 	defer cancel()
 
 	client, err := pulsar.NewClient(pulsar.ClientOptions{
-		URL: "pulsar://localhost:6650",
+		URL: test.GetPulsarURL(),
 	})
 	if err != nil {
 		t.Fatal(err)

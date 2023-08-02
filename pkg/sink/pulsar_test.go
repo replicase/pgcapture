@@ -8,6 +8,7 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/golang/mock/gomock"
 	"github.com/rueian/pgcapture/internal/cursormock"
+	"github.com/rueian/pgcapture/internal/test"
 	"github.com/rueian/pgcapture/pkg/cursor"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/source"
@@ -15,7 +16,7 @@ import (
 
 func newPulsarSink(topic string, tracker *cursormock.MockTracker) *PulsarSink {
 	return &PulsarSink{
-		PulsarOption: pulsar.ClientOptions{URL: "pulsar://127.0.0.1:6650"},
+		PulsarOption: pulsar.ClientOptions{URL: test.GetPulsarURL()},
 		PulsarTopic:  topic,
 		SetupTracker: func(_ pulsar.Client, _ string) (cursor.Tracker, error) {
 			return tracker, nil

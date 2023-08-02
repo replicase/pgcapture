@@ -1,5 +1,4 @@
-FROM --platform=$TARGETPLATFORM postgres:14-alpine
-ARG TARGETPLATFORM
+FROM postgres:14-alpine
 
 RUN wget https://github.com/2ndQuadrant/pglogical/archive/REL2_4_2.tar.gz && \
     tar -zxvf REL2_4_2.tar.gz && \

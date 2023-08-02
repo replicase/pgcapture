@@ -21,7 +21,7 @@ func TestPGOutputDecoder(t *testing.T) {
 	test.ShouldSkipTestByPGVersion(t, 14)
 
 	ctx := context.Background()
-	conn, err := pgx.Connect(ctx, "postgres://postgres@127.0.0.1/postgres?sslmode=disable")
+	conn, err := pgx.Connect(ctx, test.GetPostgresURL())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func TestPGOutputDecoder(t *testing.T) {
 		}
 	}
 
-	repl, err := pgconn.Connect(ctx, "postgres://postgres@127.0.0.1/postgres?replication=database")
+	repl, err := pgconn.Connect(ctx, test.GetPostgresReplURL())
 	if err != nil {
 		t.Fatal(err)
 	}

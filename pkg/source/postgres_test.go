@@ -20,15 +20,15 @@ const TestSlot = "test_slot"
 
 func newPGXSource(decodePlugin string) *PGXSource {
 	return &PGXSource{
-		SetupConnStr: "postgres://postgres@127.0.0.1/postgres?sslmode=disable",
-		ReplConnStr:  "postgres://postgres@127.0.0.1/postgres?replication=database",
+		SetupConnStr: test.GetPostgresURL(),
+		ReplConnStr:  test.GetPostgresReplURL(),
 		ReplSlot:     TestSlot,
 		DecodePlugin: decodePlugin,
 	}
 }
 
 func newPGConn(ctx context.Context) (*pgx.Conn, error) {
-	conn, err := pgx.Connect(ctx, "postgres://postgres@127.0.0.1/postgres?sslmode=disable")
+	conn, err := pgx.Connect(ctx, test.GetPostgresURL())
 	if err != nil {
 		return nil, err
 	}
