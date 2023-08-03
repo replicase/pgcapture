@@ -13,24 +13,33 @@ x-common-pg: &common-pg
   volumes:
     - ./hack/postgres:/pgc
 
-x-common-env: &common-env
+x-common: &common
+  build:
+    context: .
+    dockerfile: Dockerfile.build
+  working_dir: /src
+  volumes:
+    - .:/src
+    - ${LOCAL_GOPATH}/pkg/mod/cache:/go/pkg/mod/cache
+
+x-common-test-env: &common-test-env
   PG_VERSION: ${PG_VERSION}
   POSTGRES_URL: postgres://postgres@postgres:5432/postgres?sslmode=disable
   PULSAR_URL: pulsar://pulsar:6650
   PULSAR_ADMIN_URL: http://pulsar:8080
 
-x-common-build: &common-build
-  build:
-    context: .
-    dockerfile: Dockerfile.build
-  working_dir: /src
-  environment: *common-env
-  volumes:
-    - .:/src
-    - ${LOCAL_GOPATH}/pkg/mod/cache:/go/pkg/mod/cache
+x-common-test: &common-test
+  <<: *common
+  environment: *common-test-env
   depends_on:
     - pg_${PG_VERSION}
     - pulsar
+
+x-common-build: &common-build
+  <<: *common
+  environment:
+    PGCAPTURE_SHA: ${PGCAPTURE_SHA}
+    PGCAPTURE_VERSION: ${PGCAPTURE_VERSION}
 
 services:
   pg_11:
@@ -57,8 +66,15 @@ services:
     ports:
       - 6650:6650
       - 8080:8080
-  test:
+  build:
     <<: *common-build
+    command: [ "make" ]
+  pgcapture:
+    image: rueian/pgcapture:latest
+    build:
+      context: .
+  test:
+    <<: *common-test
     command: [ "make", "test" ]
   test-deps:
     image: dadarek/wait-for-dependencies
@@ -66,3 +82,7 @@ services:
       - pg_${PG_VERSION}
       - pulsar
     command: [ "pulsar:6650", "pulsar:8080", "postgres:5432" ]
+  codegen:
+    <<: *common
+    command: [ "make", "codegen" ]
+
