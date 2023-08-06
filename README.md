@@ -25,12 +25,23 @@ A scalable Netflix DBLog implementation for PostgreSQL
 * Data synchronization, Moving data to other databases (ex. for OLAP)
 * Upgrade PostgreSQL with minimum downtime
 
-## Dependencies
-* pglogical postgresql extension
-* pgcapture postgresql extension
+## Decode Plugin
+The decode plugin is a shared library that can be loaded into PostgreSQL to decode logical changes.
+Currently, pgcapture can work with the following plugins:
+1. pglogical_output 
 
-See [./hack/postgres/Dockerfile](./hack/postgres/Dockerfile.11) for installation guide.
-  
+     The pglogical_output plugin is come from [pglogical](https://github.com/2ndQuadrant/pglogical) which can support binary representation of the changes. In order to use pglogical_output plugin, you must install pglogical extension first. Also, pgcapture would not create pglogical local node automatically, so you must create it manually. Or you can add a [patch](hack/postgres/14/pglogical/pglogical.patch) to change pglogical source code to ignore checking local node.
+
+2. pgoutput
+
+     The pgoutput plugin is standard PostgreSQL plugin which can support binary representation of the changes only when PostgreSQL version >= 14. So, if you want to use pgoutput plugin, your PostgreSQL version must be >= 14. Currently, pgoutput plugin is default plugin of pgcapture.
+
+## Dependencies
+* pglogical postgresql extension (it's optional unless you want to use pglogical_output plugin)
+* pgcapture postgresql extension (it's required because it captures DDL commands)
+
+See [./hack/postgres](./hack/postgres) for installation guide of each PostgreSQL version.
+
 ## Consume changes with Golang
 
 ```golang
