@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -177,7 +178,7 @@ func (a *Agent) cleanup() error {
 }
 
 func (a *Agent) pg2pulsar(params *structpb.Struct) (*pb.AgentConfigResponse, error) {
-	v, err := extract(params, "PGConnURL", "PGReplURL", "PulsarURL", "PulsarTopic", "DecodePlugin", "?StartLSN", "?PulsarTracker", "?PulsarTrackerInterval")
+	v, err := extract(params, "PGConnURL", "PGReplURL", "PulsarURL", "PulsarTopic", "DecodePlugin", "?StartLSN", "?PulsarTracker", "?PulsarTrackerInterval", "?PulsarTrackerReplicateState")
 	if err != nil {
 		return nil, err
 	}
@@ -201,8 +202,17 @@ func (a *Agent) pg2pulsar(params *structpb.Struct) (*pb.AgentConfigResponse, err
 			}
 		}
 
+		var replicateState bool
+		if val := v["PulsarTrackerReplicateState"]; val != "" {
+			var err error
+			replicateState, err = strconv.ParseBool(val)
+			if err != nil {
+				return nil, fmt.Errorf("PulsarTrackerReplicateState should be a valid bool: %w", err)
+			}
+		}
+
 		pulsarSink.SetupTracker = func(client pulsar.Client, topic string) (cursor.Tracker, error) {
-			return cursor.NewPulsarSubscriptionTracker(client, topic, commitInterval)
+			return cursor.NewPulsarSubscriptionTracker(client, topic, commitInterval, replicateState)
 		}
 	default:
 		return nil, errors.New("PulsarTracker should be one of [pulsar|pulsarSub]")
