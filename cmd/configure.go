@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"log"
+	"strconv"
 	"time"
 
 	"github.com/rueian/pgcapture/pkg/decode"
@@ -13,17 +14,18 @@ import (
 )
 
 var (
-	AgentAddr                   string
-	AgentCommand                string
-	ConfigPGConnURL             string
-	ConfigPGReplURL             string
-	ConfigPulsarURL             string
-	ConfigPulsarTopic           string
-	ConfigPGLogPath             string
-	ConfigStartLSN              string
-	ConfigPulsarTracker         string
-	ConfigPulsarTrackerInterval string
-	ConfigDecodePlugin          string
+	AgentAddr                         string
+	AgentCommand                      string
+	ConfigPGConnURL                   string
+	ConfigPGReplURL                   string
+	ConfigPulsarURL                   string
+	ConfigPulsarTopic                 string
+	ConfigPGLogPath                   string
+	ConfigStartLSN                    string
+	ConfigPulsarTracker               string
+	ConfigPulsarTrackerInterval       string
+	ConfigPulsarTrackerReplicateState bool
+	ConfigDecodePlugin                string
 )
 
 func init() {
@@ -38,6 +40,7 @@ func init() {
 	configure.Flags().StringVarP(&ConfigStartLSN, "StartLSN", "", "", "the LSN position to start the pg2pulsar process, optional")
 	configure.Flags().StringVarP(&ConfigPulsarTracker, "PulsarTracker", "", "", "the tracker type for pg2pulsar, optional")
 	configure.Flags().StringVarP(&ConfigPulsarTrackerInterval, "PulsarTrackerInterval", "", "", "the commit interval for the pg2pulsar, optional")
+	configure.Flags().BoolVarP(&ConfigPulsarTrackerReplicateState, "PulsarTrackerReplicateState", "", false, "the replicate state for the pg2pulsar, optional")
 	configure.Flags().StringVarP(&ConfigDecodePlugin, "DecodePlugin", "", decode.PGOutputPlugin, "the logical decoding plugin name")
 	configure.MarkFlagRequired("AgentAddr")
 	configure.MarkFlagRequired("AgentCommand")
@@ -51,16 +54,17 @@ var configure = &cobra.Command{
 	Short: "Poke agent's Configure endpoint repeatedly",
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
 		params, err := structpb.NewStruct(map[string]interface{}{
-			"Command":               AgentCommand,
-			"PGConnURL":             ConfigPGConnURL,
-			"PGReplURL":             ConfigPGReplURL,
-			"PulsarURL":             ConfigPulsarURL,
-			"PulsarTopic":           ConfigPulsarTopic,
-			"PGLogPath":             ConfigPGLogPath,
-			"StartLSN":              ConfigStartLSN,
-			"PulsarTracker":         ConfigPulsarTracker,
-			"PulsarTrackerInterval": ConfigPulsarTrackerInterval,
-			"DecodePlugin":          ConfigDecodePlugin,
+			"Command":                     AgentCommand,
+			"PGConnURL":                   ConfigPGConnURL,
+			"PGReplURL":                   ConfigPGReplURL,
+			"PulsarURL":                   ConfigPulsarURL,
+			"PulsarTopic":                 ConfigPulsarTopic,
+			"PGLogPath":                   ConfigPGLogPath,
+			"StartLSN":                    ConfigStartLSN,
+			"PulsarTracker":               ConfigPulsarTracker,
+			"PulsarTrackerInterval":       ConfigPulsarTrackerInterval,
+			"PulsarTrackerReplicateState": strconv.FormatBool(ConfigPulsarTrackerReplicateState),
+			"DecodePlugin":                ConfigDecodePlugin,
 		})
 		if err != nil {
 			panic(err)

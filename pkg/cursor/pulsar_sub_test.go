@@ -18,7 +18,7 @@ func newPulsarSubscriptionTracker(topic string) (*PulsarSubscriptionTracker, fun
 		return nil, nil, err
 	}
 
-	tracker, err := NewPulsarSubscriptionTracker(client, topic, 100*time.Millisecond)
+	tracker, err := NewPulsarSubscriptionTracker(client, topic, 100*time.Millisecond, false)
 	if err != nil {
 		client.Close()
 		return nil, nil, err
