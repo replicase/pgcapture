@@ -145,3 +145,24 @@ func main() {
 }
 
 ```
+
+## Contributing
+The project is being actively developed and looking for additional contributors and production deployments.
+
+### Local development
+In order to ensure the development environment is consistent, we use container to build, codegen, and test the project.
+
+You can use the following commands:
+```bash
+# build
+./dockerbuild.sh build
+
+# codegen (generate protobuf and mock)
+./dockerbuild.sh codegen
+
+# test
+./dockerbuild.sh test
+
+# clean (remove related containers)
+./dockerbuild.sh clean
+```
