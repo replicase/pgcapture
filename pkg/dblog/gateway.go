@@ -162,7 +162,7 @@ func (s *Gateway) capture(init *pb.CaptureInit, filter *regexp.Regexp, server pb
 				dump, err = dumper.LoadDump(lsn, info.Resp)
 				if err != nil {
 					logger.WithFields(logrus.Fields{"Dump": info.Resp.String()}).Errorf("dump error %v", err)
-					if err != ErrMissingTable {
+					if !errors.Is(err, ErrMissingTable) {
 						info.Ack(err.Error())
 						continue
 					}

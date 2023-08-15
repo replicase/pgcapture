@@ -2,6 +2,7 @@ package cursor
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -111,7 +112,7 @@ func (p *PulsarSubscriptionTracker) Last() (Checkpoint, error) {
 			cp, err := p.read(context.Background())
 			if err != nil {
 				// most likely that there is no message in the topic
-				if err == context.DeadlineExceeded {
+				if errors.Is(err, context.DeadlineExceeded) {
 					return last, nil
 				}
 				return Checkpoint{}, err

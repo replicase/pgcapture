@@ -2,6 +2,7 @@ package dblog
 
 import (
 	"context"
+	"errors"
 	"net"
 	"testing"
 
@@ -12,10 +13,10 @@ import (
 func TestStaticPGXPulsarResolver_ErrURINotFound(t *testing.T) {
 	ctx := context.Background()
 	r := NewStaticAgentPulsarResolver(nil)
-	if _, err := r.Source(ctx, "any"); err != ErrURINotFound {
+	if _, err := r.Source(ctx, "any"); !errors.Is(err, ErrURINotFound) {
 		t.Fatal("unexpected")
 	}
-	if _, err := r.Dumper(ctx, "any"); err != ErrURINotFound {
+	if _, err := r.Dumper(ctx, "any"); !errors.Is(err, ErrURINotFound) {
 		t.Fatal("unexpected")
 	}
 }

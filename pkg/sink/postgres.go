@@ -145,7 +145,7 @@ func (p *PGXSink) findCheckpoint(ctx context.Context) (cp cursor.Checkpoint, err
 	var mid []byte
 	var seq uint32
 	err = p.conn.QueryRow(ctx, "SELECT commit, seq, mid FROM pgcapture.sources WHERE id = $1 AND commit IS NOT NULL AND seq IS NOT NULL AND mid IS NOT NULL", p.SourceID).Scan(&str, &seq, &mid)
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, pgx.ErrNoRows) {
 		err = nil
 		if p.LogReader != nil {
 			p.log.Info("try to find last checkpoint from log reader")
@@ -325,7 +325,7 @@ parse:
 		stmts = append(stmts, stmt)
 	}
 
-	// record relations appeared in the statement, following change messages should be ignore if duplicated with them
+	// record relations appeared in the statement, following change messages should be ignored if duplicated with them
 	relations = make(map[string]bool)
 	for _, stmt := range stmts {
 		var relation *pg_query.RangeVar

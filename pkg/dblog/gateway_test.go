@@ -24,7 +24,7 @@ func TestGateway_CaptureInitError(t *testing.T) {
 		RecvCB: func() (*pb.CaptureRequest, error) {
 			return nil, context.Canceled
 		},
-	}); err != context.Canceled {
+	}); !errors.Is(err, context.Canceled) {
 		t.Fatal("unexpected")
 	}
 
@@ -33,7 +33,7 @@ func TestGateway_CaptureInitError(t *testing.T) {
 		RecvCB: func() (*pb.CaptureRequest, error) {
 			return &pb.CaptureRequest{}, nil
 		},
-	}); err != ErrCaptureInitMessageRequired {
+	}); !errors.Is(err, ErrCaptureInitMessageRequired) {
 		t.Fatal("unexpected")
 	}
 
@@ -42,7 +42,7 @@ func TestGateway_CaptureInitError(t *testing.T) {
 		RecvCB: func() (*pb.CaptureRequest, error) {
 			return &pb.CaptureRequest{Type: &pb.CaptureRequest_Init{Init: &pb.CaptureInit{Uri: URI1}}}, nil
 		},
-	}); err != context.Canceled {
+	}); !errors.Is(err, context.Canceled) {
 		t.Fatal("unexpected")
 	}
 
@@ -69,7 +69,7 @@ func TestGateway_CaptureInitError(t *testing.T) {
 		RecvCB: func() (*pb.CaptureRequest, error) {
 			return &pb.CaptureRequest{Type: &pb.CaptureRequest_Init{Init: &pb.CaptureInit{Uri: URI1}}}, nil
 		},
-	}); err != context.Canceled {
+	}); !errors.Is(err, context.Canceled) {
 		t.Fatal("unexpected")
 	}
 
@@ -99,7 +99,7 @@ func TestGateway_CaptureInitError(t *testing.T) {
 		RecvCB: func() (*pb.CaptureRequest, error) {
 			return &pb.CaptureRequest{Type: &pb.CaptureRequest_Init{Init: &pb.CaptureInit{Uri: URI1}}}, nil
 		},
-	}); err != context.Canceled {
+	}); !errors.Is(err, context.Canceled) {
 		t.Fatal("unexpected")
 	}
 }
@@ -212,7 +212,7 @@ func TestGateway_Capture(t *testing.T) {
 		t.Fatal("unexpected")
 	}
 
-	// if source have begin, not send it to client, but ack
+	// if source have begun, not send it to client, but ack
 	changes <- source.Change{Checkpoint: cursor.Checkpoint{LSN: 1}, Message: &pb.Message{Type: &pb.Message_Begin{Begin: &pb.Begin{}}}}
 	if cp := <-commit; cp.LSN != 1 {
 		t.Fatal("unexpected")
@@ -374,7 +374,7 @@ func TestGateway_CaptureSendSourceError(t *testing.T) {
 				send <- message
 				return context.Canceled
 			},
-		}); err != context.Canceled {
+		}); !errors.Is(err, context.Canceled) {
 			panic("unexpected")
 		}
 	}()
@@ -459,7 +459,7 @@ func TestGateway_CaptureSendDumpError(t *testing.T) {
 				send <- message
 				return context.Canceled
 			},
-		}); err != context.Canceled {
+		}); !errors.Is(err, context.Canceled) {
 			panic("unexpected")
 		}
 	}()
@@ -555,7 +555,7 @@ func TestGateway_CaptureRecvError(t *testing.T) {
 				send <- message
 				return nil
 			},
-		}); err != context.Canceled {
+		}); !errors.Is(err, context.Canceled) {
 			panic("unexpected")
 		}
 	}()

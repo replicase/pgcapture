@@ -31,7 +31,7 @@ func TestMemoryScheduler_Schedule(t *testing.T) {
 	}
 
 	for uri, group := range groups {
-		if err := s.Schedule(uri, group.dumps, nil); err != ErrAlreadyScheduled {
+		if err := s.Schedule(uri, group.dumps, nil); !errors.Is(err, ErrAlreadyScheduled) {
 			t.Fatal("scheduled uri should be reject until finished")
 		}
 	}
@@ -59,7 +59,7 @@ func TestMemoryScheduler_Schedule(t *testing.T) {
 
 	for uri, group := range groups {
 		for i := range group.clients {
-			if _, err := s.Register(uri, strconv.Itoa(i), nil); err != ErrAlreadyRegistered {
+			if _, err := s.Register(uri, strconv.Itoa(i), nil); !errors.Is(err, ErrAlreadyRegistered) {
 				t.Fatal("client can't be registered twice until unregistered")
 			}
 		}
@@ -111,7 +111,7 @@ func TestMemoryScheduler_Schedule(t *testing.T) {
 		if err == nil {
 			break
 		}
-		if err == ErrAlreadyRegistered {
+		if errors.Is(err, ErrAlreadyRegistered) {
 			continue
 		}
 		t.Fatal(err)
