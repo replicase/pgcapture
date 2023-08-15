@@ -1,0 +1,45 @@
+package pgcapture
+
+import (
+	"context"
+
+	"github.com/rueian/pgcapture/pkg/dblog"
+	"github.com/rueian/pgcapture/pkg/pb"
+	"github.com/rueian/pgcapture/pkg/pgcapture"
+	"github.com/rueian/pgcapture/pkg/source"
+	"google.golang.org/grpc"
+)
+
+var (
+	CommitSHA string
+	Version   string
+)
+
+type (
+	Model            = pgcapture.Model
+	Change           = pgcapture.Change
+	ModelHandlerFunc = pgcapture.ModelHandlerFunc
+	ConsumerOption   = pgcapture.ConsumerOption
+	SourceResolver   = dblog.SourceResolver
+	SourceDumper     = dblog.SourceDumper
+	RequeueSource    = source.RequeueSource
+)
+
+func NewDBLogConsumer(ctx context.Context, conn *grpc.ClientConn, option ConsumerOption) *pgcapture.Consumer {
+	return pgcapture.NewDBLogConsumer(ctx, conn, option)
+}
+
+func NewDBLogGateway(conn *grpc.ClientConn, sourceResolver SourceResolver) *dblog.Gateway {
+	return &dblog.Gateway{
+		SourceResolver: sourceResolver,
+		DumpInfoPuller: &dblog.GRPCDumpInfoPuller{Client: pb.NewDBLogControllerClient(conn)},
+	}
+}
+
+func NewDBLogControllerClient(conn *grpc.ClientConn) pb.DBLogControllerClient {
+	return pb.NewDBLogControllerClient(conn)
+}
+
+func MarshalJSON(m Model) ([]byte, error) {
+	return pgcapture.MarshalJSON(m)
+}

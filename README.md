@@ -51,7 +51,7 @@ import (
     "context"
 
     "github.com/jackc/pgtype"
-    "github.com/rueian/pgcapture/pkg/pgcapture"
+    "github.com/rueian/pgcapture"
     "google.golang.org/grpc"
 )
 
@@ -76,13 +76,13 @@ func main() {
     conn, _ := grpc.Dial("127.0.0.1:1000", grpc.WithInsecure())
     defer conn.Close()
 
-    consumer := pgcapture.NewConsumer(ctx, conn, pgcapture.ConsumerOption{ 
+    consumer := pgcapture.NewDBLogConsumer(ctx, conn, pgcapture.ConsumerOption{
         // the uri identify which change stream you want.
         // you can implement dblog.SourceResolver to customize gateway behavior based on uri
         URI: "my_subscription_id", 
     })
     defer consumer.Stop()
-	
+
     consumer.Consume(map[pgcapture.Model]pgcapture.ModelHandlerFunc{
         &MyTable{}: func(change pgcapture.Change) error {
             row := change.New.(*MyTable) 
@@ -117,31 +117,28 @@ import (
     "context"
     "net"
 	
-    "github.com/rueian/pgcapture/pkg/dblog"
-    "github.com/rueian/pgcapture/pkg/pb"
-    "github.com/rueian/pgcapture/pkg/source"
+    "github.com/rueian/pgcapture"
     "google.golang.org/grpc"
 )
 
 type MySourceResolver struct {}
 
-func (m *MySourceResolver) Source(ctx context.Context, uri string) (source.RequeueSource, error) {
+func (m *MySourceResolver) Source(ctx context.Context, uri string) (pgcapture.RequeueSource, error) {
     // decide where to fetch latest change based on uri
 }
 
-func (m *MySourceResolver) Dumper(ctx context.Context, uri string) (dblog.SourceDumper, error) {
+func (m *MySourceResolver) Dumper(ctx context.Context, uri string) (pgcapture.SourceDumper, error) {
     // decide where to fetch on-demand dumps based on uri
 }
 
 func main() {
     // connect to dump controller
     controlConn, _ := grpc.Dial("127.0.0.1:10001", grpc.WithInsecure())
-	
-    gateway := &dblog.Gateway{
-        SourceResolver: &MySourceResolver{}, 
-        DumpInfoPuller: &dblog.GRPCDumpInfoPuller{Client: pb.NewDBLogControllerClient(controlConn)},
-    }
-    serveGRPC(gateway, "0.0.0.0:10000")
+
+    gateway := pgcapture.NewDBLogGateway(controlConn, &MySourceResolver{})
+
+    ln, _ := net.Listen("tcp", "0.0.0.0:10000")
+    gateway.Serve(context.Background(), ln)
 }
 
 ```

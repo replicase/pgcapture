@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 
+	"github.com/rueian/pgcapture"
 	"github.com/rueian/pgcapture/example"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"google.golang.org/grpc"
@@ -15,7 +16,7 @@ func main() {
 	}
 	defer conn.Close()
 
-	client := pb.NewDBLogControllerClient(conn)
+	client := pgcapture.NewDBLogControllerClient(conn)
 
 	if _, err = client.StopSchedule(context.Background(), &pb.StopScheduleRequest{Uri: example.TestDBSrc}); err != nil {
 		panic(err)

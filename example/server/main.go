@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path"
 	"sync"
 	"syscall"
 	"time"
@@ -127,7 +128,7 @@ type cmd struct {
 }
 
 func run(ctx context.Context, cmd cmd, wg *sync.WaitGroup) {
-	args := []string{"run", "main.go", cmd.Name}
+	args := []string{"run", path.Join(".", "cmd"), cmd.Name}
 	for k, v := range cmd.Flags {
 		args = append(args, fmt.Sprintf("--%s=%s", k, v))
 	}
