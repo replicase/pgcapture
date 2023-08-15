@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/rueian/pgcapture"
 	"github.com/rueian/pgcapture/example"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"google.golang.org/grpc"
@@ -17,7 +18,7 @@ func main() {
 	}
 	defer conn.Close()
 
-	client := pb.NewDBLogControllerClient(conn)
+	client := pgcapture.NewDBLogControllerClient(conn)
 
 	pages, err := example.SinkDB.TablePages(example.TestTable)
 	if err != nil {

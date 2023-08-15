@@ -16,8 +16,8 @@ endif
 .PHONY: build
 build:
 	go build \
-		-ldflags="-X github.com/rueian/pgcapture/cmd.CommitSHA=${PGCAPTURE_SHA} -X github.com/rueian/pgcapture/cmd.Version=${PGCAPTURE_VERSION}" \
-		-x -o bin/out/pgcapture main.go
+		-ldflags="-X github.com/rueian/pgcapture.CommitSHA=${PGCAPTURE_SHA} -X github.com/rueian/pgcapture.Version=${PGCAPTURE_VERSION}" \
+		-x -o bin/out/pgcapture ./cmd
 
 .PHONY: test
 test:

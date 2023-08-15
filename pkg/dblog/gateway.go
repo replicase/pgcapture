@@ -1,9 +1,11 @@
 package dblog
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"hash/crc32"
+	"net"
 	"regexp"
 	"sync"
 
@@ -12,6 +14,7 @@ import (
 	"github.com/rueian/pgcapture/pkg/pgcapture"
 	"github.com/rueian/pgcapture/pkg/source"
 	"github.com/sirupsen/logrus"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/peer"
 )
 
@@ -19,6 +22,22 @@ type Gateway struct {
 	pb.UnimplementedDBLogGatewayServer
 	SourceResolver SourceResolver
 	DumpInfoPuller DumpInfoPuller
+}
+
+func (s *Gateway) Serve(ctx context.Context, ln net.Listener, opts ...grpc.ServerOption) error {
+	server := grpc.NewServer(opts...)
+	pb.RegisterDBLogGatewayServer(server, s)
+
+	if ch := ctx.Done(); ch != nil {
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		go func(ctx context.Context) {
+			<-ctx.Done()
+			server.GracefulStop()
+		}(ctx)
+	}
+
+	return server.Serve(ln)
 }
 
 func (s *Gateway) Capture(server pb.DBLogGateway_CaptureServer) error {
