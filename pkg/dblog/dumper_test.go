@@ -2,6 +2,7 @@ package dblog
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/jackc/pglogrepl"
@@ -32,23 +33,23 @@ func TestPGXSourceDumper(t *testing.T) {
 	}
 	defer dumper.Stop()
 
-	if _, err := dumper.LoadDump(0, &pb.DumpInfoResponse{}); err != ErrMissingTable {
+	if _, err := dumper.LoadDump(0, &pb.DumpInfoResponse{}); !errors.Is(err, ErrMissingTable) {
 		t.Fatal(err)
 	}
-	if _, err := dumper.LoadDump(0, &pb.DumpInfoResponse{Schema: "public", Table: "t1"}); err != ErrLSNMissing {
+	if _, err := dumper.LoadDump(0, &pb.DumpInfoResponse{Schema: "public", Table: "t1"}); !errors.Is(err, ErrLSNMissing) {
 		t.Fatal(err)
 	}
 
 	conn.Exec(ctx, "INSERT INTO pgcapture.sources (id,commit) VALUES ($1,$2)", "t1", pglogrepl.LSN(0).String())
 
-	if _, err := dumper.LoadDump(0, &pb.DumpInfoResponse{Schema: "any", Table: "any"}); err != ErrMissingTable {
+	if _, err := dumper.LoadDump(0, &pb.DumpInfoResponse{Schema: "any", Table: "any"}); !errors.Is(err, ErrMissingTable) {
 		t.Fatal(err)
 	}
-	if _, err := dumper.LoadDump(0, &pb.DumpInfoResponse{Schema: "public", Table: "any"}); err != ErrMissingTable {
+	if _, err := dumper.LoadDump(0, &pb.DumpInfoResponse{Schema: "public", Table: "any"}); !errors.Is(err, ErrMissingTable) {
 		t.Fatal(err)
 	}
 
-	if _, err := dumper.LoadDump(100, &pb.DumpInfoResponse{Schema: "public", Table: "t1"}); err != ErrLSNFallBehind {
+	if _, err := dumper.LoadDump(100, &pb.DumpInfoResponse{Schema: "public", Table: "t1"}); !errors.Is(err, ErrLSNFallBehind) {
 		t.Fatal(err)
 	}
 

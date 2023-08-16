@@ -2,7 +2,6 @@ package sink
 
 import (
 	"context"
-	"io/ioutil"
 	"log"
 	"os"
 	"strconv"
@@ -529,7 +528,7 @@ func TestPGXSink_ScanCheckpointFromLog(t *testing.T) {
 	conn.Exec(ctx, "DROP SCHEMA public CASCADE; CREATE SCHEMA public")
 	conn.Exec(ctx, "DROP EXTENSION IF EXISTS pgcapture")
 
-	tmp, err := ioutil.TempFile("", "postgres.sql")
+	tmp, err := os.CreateTemp("", "postgres.sql")
 	if err != nil {
 		t.Fatal(err)
 	}

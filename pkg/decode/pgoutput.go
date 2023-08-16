@@ -90,7 +90,7 @@ func (p *PGOutputDecoder) makePBTuple(rel Relation, src []Field, noNull bool) (f
 		case 't':
 			fields = append(fields, &pb.Field{Name: rel.Fields[i], Oid: oid, Value: &pb.Field_Text{Text: string(s.Datum)}})
 		case 'u':
-			continue // unchanged toast field should be exclude
+			continue // unchanged toast field should be excluded
 		}
 	}
 	return fields

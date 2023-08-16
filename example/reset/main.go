@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 
 	"github.com/rueian/pgcapture/example"
@@ -14,7 +14,7 @@ func main() {
 	if err != nil {
 		fmt.Println(err)
 	} else {
-		bs, _ := ioutil.ReadAll(resp.Body)
+		bs, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if resp.StatusCode > 299 {
 			fmt.Println(string(bs))

@@ -77,7 +77,8 @@ func (p *PGXSource) Capture(cp cursor.Checkpoint) (changes chan Change, err erro
 		p.decoder = decode.NewPGOutputDecoder(p.schema, p.ReplSlot)
 		if p.CreatePublication {
 			if _, err = p.setupConn.Exec(ctx, fmt.Sprintf(sql.CreatePublication, p.ReplSlot)); err != nil {
-				if pge, ok := err.(*pgconn.PgError); !ok || pge.Code != "42710" {
+				var pge *pgconn.PgError
+				if !errors.As(err, &pge) || pge.Code != "42710" {
 					return nil, err
 				}
 			}
@@ -88,7 +89,8 @@ func (p *PGXSource) Capture(cp cursor.Checkpoint) (changes chan Change, err erro
 
 	if p.CreateSlot {
 		if _, err = p.setupConn.Exec(ctx, sql.CreateLogicalSlot, p.ReplSlot, p.DecodePlugin); err != nil {
-			if pge, ok := err.(*pgconn.PgError); !ok || pge.Code != "42710" {
+			var pge *pgconn.PgError
+			if !errors.As(err, &pge) || pge.Code != "42710" {
 				return nil, err
 			}
 		}

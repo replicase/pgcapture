@@ -2,6 +2,7 @@ package test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -72,7 +73,8 @@ func (u DBURL) TablePages(table string) (pages int, err error) {
 
 func CreateDB(u DBURL, n DBURL) (DBURL, error) {
 	if err := u.Exec("create database " + n.DB); err != nil {
-		if pge, ok := err.(*pgconn.PgError); !ok || pge.Code != "42P04" {
+		var pge *pgconn.PgError
+		if !errors.As(err, &pge) || pge.Code != "42P04" {
 			return DBURL{}, err
 		}
 	}

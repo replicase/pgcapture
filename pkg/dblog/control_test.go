@@ -37,7 +37,7 @@ func TestController_Schedule_Error(t *testing.T) {
 			return context.Canceled
 		},
 	})
-	if _, err := c.Schedule(context.Background(), &pb.ScheduleRequest{}); err != context.Canceled {
+	if _, err := c.Schedule(context.Background(), &pb.ScheduleRequest{}); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
 }
@@ -52,7 +52,7 @@ func TestController_PullDumpInfo_InitError(t *testing.T) {
 
 	if err := c.PullDumpInfo(&pdis{
 		RecvCB: func() (*pb.DumpInfoRequest, error) { return &pb.DumpInfoRequest{}, nil },
-	}); err != ErrEmptyURI {
+	}); !errors.Is(err, ErrEmptyURI) {
 		t.Fatal("unexpected")
 	}
 }
@@ -86,7 +86,7 @@ func TestController_PullDumpInfo_Delegate(t *testing.T) {
 			if client != "1" {
 				t.Fatal("unexpected")
 			}
-			if err := fn(dump); err != context.Canceled { // should be received in SendCB
+			if err := fn(dump); !errors.Is(err, context.Canceled) { // should be received in SendCB
 				t.Fatal("unexpected")
 			}
 			return func() {
@@ -117,7 +117,7 @@ func TestController_PullDumpInfo_Delegate(t *testing.T) {
 			}
 			return context.Canceled
 		},
-	}); err != context.Canceled {
+	}); !errors.Is(err, context.Canceled) {
 		t.Fatal("unexpected")
 	}
 
