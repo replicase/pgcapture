@@ -42,6 +42,17 @@ Currently, pgcapture can work with the following plugins:
 
 See [./hack/postgres](./hack/postgres) for installation guide of each PostgreSQL version.
 
+## Server Side Setup
+
+To begin consuming changes and dumps, there are some server side components should be setup first, such as:
+
+* pg2pulsar
+* apache pulsar
+* dblog controller
+* dblog grpc gateway server
+
+Please checkout https://github.com/KennyChenFight/docker-pgcapture for guidance.
+
 ## Consume changes with Golang
 
 ```golang
