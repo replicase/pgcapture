@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v5"
@@ -159,6 +160,7 @@ func TestPGXSource_Capture(t *testing.T) {
 				}
 			}
 
+			time.Sleep(time.Second)
 			// test schema refresh
 			for _, tx := range txs {
 				tx.Check(tx)
@@ -171,6 +173,8 @@ func TestPGXSource_Capture(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+
+			time.Sleep(time.Second)
 			for _, tx := range txs[1:] {
 				tx.Check(tx)
 			}
@@ -182,6 +186,8 @@ func TestPGXSource_Capture(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+
+			time.Sleep(time.Second)
 			for _, tx := range txs[1:] {
 				tx.Check(tx)
 			}
@@ -195,6 +201,7 @@ func TestPGXSource_Capture(t *testing.T) {
 				t.Fatal("TxCounter should > 0")
 			}
 
+			time.Sleep(6 * time.Second)
 			var lsn string
 			if err = conn.QueryRow(ctx, "select confirmed_flush_lsn from pg_replication_slots where slot_name = $1", TestSlot).Scan(&lsn); err != nil {
 				t.Fatal(err)
