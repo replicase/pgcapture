@@ -3,12 +3,10 @@ package decode
 import (
 	"bytes"
 	"context"
-	"encoding/hex"
 	"strings"
-	"time"
 
-	"github.com/jackc/pgtype"
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/rueian/pgcapture/pkg/pb"
 )
 
@@ -51,33 +49,6 @@ func (c *change) Apply(ctx context.Context, conn *pgx.Conn) (err error) {
 	return err
 }
 
-func JSON(t string) pgtype.JSONB {
-	return pgtype.JSONB{Bytes: []byte(t), Status: pgtype.Present}
-}
-
-func Text(t string) pgtype.Text {
-	return pgtype.Text{String: t, Status: pgtype.Present}
-}
-
-func Bytea(bs []byte) pgtype.Bytea {
-	return pgtype.Bytea{Bytes: bs, Status: pgtype.Present}
-}
-
-func UUID(t string) pgtype.UUID {
-	bs, _ := hex.DecodeString(strings.ReplaceAll(t, "-", ""))
-	ret := pgtype.UUID{}
-	ret.Set(bs)
-	return ret
-}
-
-func Int8(i int64) pgtype.Int8 {
-	return pgtype.Int8{Int: i, Status: pgtype.Present}
-}
-
-func Tstz(ts time.Time) pgtype.Timestamptz {
-	return pgtype.Timestamptz{Time: ts, Status: pgtype.Present}
-}
-
 func nB(n int) []byte {
 	builder := bytes.Buffer{}
 	for i := 0; i < n; i++ {
@@ -94,11 +65,7 @@ func nT(n int) string {
 	return builder.String()
 }
 
-func b(in pgtype.BinaryEncoder) []byte {
-	ci := pgtype.NewConnInfo()
-	bs, err := in.EncodeBinary(ci, nil)
-	if err != nil {
-		panic(err)
-	}
+func b(in any, oid int) []byte {
+	bs, _ := pgtype.NewMap().Encode(uint32(oid), pgtype.BinaryFormatCode, in, nil)
 	return bs
 }

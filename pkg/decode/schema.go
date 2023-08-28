@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/jackc/pgtype"
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/sql"
 )
@@ -16,7 +16,7 @@ type fieldSet struct {
 	set map[string]struct{}
 }
 
-func fieldSetWithList(list pgtype.TextArray) fieldSet {
+func fieldSetWithList(list pgtype.Array[pgtype.Text]) fieldSet {
 	s := fieldSet{set: make(map[string]struct{}, len(list.Elements))}
 	for _, v := range list.Elements {
 		s.append(v.String)
@@ -148,9 +148,9 @@ func (p *PGXSchemaLoader) RefreshColumnInfo() error {
 	var nspname, relname string
 	for rows.Next() {
 		var (
-			keys                      pgtype.TextArray
-			identityGenerationColumns pgtype.TextArray
-			generatedColumns          pgtype.TextArray
+			keys                      pgtype.Array[pgtype.Text]
+			identityGenerationColumns pgtype.Array[pgtype.Text]
+			generatedColumns          pgtype.Array[pgtype.Text]
 		)
 		if err := rows.Scan(&nspname, &relname, &keys, &identityGenerationColumns, &generatedColumns); err != nil {
 			return err

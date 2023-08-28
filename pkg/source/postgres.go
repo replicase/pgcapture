@@ -7,10 +7,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/jackc/pgconn"
 	"github.com/jackc/pglogrepl"
-	"github.com/jackc/pgproto3/v2"
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/rueian/pgcapture/pkg/cursor"
 	"github.com/rueian/pgcapture/pkg/decode"
 	"github.com/rueian/pgcapture/pkg/sql"
@@ -176,7 +176,11 @@ func (p *PGXSource) fetching(ctx context.Context) (change Change, err error) {
 			if err != nil {
 				return change, err
 			}
-			m, err := p.decoder.Decode(xld.WALData)
+			// in the implementation of pgx v5, there might be the chance to cause data race
+			// we need to copy wal data to avoid it
+			walData := make([]byte, len(xld.WALData))
+			copy(walData, xld.WALData)
+			m, err := p.decoder.Decode(walData)
 			if m == nil || err != nil {
 				return change, err
 			}

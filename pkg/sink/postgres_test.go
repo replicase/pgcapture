@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/jackc/pglogrepl"
-	"github.com/jackc/pgtype"
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/rueian/pgcapture/internal/test"
 	"github.com/rueian/pgcapture/pkg/cursor"
 	"github.com/rueian/pgcapture/pkg/decode"
@@ -498,9 +498,15 @@ func TestPGXSink(t *testing.T) {
 }
 
 func tags(v ...string) []byte {
-	t := pgtype.TextArray{}
-	t.Set(v)
-	buf, _ := t.EncodeBinary(pgtype.NewConnInfo(), nil)
+	elements := make([]pgtype.Text, len(v))
+	for i := range v {
+		elements[i] = pgtype.Text{String: v[i], Valid: true}
+	}
+	array := pgtype.Array[pgtype.Text]{
+		Elements: elements,
+		Valid:    true,
+	}
+	buf, _ := pgtype.NewMap().Encode(pgtype.TextArrayOID, pgtype.BinaryFormatCode, array, nil)
 	return buf
 }
 

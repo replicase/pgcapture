@@ -17,10 +17,10 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/jackc/pgconn"
 	"github.com/jackc/pglogrepl"
-	"github.com/jackc/pgtype"
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	pg_query "github.com/pganalyze/pg_query_go/v2"
 	"github.com/rueian/pgcapture/pkg/cursor"
 	"github.com/rueian/pgcapture/pkg/decode"
@@ -577,7 +577,7 @@ func (p *PGXSink) handleCommit(cp cursor.Checkpoint, commit *pb.Commit) (err err
 		return err
 	}
 	commitTs := pgTz(commit.CommitTime)
-	if _, err = p.conn.Exec(ctx, UpdateSourceSQL, pgInt8(int64(cp.LSN)), pgInt4(int32(cp.Seq)), cp.Data, commitTs, p.pgSrcID); err != nil {
+	if _, err = p.conn.Exec(ctx, UpdateSourceSQL, pgLSN(cp.LSN), pgInt4(int32(cp.Seq)), cp.Data, commitTs, p.pgSrcID); err != nil {
 		return err
 	}
 	if _, err = p.conn.Exec(ctx, "commit"); err != nil {
@@ -617,19 +617,19 @@ var (
 )
 
 func pgText(t string) pgtype.Text {
-	return pgtype.Text{String: t, Status: pgtype.Present}
+	return pgtype.Text{String: t, Valid: true}
 }
 
-func pgInt8(i int64) pgtype.Int8 {
-	return pgtype.Int8{Int: i, Status: pgtype.Present}
+func pgLSN(i uint64) pglogrepl.LSN {
+	return pglogrepl.LSN(i)
 }
 
 func pgInt4(i int32) pgtype.Int4 {
-	return pgtype.Int4{Int: i, Status: pgtype.Present}
+	return pgtype.Int4{Int32: i, Valid: true}
 }
 
 func pgTz(ts uint64) pgtype.Timestamptz {
-	return pgtype.Timestamptz{Time: PGTime2Time(ts), Status: pgtype.Present}
+	return pgtype.Timestamptz{Time: PGTime2Time(ts), Valid: true}
 }
 
 func PGTime2Time(ts uint64) time.Time {
