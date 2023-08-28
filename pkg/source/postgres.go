@@ -176,8 +176,7 @@ func (p *PGXSource) fetching(ctx context.Context) (change Change, err error) {
 			if err != nil {
 				return change, err
 			}
-			// in the implementation of pgx v5, there might be the chance to cause data race
-			// we need to copy wal data to avoid it
+			// in the implementation of pgx v5, the xld.WALData will be reused
 			walData := make([]byte, len(xld.WALData))
 			copy(walData, xld.WALData)
 			m, err := p.decoder.Decode(walData)
