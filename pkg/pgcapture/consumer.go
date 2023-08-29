@@ -2,11 +2,11 @@ package pgcapture
 
 import (
 	"context"
-	"database/sql"
 	"reflect"
 	"time"
 
-	"github.com/jackc/pgtype"
+	pgtypeV4 "github.com/jackc/pgtype"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/rueian/pgcapture/pkg/cursor"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/source"
@@ -157,23 +157,23 @@ func makeModel(ref reflection, fields []*pb.Field) (interface{}, error) {
 			continue
 		}
 		if f.Value == nil {
-			if decoder, ok := field.(pgtype.BinaryDecoder); ok {
+			if decoder, ok := field.(pgtypeV4.BinaryDecoder); ok {
 				err = decoder.DecodeBinary(ci, nil)
-			} else if scanner, ok := field.(sql.Scanner); ok {
-				err = scanner.Scan(nil)
+			} else {
+				err = typeMap.Scan(f.Oid, pgtype.BinaryFormatCode, nil, field)
 			}
 		} else {
 			if value, ok := f.Value.(*pb.Field_Binary); ok {
-				if decoder, ok := field.(pgtype.BinaryDecoder); ok {
+				if decoder, ok := field.(pgtypeV4.BinaryDecoder); ok {
 					err = decoder.DecodeBinary(ci, value.Binary)
-				} else if scanner, ok := field.(sql.Scanner); ok {
-					err = scanner.Scan(value.Binary)
+				} else {
+					err = typeMap.Scan(f.Oid, pgtype.BinaryFormatCode, f.GetBinary(), field)
 				}
 			} else {
-				if decoder, ok := field.(pgtype.TextDecoder); ok {
+				if decoder, ok := field.(pgtypeV4.TextDecoder); ok {
 					err = decoder.DecodeText(ci, []byte(f.GetText()))
-				} else if scanner, ok := field.(sql.Scanner); ok {
-					err = scanner.Scan(f.GetText())
+				} else {
+					err = typeMap.Scan(f.Oid, pgtype.TextFormatCode, []byte(f.GetText()), field)
 				}
 			}
 		}
@@ -188,4 +188,7 @@ func (c *Consumer) Stop() {
 	c.Source.Stop()
 }
 
-var ci = pgtype.NewConnInfo()
+var (
+	ci      = pgtypeV4.NewConnInfo()
+	typeMap = pgtype.NewMap()
+)

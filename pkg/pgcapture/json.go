@@ -2,11 +2,13 @@ package pgcapture
 
 import (
 	"bytes"
+	"database/sql/driver"
 	"encoding/json"
-	"github.com/jackc/pgtype"
 	"reflect"
 	"strings"
 	"sync"
+
+	pgtypeV4 "github.com/jackc/pgtype"
 )
 
 var bufPool sync.Pool
@@ -72,8 +74,14 @@ func MarshalJSON(m Model) ([]byte, error) {
 		}
 		face := f.Addr().Interface()
 		if opt.omitempty {
-			if valuer, ok := face.(pgtype.Value); ok {
+			if valuer, ok := face.(pgtypeV4.Value); ok {
 				if v := valuer.Get(); v == nil || isEmptyValue(reflect.ValueOf(v)) {
+					continue
+				}
+			} else if valuer, ok := face.(driver.Valuer); ok {
+				if v, err := valuer.Value(); err != nil {
+					return nil, err
+				} else if v == nil || isEmptyValue(reflect.ValueOf(v)) {
 					continue
 				}
 			} else {
