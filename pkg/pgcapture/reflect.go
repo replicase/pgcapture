@@ -1,13 +1,11 @@
 package pgcapture
 
 import (
-	"database/sql"
 	"errors"
 	"fmt"
 	"reflect"
 	"strings"
 
-	"github.com/jackc/pgtype"
 	"github.com/rueian/pgcapture/pkg/cursor"
 	"github.com/rueian/pgcapture/pkg/pb"
 )
@@ -44,9 +42,6 @@ func reflectModel(model Model) (ref reflection, err error) {
 	for i := 0; i < typ.NumField(); i++ {
 		f := typ.Field(i)
 		if tag, ok := f.Tag.Lookup("pg"); ok {
-			if !hasImplementDecoder(reflect.PtrTo(f.Type)) {
-				return ref, fmt.Errorf("the field %s of %s should be a pgtype.BinaryDecoder or sql.Scanner", f.Name, typ.Elem())
-			}
 			if n := strings.Split(tag, ","); len(n) > 0 && n[0] != "" {
 				ref.idx[n[0]] = i
 			}
@@ -60,15 +55,6 @@ func reflectModel(model Model) (ref reflection, err error) {
 	return ref, fmt.Errorf("at least one field of %s should should have a valid pg tag", typ.Elem())
 }
 
-func hasImplementDecoder(typ reflect.Type) bool {
-	for _, t := range decoderTypes {
-		if typ.Implements(t) {
-			return true
-		}
-	}
-	return false
-}
-
 func ModelName(namespace, table string) string {
 	if namespace == "" {
 		return "public." + table
@@ -80,9 +66,4 @@ type reflection struct {
 	idx map[string]int
 	typ reflect.Type
 	hdl ModelAsyncHandlerFunc
-}
-
-var decoderTypes = []reflect.Type{
-	reflect.TypeOf((*pgtype.BinaryDecoder)(nil)).Elem(),
-	reflect.TypeOf((*sql.Scanner)(nil)).Elem(),
 }

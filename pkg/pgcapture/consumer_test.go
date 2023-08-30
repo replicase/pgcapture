@@ -8,7 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgtype"
+	pgtypeV4 "github.com/jackc/pgtype"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/rueian/pgcapture/pkg/pb"
 	"github.com/rueian/pgcapture/pkg/source"
 	"google.golang.org/grpc"
@@ -72,8 +73,8 @@ func testBounceInterval(t *testing.T, interval time.Duration) {
 			Schema: "public",
 			Table:  "m1",
 			New: []*pb.Field{
-				{Name: "f1", Oid: pgtype.TextOID, Value: &pb.Field_Binary{Binary: []byte("f1")}},
-				{Name: "f2", Oid: pgtype.TextOID, Value: nil},
+				{Name: "f1", Oid: pgtypeV4.TextOID, Value: &pb.Field_Binary{Binary: []byte("f1")}},
+				{Name: "f2", Oid: pgtypeV4.TextOID, Value: nil},
 			},
 		},
 	}
@@ -82,7 +83,7 @@ func testBounceInterval(t *testing.T, interval time.Duration) {
 		decoded.Checkpoint.LSN != 1 ||
 		decoded.New.(*Model1).F1.Get() != "f1" ||
 		decoded.New.(*Model1).F2.Get() != nil ||
-		decoded.New.(*Model1).F3.Get() != pgtype.Undefined {
+		decoded.New.(*Model1).F3.Get() != pgtypeV4.Undefined {
 		t.Fatalf("unexpected decoded %v", decoded)
 	}
 
@@ -104,7 +105,7 @@ func testBounceInterval(t *testing.T, interval time.Duration) {
 		},
 	}
 
-	if decoded := <-decodeQ; decoded.Op != pb.Change_UPDATE || decoded.Checkpoint.LSN != 2 || decoded.New.(*Model2).F1.Get() != "f1" {
+	if decoded := <-decodeQ; decoded.Op != pb.Change_UPDATE || decoded.Checkpoint.LSN != 2 || decoded.New.(*Model2).F1.String != "f1" {
 		t.Fatalf("unexpected decoded %v", decoded)
 	}
 
@@ -126,7 +127,7 @@ func testBounceInterval(t *testing.T, interval time.Duration) {
 		},
 	}
 
-	if decoded := <-decodeQ; decoded.Op != pb.Change_DELETE || decoded.Checkpoint.LSN != 3 || decoded.Old.(*Model2).F1.Get() != "f1" {
+	if decoded := <-decodeQ; decoded.Op != pb.Change_DELETE || decoded.Checkpoint.LSN != 3 || decoded.Old.(*Model2).F1.String != "f1" {
 		t.Fatalf("unexpected decoded %v", decoded)
 	}
 
@@ -197,9 +198,9 @@ func testBounceIntervalRequeue(t *testing.T, interval time.Duration) {
 }
 
 type Model1 struct {
-	F1 pgtype.Text `pg:"f1"`
-	F2 pgtype.Text `pg:"f2"`
-	F3 pgtype.Text `pg:"f3"`
+	F1 pgtypeV4.Text `pg:"f1"`
+	F2 pgtypeV4.Text `pg:"f2"`
+	F3 pgtypeV4.Text `pg:"f3"`
 }
 
 func (m *Model1) DebounceKey() string {
@@ -234,6 +235,34 @@ func (m *Model3) DebounceKey() string {
 
 func (m *Model3) TableName() (schema, table string) {
 	return "public", "m3"
+}
+
+type Model4 struct {
+	F1 pgtype.Text `pg:"f1"`
+	F2 pgtype.Text `pg:"f2"`
+	F3 pgtype.Text `pg:"f3"`
+}
+
+func (m *Model4) DebounceKey() string {
+	return "4"
+}
+
+func (m *Model4) TableName() (schema, table string) {
+	return "public", "m4"
+}
+
+type Model5 struct {
+	F1 string  `pg:"f1"`
+	F2 *string `pg:"f2"`
+	F3 string  `pg:"f3"`
+}
+
+func (m *Model5) DebounceKey() string {
+	return "5"
+}
+
+func (m *Model5) TableName() (schema, table string) {
+	return "public", "m5"
 }
 
 type gatewayClient struct {
@@ -283,9 +312,9 @@ func (g *gatewayClient) Capture(ctx context.Context, opts ...grpc.CallOption) (p
 
 func TestMakeModel(t *testing.T) {
 	fields := []*pb.Field{
-		{Name: "f1", Oid: pgtype.TextOID, Value: &pb.Field_Binary{Binary: []byte("f1")}},
-		{Name: "f2", Oid: pgtype.TextOID, Value: nil},
-		{Name: "f3", Oid: pgtype.TextOID, Value: &pb.Field_Text{Text: "f3"}},
+		{Name: "f1", Oid: pgtypeV4.TextOID, Value: &pb.Field_Binary{Binary: []byte("f1")}},
+		{Name: "f2", Oid: pgtypeV4.TextOID, Value: nil},
+		{Name: "f3", Oid: pgtypeV4.TextOID, Value: &pb.Field_Text{Text: "f3"}},
 	}
 
 	models := []struct {
@@ -295,17 +324,33 @@ func TestMakeModel(t *testing.T) {
 		{
 			input: (*Model1)(nil),
 			expected: &Model1{
-				F1: pgtype.Text{String: "f1", Status: pgtype.Present},
-				F2: pgtype.Text{String: "", Status: pgtype.Null},
-				F3: pgtype.Text{String: "f3", Status: pgtype.Present},
+				F1: pgtypeV4.Text{String: "f1", Status: pgtypeV4.Present},
+				F2: pgtypeV4.Text{String: "", Status: pgtypeV4.Null},
+				F3: pgtypeV4.Text{String: "f3", Status: pgtypeV4.Present},
 			},
-		}, // pgtype.BinaryDecoder
+		},
 		{
 			input: (*Model3)(nil),
 			expected: &Model3{
 				F1: sql.NullString{String: "f1", Valid: true},
 				F2: sql.NullString{String: "", Valid: false},
 				F3: sql.NullString{String: "f3", Valid: true},
+			},
+		},
+		{
+			input: (*Model4)(nil),
+			expected: &Model4{
+				F1: pgtype.Text{String: "f1", Valid: true},
+				F2: pgtype.Text{String: "", Valid: false},
+				F3: pgtype.Text{String: "f3", Valid: true},
+			},
+		},
+		{
+			input: (*Model5)(nil),
+			expected: &Model5{
+				F1: "f1",
+				F2: nil,
+				F3: "f3",
 			},
 		},
 	}
