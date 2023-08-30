@@ -40,6 +40,9 @@ func TestPulsarSubscriptionTracker_Commit(t *testing.T) {
 	}
 	defer cancel()
 
+	// so it will start the commit loop
+	tracker.Start()
+
 	client, err := pulsar.NewClient(pulsar.ClientOptions{
 		URL: test.GetPulsarURL(),
 	})

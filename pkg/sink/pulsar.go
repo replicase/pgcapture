@@ -97,6 +97,8 @@ func (p *PulsarSink) Setup() (cp cursor.Checkpoint, err error) {
 }
 
 func (p *PulsarSink) Apply(changes chan source.Change) chan cursor.Checkpoint {
+	p.tracker.Start()
+
 	var first bool
 	return p.BaseSink.apply(changes, func(change source.Change, committed chan cursor.Checkpoint) error {
 		if !first {
