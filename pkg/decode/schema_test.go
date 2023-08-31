@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/rueian/pgcapture/internal/test"
 	"github.com/rueian/pgcapture/pkg/sql"
 )
@@ -42,9 +41,8 @@ func TestSchemaLoader(t *testing.T) {
 		if err = schema.RefreshType(); err != nil {
 			t.Fatalf("RefreshType fail: %v", err)
 		}
-		m := pgtype.NewMap()
 		for _, name := range pgTypeNames {
-			dt, ok := m.TypeForName(name)
+			dt, ok := conn.TypeMap().TypeForName(name)
 			if !ok {
 				t.Fatalf("%s type missing from pgx", name)
 			}
