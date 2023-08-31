@@ -60,8 +60,10 @@ package main
 
 import (
     "context"
+    "database/sql"
 
-    "github.com/jackc/pgtype"
+    pgtypeV4 "github.com/jackc/pgtype"
+    "github.com/jackc/pgx/v5/pgtype"
     "github.com/rueian/pgcapture"
     "google.golang.org/grpc"
 )
@@ -69,8 +71,11 @@ import (
 // MyTable implements pgcapture.Model interface
 // and will be decoded from change that matching the TableName()
 type MyTable struct {
-    ID    pgtype.Int4 `pg:"id"`       // the field needed to be decoded should be a pgtype struct, 
-    Value pgtype.Text `pg:"my_value"` // and has a 'pg' tag specifying the name mapping explicitly
+    ID    pgtype.Int4 `pg:"id"`       // the pgtype v5 are supported, 
+    Value1 pgtypeV4.Text `pg:"value1"` // the pgtype v4 are also supported,
+    Value2 sql.NullString `pg:"value2"` // the field which implement sql.Scanner interface are also supported,
+    Value3 string `pg:"value3"` // the golang built-in types are also supported 
+    Value4 string `pg:"my_value"` // can use 'pg' tag to specify the name mapping explicitly
 }
 
 func (t *MyTable) TableName() (schema, table string) {
@@ -78,7 +83,7 @@ func (t *MyTable) TableName() (schema, table string) {
 }
 
 func (t MyTable) MarshalJSON() ([]byte, error) {
-    return pgcapture.MarshalJSON(&t) // ignore unchanged TOAST field
+    return pgcapture.MarshalJSON(&t) // ignore unchanged TOAST field for pgtype(v4)
 }
 
 func main() {
@@ -98,8 +103,12 @@ func main() {
         &MyTable{}: func(change pgcapture.Change) error {
             row := change.New.(*MyTable) 
             // and then handle the decoded change event
+			
+            if row.ID.Valid {
+                // handle the changed field
+            }
 
-            if row.Value.Status == pgtype.Undefined {
+            if row.Value1.Status == pgtypeV4.Undefined {
                 // handle the unchanged toast field
             }
 
@@ -111,10 +120,17 @@ func main() {
 
 ### Handling unchanged TOAST field
 
-Since unchanged TOAST fields will not be present in the change stream, the corresponding model fields will remain undefined and have no value.
+Since unchanged TOAST fields will not be present in the change stream, the corresponding model fields will remain zero value.
 Users should verify them by checking the field status.
 
-The `pgcapture.MarshalJSON` is a handy `json.Marshaler` that just ignore those undefined fields.
+When your model fields are:
+1. pgtype (v4): check the status field is `pgtype.Undefined` or not.
+2. pgtype (v5): check the valid field is false or not.
+3. sql.Scanner: check the valid field is false or not.
+4. golang built-in types: check the field is nil or not.
+
+The `pgcapture.MarshalJSON` is a handy `json.Marshaler` that just ignore those undefined fields for pgtype(v4).
+Otherwise, you need to use omitempty in json tag to ignore those fields.
 
 ## Customize the `dblog.SourceResolver`
 
