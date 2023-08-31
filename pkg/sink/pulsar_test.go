@@ -37,6 +37,8 @@ func TestPulsarSink(t *testing.T) {
 
 	// test empty checkpoint
 	tracker.EXPECT().Last().Return(cursor.Checkpoint{}, nil)
+	tracker.EXPECT().Start()
+
 	cp, err := sink.Setup()
 	if err != nil {
 		t.Fatal(err)
@@ -76,6 +78,7 @@ func TestPulsarSink(t *testing.T) {
 	// test restart from last message
 	sink = newPulsarSink(topic, tracker)
 	tracker.EXPECT().Last().Return(cursor.Checkpoint{LSN: 3, Seq: 3}, nil)
+	tracker.EXPECT().Start()
 
 	cp, err = sink.Setup()
 	if err != nil {

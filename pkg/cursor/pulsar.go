@@ -50,6 +50,10 @@ func (p *PulsarTracker) Last() (last Checkpoint, err error) {
 	}
 }
 
+func (p *PulsarTracker) Start() {
+	// Do Nothing
+}
+
 func (p *PulsarTracker) Commit(_ Checkpoint, _ pulsar.MessageID) error {
 	return nil
 }

@@ -42,6 +42,19 @@ func (p *PulsarSubscriptionTracker) tryAck() {
 	}
 }
 
+func (p *PulsarSubscriptionTracker) drainMessages(ctx context.Context, messages <-chan pulsar.ConsumerMessage) {
+	for {
+		select {
+		case <-ctx.Done():
+			p.stopDrain <- struct{}{}
+			return
+		case <-messages:
+			// Do nothing
+			continue
+		}
+	}
+}
+
 func (p *PulsarSubscriptionTracker) waitCommit(ctx context.Context, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -51,7 +64,7 @@ func (p *PulsarSubscriptionTracker) waitCommit(ctx context.Context, interval tim
 		case <-ticker.C:
 			p.tryAck()
 		case <-ctx.Done():
-			p.stop <- struct{}{}
+			p.stopCommit <- struct{}{}
 			return
 		}
 	}
@@ -74,24 +87,27 @@ func NewPulsarSubscriptionTracker(client pulsar.Client, topic string, commitInte
 		return nil, err
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	tracker := &PulsarSubscriptionTracker{
-		consumer:     consumer,
-		stop:         make(chan struct{}),
-		lock:         sync.RWMutex{},
-		commitCancel: cancel,
+	if commitInterval == 0 {
+		commitInterval = time.Minute
 	}
-	go tracker.waitCommit(ctx, commitInterval)
+
+	tracker := &PulsarSubscriptionTracker{
+		consumer:       consumer,
+		commitInterval: commitInterval,
+		lock:           sync.RWMutex{},
+	}
 	return tracker, nil
 }
 
 type PulsarSubscriptionTracker struct {
-	consumer     pulsar.Consumer
-	lock         sync.RWMutex
-	cursor       pulsar.MessageID
-	commitCancel context.CancelFunc
-	stop         chan struct{}
-	acked        pulsar.MessageID
+	consumer       pulsar.Consumer
+	lock           sync.RWMutex
+	cursor         pulsar.MessageID
+	commitCancel   context.CancelFunc
+	commitInterval time.Duration
+	stopCommit     chan struct{}
+	stopDrain      chan struct{}
+	acked          pulsar.MessageID
 }
 
 func (p *PulsarSubscriptionTracker) read(ctx context.Context) (cp Checkpoint, err error) {
@@ -123,6 +139,17 @@ func (p *PulsarSubscriptionTracker) Last() (Checkpoint, error) {
 	return Checkpoint{}, nil
 }
 
+func (p *PulsarSubscriptionTracker) Start() {
+	ctx, cancel := context.WithCancel(context.Background())
+	p.commitCancel = cancel
+	p.stopCommit = make(chan struct{})
+	p.stopDrain = make(chan struct{})
+
+	// To bypass the consumer flow controls, we must drain the message in the queue
+	go p.drainMessages(ctx, p.consumer.Chan())
+	go p.waitCommit(ctx, p.commitInterval)
+}
+
 func (p *PulsarSubscriptionTracker) Commit(_ Checkpoint, mid pulsar.MessageID) error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
@@ -132,8 +159,11 @@ func (p *PulsarSubscriptionTracker) Commit(_ Checkpoint, mid pulsar.MessageID) e
 
 func (p *PulsarSubscriptionTracker) Close() {
 	if p.consumer != nil {
-		p.commitCancel()
-		<-p.stop
+		if p.commitCancel != nil {
+			p.commitCancel()
+			<-p.stopDrain
+			<-p.stopCommit
+		}
 		p.consumer.Close()
 	}
 }
