@@ -183,6 +183,7 @@ func (p *PGXSource) fetching(ctx context.Context) (change Change, err error) {
 			if m == nil || err != nil {
 				return change, err
 			}
+			fmt.Println(m.String())
 			if msg := m.GetChange(); msg != nil {
 				if decode.Ignore(msg) {
 					return change, nil

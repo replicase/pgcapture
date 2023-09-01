@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v5"
+	. "github.com/onsi/gomega"
 	"github.com/rueian/pgcapture/internal/test"
 	"github.com/rueian/pgcapture/pkg/cursor"
 	"github.com/rueian/pgcapture/pkg/decode"
@@ -59,6 +60,8 @@ var pgxSourceTests = []PGXSourceTest{
 				return nil, err
 			}
 			conn.Exec(ctx, fmt.Sprintf("select pg_drop_replication_slot('%s')", TestSlot))
+			conn.Exec(ctx, "DROP SCHEMA public CASCADE; CREATE SCHEMA public")
+			conn.Exec(ctx, "DROP EXTENSION IF EXISTS pgcapture")
 
 			return conn, nil
 		},
@@ -80,6 +83,8 @@ var pgxSourceTests = []PGXSourceTest{
 			}
 			conn.Exec(ctx, fmt.Sprintf("select pg_drop_replication_slot('%s')", TestSlot))
 			conn.Exec(ctx, fmt.Sprintf("DROP PUBLICATION %s", TestSlot))
+			conn.Exec(ctx, "DROP SCHEMA public CASCADE; CREATE SCHEMA public")
+			conn.Exec(ctx, "DROP EXTENSION IF EXISTS pgcapture")
 
 			return conn, nil
 		},
@@ -93,6 +98,7 @@ var pgxSourceTests = []PGXSourceTest{
 }
 
 func TestPGXSource_Capture(t *testing.T) {
+	g := NewWithT(t)
 	for _, te := range pgxSourceTests {
 		t.Run(te.decodePlugin, func(t *testing.T) {
 			te.shouldSkip(t)
@@ -160,7 +166,9 @@ func TestPGXSource_Capture(t *testing.T) {
 				}
 			}
 
-			time.Sleep(time.Second)
+			txsSize := len(txs) * 3
+			timeout := 10 * time.Second
+			g.Eventually(changes).WithTimeout(timeout).Should(HaveLen(txsSize))
 			// test schema refresh
 			for _, tx := range txs {
 				tx.Check(tx)
@@ -174,7 +182,10 @@ func TestPGXSource_Capture(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			time.Sleep(time.Second)
+			// because of the capture would auto run `CREATE EXTENSION IF NOT EXISTS pgcapture;`
+			// we have to add 3 more txs in the end
+			txsSize = txsSize - 3 + 3
+			g.Eventually(changes).WithTimeout(timeout).Should(HaveLen(txsSize))
 			for _, tx := range txs[1:] {
 				tx.Check(tx)
 			}
@@ -187,7 +198,8 @@ func TestPGXSource_Capture(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			time.Sleep(time.Second)
+			txsSize = txsSize - 3 + 3 + 3
+			g.Eventually(changes).WithTimeout(timeout).Should(HaveLen(txsSize))
 			for _, tx := range txs[1:] {
 				tx.Check(tx)
 			}
@@ -201,15 +213,13 @@ func TestPGXSource_Capture(t *testing.T) {
 				t.Fatal("TxCounter should > 0")
 			}
 
-			time.Sleep(6 * time.Second)
-			var lsn string
-			if err = conn.QueryRow(ctx, "select confirmed_flush_lsn from pg_replication_slots where slot_name = $1", TestSlot).Scan(&lsn); err != nil {
-				t.Fatal(err)
-			}
-
-			if lsn != pglogrepl.LSN(commit.Checkpoint.LSN).String() {
-				t.Fatalf("unexpected %v", lsn)
-			}
+			g.Eventually(func() string {
+				var lsn string
+				if err = conn.QueryRow(ctx, "select confirmed_flush_lsn from pg_replication_slots where slot_name = $1", TestSlot).Scan(&lsn); err != nil {
+					t.Fatal(err)
+				}
+				return lsn
+			}).WithTimeout(timeout).Should(Equal(pglogrepl.LSN(commit.Checkpoint.LSN).String()))
 		})
 	}
 }
