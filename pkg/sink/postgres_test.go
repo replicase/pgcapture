@@ -2,6 +2,7 @@ package sink
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	. "github.com/onsi/gomega"
 	"github.com/rueian/pgcapture/internal/test"
 	"github.com/rueian/pgcapture/pkg/cursor"
 	"github.com/rueian/pgcapture/pkg/decode"
@@ -20,15 +22,17 @@ import (
 	"github.com/rueian/pgcapture/pkg/sql"
 )
 
-func newPGXSink() *PGXSink {
+func newPGXSink(batchTXSize int) *PGXSink {
 	return &PGXSink{
-		ConnStr:  test.GetPostgresURL(),
-		SourceID: "repl_test",
-		Renice:   -10,
+		ConnStr:     test.GetPostgresURL(),
+		SourceID:    "repl_test",
+		Renice:      -10,
+		BatchTXSize: batchTXSize,
 	}
 }
 
 func TestPGXSink(t *testing.T) {
+	gomega := NewGomegaWithT(t)
 	ctx := context.Background()
 	conn, err := pgx.Connect(ctx, test.GetPostgresURL())
 	if err != nil {
@@ -49,7 +53,7 @@ func TestPGXSink(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sink := newPGXSink()
+	sink := newPGXSink(3)
 
 	cp, err := sink.Setup()
 	if err != nil {
@@ -78,9 +82,10 @@ func TestPGXSink(t *testing.T) {
 	}
 
 	type task struct {
-		chs    []*pb.Change
-		verify func(t *testing.T)
-		minVer int64
+		chs     []*pb.Change
+		verify  func(t *testing.T, changeCount int)
+		minVer  int64
+		hasNext bool
 	}
 
 	doTx := func(opt task) {
@@ -92,7 +97,9 @@ func TestPGXSink(t *testing.T) {
 		chs := opt.chs
 		now = now.Add(time.Second)
 		ts := now.Unix()*1000000 + int64(now.Nanosecond())/1000 - microsecFromUnixEpochToY2K
+		changeCount := 0
 		lsn++
+		changeCount++
 		changes <- source.Change{
 			Checkpoint: cursor.Checkpoint{LSN: lsn, Data: []byte(now.Format(time.RFC3339Nano))},
 			Message:    &pb.Message{Type: &pb.Message_Begin{Begin: &pb.Begin{}}},
@@ -100,6 +107,7 @@ func TestPGXSink(t *testing.T) {
 		for _, change := range chs {
 			now = now.Add(time.Second)
 			lsn++
+			changeCount++
 			changes <- source.Change{
 				Checkpoint: cursor.Checkpoint{LSN: lsn, Data: []byte(now.Format(time.RFC3339Nano))},
 				Message:    &pb.Message{Type: &pb.Message_Change{Change: change}},
@@ -107,22 +115,15 @@ func TestPGXSink(t *testing.T) {
 		}
 		now = now.Add(time.Second)
 		lsn++
+		changeCount++
 		changes <- source.Change{
 			Checkpoint: cursor.Checkpoint{LSN: lsn, Data: []byte(now.Format(time.RFC3339Nano))},
 			Message:    &pb.Message{Type: &pb.Message_Commit{Commit: &pb.Commit{CommitTime: uint64(ts)}}},
-		}
-		if cp := <-committed; cp.LSN != lsn || string(cp.Data) != now.Format(time.RFC3339Nano) {
-			t.Fatalf("unexpected %v %v %v", cp, lsn, now)
-		}
-		if err = sink.Error(); err != nil {
-			t.Fatalf("unexpected %v", err)
-		}
-		if sink.ReplicationLagMilliseconds() == -1 {
-			t.Fatalf("replicaition lag should not be -1")
+			HasNext:    opt.hasNext,
 		}
 
 		if opt.verify != nil {
-			opt.verify(t)
+			opt.verify(t, changeCount)
 		}
 	}
 
@@ -136,6 +137,18 @@ func TestPGXSink(t *testing.T) {
 				{Name: "tags", Value: &pb.Field_Binary{Binary: tags("CREATE TABLE")}},
 			},
 		}},
+		verify: func(t *testing.T, changeCount int) {
+			if cp := <-committed; cp.LSN != lsn || string(cp.Data) != now.Format(time.RFC3339Nano) {
+				t.Fatalf("unexpected %v %v %v", cp, lsn, now)
+			}
+			if err = sink.Error(); err != nil {
+				t.Fatalf("unexpected %v", err)
+			}
+			if sink.ReplicationLagMilliseconds() == -1 {
+				t.Fatalf("replicaition lag should not be -1")
+			}
+		},
+		hasNext: false,
 	})
 
 	doTx(task{
@@ -149,16 +162,12 @@ func TestPGXSink(t *testing.T) {
 				{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'A'}}},
 			},
 		}},
-		verify: func(t *testing.T) {
-			var f3 string
-			err := conn.QueryRow(ctx, "select f3 from t3 where f1 = $1 and f2 = $2", 1, 1).Scan(&f3)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if f3 != "A" {
-				t.Fatalf("unexpected f3 %v", f3)
-			}
+		verify: func(t *testing.T, changeCount int) {
+			gomega.Eventually(func(g Gomega) {
+				g.Expect(committed).To(BeEmpty())
+			}).Should(Succeed())
 		},
+		hasNext: true,
 	})
 
 	doTx(task{
@@ -172,19 +181,17 @@ func TestPGXSink(t *testing.T) {
 				{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'B'}}},
 			},
 		}},
-		verify: func(t *testing.T) {
-			var f3 string
-			err := conn.QueryRow(ctx, "select f3 from t3 where f1 = $1 and f2 = $2", 1, 1).Scan(&f3)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if f3 != "B" {
-				t.Fatalf("unexpected f3 %v", f3)
-			}
+		verify: func(t *testing.T, changeCount int) {
+			gomega.Eventually(func(g Gomega) {
+				g.Expect(committed).To(BeEmpty())
+			}).Should(Succeed())
 		},
+		hasNext: true,
 	})
 
-	// update with key changes
+	// test for
+	// 1. update with key changes
+	// 2. should flush pending committed when pending committed size is reached
 	doTx(task{
 		chs: []*pb.Change{{
 			Op:     pb.Change_UPDATE,
@@ -200,7 +207,27 @@ func TestPGXSink(t *testing.T) {
 				{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 1}}},
 			},
 		}},
-		verify: func(t *testing.T) {
+		verify: func(t *testing.T, changeCount int) {
+			gomega.Eventually(func(g Gomega) {
+				g.Expect(committed).To(HaveLen(sink.BatchTXSize))
+			}).Should(Succeed())
+
+			for i := 0; i < changeCount; i++ {
+				offset := changeCount * (len(committed) - 1)
+				targetLSN := lsn - uint64(offset)
+				current := now
+				targetData := current.Add(-time.Duration(offset) * time.Second).Format(time.RFC3339Nano)
+				if cp := <-committed; cp.LSN != targetLSN || string(cp.Data) != targetData {
+					t.Fatalf("unexpected %v %v %v", cp, lsn, now)
+				}
+				if err = sink.Error(); err != nil {
+					t.Fatalf("unexpected %v", err)
+				}
+				if sink.ReplicationLagMilliseconds() == -1 {
+					t.Fatalf("replicaition lag should not be -1")
+				}
+			}
+
 			var f3 string
 			err := conn.QueryRow(ctx, "select f3 from t3 where f1 = $1 and f2 = $2", 2, 3).Scan(&f3)
 			if err != nil {
@@ -219,6 +246,7 @@ func TestPGXSink(t *testing.T) {
 				t.Fatalf("unexpected count %v", count)
 			}
 		},
+		hasNext: true,
 	})
 
 	// handle select create case
@@ -238,7 +266,17 @@ func TestPGXSink(t *testing.T) {
 				{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'X'}}},
 			},
 		}},
-		verify: func(t *testing.T) {
+		verify: func(t *testing.T, changeCount int) {
+			if cp := <-committed; cp.LSN != lsn || string(cp.Data) != now.Format(time.RFC3339Nano) {
+				t.Fatalf("unexpected %v %v %v", cp, lsn, now)
+			}
+			if err = sink.Error(); err != nil {
+				t.Fatalf("unexpected %v", err)
+			}
+			if sink.ReplicationLagMilliseconds() == -1 {
+				t.Fatalf("replicaition lag should not be -1")
+			}
+
 			var f3 string
 			err := conn.QueryRow(ctx, "select f3 from t4 where f1 = $1 and f2 = $2", 2, 3).Scan(&f3)
 			if err != nil {
@@ -249,6 +287,7 @@ func TestPGXSink(t *testing.T) {
 				t.Fatalf("unexpected f3 %v", f3)
 			}
 		},
+		hasNext: false,
 	})
 
 	doTx(task{
@@ -261,7 +300,17 @@ func TestPGXSink(t *testing.T) {
 				{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 3}}},
 			},
 		}},
-		verify: func(t *testing.T) {
+		verify: func(t *testing.T, changeCount int) {
+			if cp := <-committed; cp.LSN != lsn || string(cp.Data) != now.Format(time.RFC3339Nano) {
+				t.Fatalf("unexpected %v %v %v", cp, lsn, now)
+			}
+			if err = sink.Error(); err != nil {
+				t.Fatalf("unexpected %v", err)
+			}
+			if sink.ReplicationLagMilliseconds() == -1 {
+				t.Fatalf("replicaition lag should not be -1")
+			}
+
 			var count int
 			err := conn.QueryRow(ctx, "select count(1) from t3 where f1 = $1 and f2 = $2", 2, 3).Scan(&count)
 			if err != nil {
@@ -271,6 +320,7 @@ func TestPGXSink(t *testing.T) {
 				t.Fatalf("unexpected count %v", count)
 			}
 		},
+		hasNext: false,
 	})
 
 	doTx(task{
@@ -283,6 +333,19 @@ func TestPGXSink(t *testing.T) {
 				{Name: "tags", Value: &pb.Field_Binary{Binary: tags("CREATE TABLE")}},
 			},
 		}},
+		verify: func(t *testing.T, changeCount int) {
+			if cp := <-committed; cp.LSN != lsn || string(cp.Data) != now.Format(time.RFC3339Nano) {
+				fmt.Print(cp.LSN, lsn, cp.Data, now.Format(time.RFC3339Nano))
+				t.Fatalf("unexpected %v %v %v", cp, lsn, now)
+			}
+			if err = sink.Error(); err != nil {
+				t.Fatalf("unexpected %v", err)
+			}
+			if sink.ReplicationLagMilliseconds() == -1 {
+				t.Fatalf("replicaition lag should not be -1")
+			}
+		},
+		hasNext: false,
 	})
 
 	doTx(task{
@@ -296,7 +359,18 @@ func TestPGXSink(t *testing.T) {
 				{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'D'}}},
 			},
 		}},
-		verify: func(t *testing.T) {
+		verify: func(t *testing.T, changeCount int) {
+			if cp := <-committed; cp.LSN != lsn || string(cp.Data) != now.Format(time.RFC3339Nano) {
+				fmt.Print(cp.LSN, lsn, cp.Data, now.Format(time.RFC3339Nano))
+				t.Fatalf("unexpected %v %v %v", cp, lsn, now)
+			}
+			if err = sink.Error(); err != nil {
+				t.Fatalf("unexpected %v", err)
+			}
+			if sink.ReplicationLagMilliseconds() == -1 {
+				t.Fatalf("replicaition lag should not be -1")
+			}
+
 			var (
 				f2 int
 				f3 string
@@ -310,6 +384,7 @@ func TestPGXSink(t *testing.T) {
 				t.Fatalf("unexpected value for (f2, f3): (%v, %v)", f2, f3)
 			}
 		},
+		hasNext: false,
 	})
 
 	doTx(task{
@@ -323,7 +398,18 @@ func TestPGXSink(t *testing.T) {
 				{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'E'}}},
 			},
 		}},
-		verify: func(t *testing.T) {
+		verify: func(t *testing.T, changeCount int) {
+			if cp := <-committed; cp.LSN != lsn || string(cp.Data) != now.Format(time.RFC3339Nano) {
+				fmt.Print(cp.LSN, lsn, cp.Data, now.Format(time.RFC3339Nano))
+				t.Fatalf("unexpected %v %v %v", cp, lsn, now)
+			}
+			if err = sink.Error(); err != nil {
+				t.Fatalf("unexpected %v", err)
+			}
+			if sink.ReplicationLagMilliseconds() == -1 {
+				t.Fatalf("replicaition lag should not be -1")
+			}
+
 			var (
 				f2 int
 				f3 string
@@ -354,7 +440,18 @@ func TestPGXSink(t *testing.T) {
 				{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'F'}}},
 			},
 		}},
-		verify: func(t *testing.T) {
+		verify: func(t *testing.T, changeCount int) {
+			if cp := <-committed; cp.LSN != lsn || string(cp.Data) != now.Format(time.RFC3339Nano) {
+				fmt.Print(cp.LSN, lsn, cp.Data, now.Format(time.RFC3339Nano))
+				t.Fatalf("unexpected %v %v %v", cp, lsn, now)
+			}
+			if err = sink.Error(); err != nil {
+				t.Fatalf("unexpected %v", err)
+			}
+			if sink.ReplicationLagMilliseconds() == -1 {
+				t.Fatalf("replicaition lag should not be -1")
+			}
+
 			var (
 				f2 int
 				f3 string
@@ -367,6 +464,7 @@ func TestPGXSink(t *testing.T) {
 				t.Fatalf("unexpected value for (f2, f3): (%v, %v)", f2, f3)
 			}
 		},
+		hasNext: false,
 	})
 
 	doTx(task{
@@ -381,6 +479,19 @@ func TestPGXSink(t *testing.T) {
 		}},
 		// the tests for the generated columns are only for pg12 or above
 		minVer: 120000,
+		verify: func(t *testing.T, changeCount int) {
+			if cp := <-committed; cp.LSN != lsn || string(cp.Data) != now.Format(time.RFC3339Nano) {
+				fmt.Print(cp.LSN, lsn, cp.Data, now.Format(time.RFC3339Nano))
+				t.Fatalf("unexpected %v %v %v", cp, lsn, now)
+			}
+			if err = sink.Error(); err != nil {
+				t.Fatalf("unexpected %v", err)
+			}
+			if sink.ReplicationLagMilliseconds() == -1 {
+				t.Fatalf("replicaition lag should not be -1")
+			}
+		},
+		hasNext: false,
 	})
 
 	doTx(task{
@@ -395,7 +506,18 @@ func TestPGXSink(t *testing.T) {
 				{Name: "f4", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'A'}}},
 			},
 		}},
-		verify: func(t *testing.T) {
+		verify: func(t *testing.T, changeCount int) {
+			if cp := <-committed; cp.LSN != lsn || string(cp.Data) != now.Format(time.RFC3339Nano) {
+				fmt.Print(cp.LSN, lsn, cp.Data, now.Format(time.RFC3339Nano))
+				t.Fatalf("unexpected %v %v %v", cp, lsn, now)
+			}
+			if err = sink.Error(); err != nil {
+				t.Fatalf("unexpected %v", err)
+			}
+			if sink.ReplicationLagMilliseconds() == -1 {
+				t.Fatalf("replicaition lag should not be -1")
+			}
+
 			var (
 				f2 int
 				f3 int
@@ -411,7 +533,8 @@ func TestPGXSink(t *testing.T) {
 				t.Fatalf("unexpected value for (f2, f3, f4): (%v, %v, %v)", f2, f3, f4)
 			}
 		},
-		minVer: 120000,
+		minVer:  120000,
+		hasNext: false,
 	})
 
 	doTx(task{
@@ -426,7 +549,18 @@ func TestPGXSink(t *testing.T) {
 				{Name: "f4", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'B'}}},
 			},
 		}},
-		verify: func(t *testing.T) {
+		verify: func(t *testing.T, changeCount int) {
+			if cp := <-committed; cp.LSN != lsn || string(cp.Data) != now.Format(time.RFC3339Nano) {
+				fmt.Print(cp.LSN, lsn, cp.Data, now.Format(time.RFC3339Nano))
+				t.Fatalf("unexpected %v %v %v", cp, lsn, now)
+			}
+			if err = sink.Error(); err != nil {
+				t.Fatalf("unexpected %v", err)
+			}
+			if sink.ReplicationLagMilliseconds() == -1 {
+				t.Fatalf("replicaition lag should not be -1")
+			}
+
 			var (
 				f2 int
 				f3 int
@@ -442,7 +576,8 @@ func TestPGXSink(t *testing.T) {
 				t.Fatalf("unexpected value for (f2, f3, f4): (%v, %v, %v)", f2, f3, f4)
 			}
 		},
-		minVer: 120000,
+		minVer:  120000,
+		hasNext: false,
 	})
 
 	doTx(task{
@@ -463,7 +598,18 @@ func TestPGXSink(t *testing.T) {
 				{Name: "f4", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'C'}}},
 			},
 		}},
-		verify: func(t *testing.T) {
+		verify: func(t *testing.T, changeCount int) {
+			if cp := <-committed; cp.LSN != lsn || string(cp.Data) != now.Format(time.RFC3339Nano) {
+				fmt.Print(cp.LSN, lsn, cp.Data, now.Format(time.RFC3339Nano))
+				t.Fatalf("unexpected %v %v %v", cp, lsn, now)
+			}
+			if err = sink.Error(); err != nil {
+				t.Fatalf("unexpected %v", err)
+			}
+			if sink.ReplicationLagMilliseconds() == -1 {
+				t.Fatalf("replicaition lag should not be -1")
+			}
+
 			var (
 				f2 int
 				f3 int
@@ -479,13 +625,14 @@ func TestPGXSink(t *testing.T) {
 				t.Fatalf("unexpected value for (f2, f3, f4): (%v, %v, %v)", f2, f3, f4)
 			}
 		},
-		minVer: 120000,
+		minVer:  120000,
+		hasNext: false,
 	})
 
 	sink.Stop()
 
 	// test restart checkpoint
-	sink = newPGXSink()
+	sink = newPGXSink(3)
 
 	cp, err = sink.Setup()
 	if err != nil {
@@ -511,13 +658,13 @@ func tags(v ...string) []byte {
 }
 
 func TestPGXSink_DuplicatedSink(t *testing.T) {
-	sink1 := newPGXSink()
+	sink1 := newPGXSink(1)
 	if _, err := sink1.Setup(); err != nil {
 		t.Fatal(err)
 	}
 	defer sink1.Stop()
 
-	sink2 := newPGXSink()
+	sink2 := newPGXSink(1)
 	if _, err := sink2.Setup(); err == nil || !strings.Contains(err.Error(), "occupying") {
 		t.Fatal("duplicated sink")
 	}
@@ -557,7 +704,7 @@ func TestPGXSink_ScanCheckpointFromLog(t *testing.T) {
 	}
 	defer reader.Close()
 
-	sink := newPGXSink()
+	sink := newPGXSink(1)
 	sink.LogReader = reader
 
 	cp, err := sink.Setup()
