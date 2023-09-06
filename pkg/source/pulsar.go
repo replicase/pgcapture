@@ -139,7 +139,7 @@ func (p *PulsarReaderSource) Capture(cp cursor.Checkpoint) (changes chan Change,
 			}
 		}
 
-		change = Change{Checkpoint: checkpoint, Message: m}
+		change = Change{Checkpoint: checkpoint, Message: m, HasNext: p.reader.HasNext()}
 		return
 	}, func() {
 		p.reader.Close()
