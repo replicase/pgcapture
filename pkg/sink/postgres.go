@@ -589,7 +589,8 @@ func (p *PGXSink) handleCommit(cp cursor.Checkpoint, commit *pb.Commit, change s
 	p.pipeline.SendQueryParams(UpdateSourceSQL, [][]byte{cmt, seq, mid, cmtTs, id}, []uint32{0, pgtype.Int4OID, pgtype.ByteaOID, pgtype.TimestamptzOID, pgtype.TextOID}, []int16{pgtype.TextFormatCode, pgtype.BinaryFormatCode, pgtype.BinaryFormatCode, pgtype.BinaryFormatCode, pgtype.BinaryFormatCode}, []int16{pgtype.TextFormatCode, pgtype.BinaryFormatCode, pgtype.BinaryFormatCode, pgtype.BinaryFormatCode, pgtype.BinaryFormatCode})
 	p.currentCommit = commit
 	p.pendingCommitted = append(p.pendingCommitted, change.Checkpoint)
-	if !change.HasNext || len(p.pendingCommitted) == p.BatchTXSize {
+
+	if len(p.pendingCommitted) == p.BatchTXSize || !change.HasNext {
 		err = p.endPipeline()
 	}
 	return
