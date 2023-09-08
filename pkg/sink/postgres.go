@@ -268,7 +268,7 @@ func (p *PGXSink) handleDDL(m *pb.Change) (err error) {
 	checksum := crc32.ChecksumIEEE([]byte(command))
 	if p.prevDDL != checksum {
 		p.skip = relations
-		err = p.performDDL(count, command)
+		err = p.performDDL(command)
 	}
 	p.prevDDL = checksum
 
@@ -343,25 +343,17 @@ parse:
 	return sb.String(), relations, len(stmts), nil
 }
 
-func (p *PGXSink) performDDL(count int, ddl string) (err error) {
-	if count == 1 {
-		// if the ddl contains only one command tag, than do not run it into begin/commit block
-		// because command like "CREATE INDEX CONCURRENTLY" can't be run inside transaction
-		if err = p.endPipeline(); err != nil {
-			return err
-		}
-		p.startPipeline()
-	}
-
+func (p *PGXSink) performDDL(ddl string) (err error) {
 	if err = p.endPipeline(); err != nil {
 		return err
 	}
 	if _, err = p.conn.Exec(context.Background(), ddl); err != nil {
 		return err
-	} else {
-		err = p.schema.RefreshColumnInfo()
-		p.startPipeline()
 	}
+	if err = p.schema.RefreshColumnInfo(); err != nil {
+		return err
+	}
+	p.startPipeline()
 	return
 }
 
