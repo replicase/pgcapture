@@ -12,7 +12,7 @@ import (
 )
 
 type CleanFn func()
-type ApplyFn func(message source.Change, committed chan cursor.Checkpoint) error
+type ApplyFn func(sourceRemaining int, message source.Change, committed chan cursor.Checkpoint) error
 
 type Sink interface {
 	Setup() (cp cursor.Checkpoint, err error)
@@ -53,7 +53,7 @@ func (b *BaseSink) apply(changes chan source.Change, applyFn ApplyFn) (committed
 				if !more {
 					goto cleanup
 				}
-				if err := applyFn(change, b.committed); err != nil {
+				if err := applyFn(len(changes), change, b.committed); err != nil {
 					b.err.Store(fmt.Errorf("%w", err))
 					goto cleanup
 				}

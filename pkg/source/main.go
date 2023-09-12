@@ -16,7 +16,6 @@ import (
 type Change struct {
 	Checkpoint cursor.Checkpoint
 	Message    *pb.Message
-	HasNext    bool
 }
 
 type Source interface {

@@ -52,8 +52,9 @@ type PGXSink struct {
 	inserts          insertBatch
 	prevDDL          uint32
 	pendingCommitted []cursor.Checkpoint
+	inTX             bool
+	queryParams      []queryParam
 	currentCommit    *pb.Commit
-	batch            *pgx.Batch
 }
 
 type insertBatch struct {
@@ -78,6 +79,14 @@ func (b *insertBatch) flush() [][]*pb.Field {
 	records := b.records[:b.offset]
 	b.offset = 0
 	return records
+}
+
+type queryParam struct {
+	sql           string
+	args          [][]byte
+	paramOIDs     []uint32
+	paramFormats  []int16
+	resultFormats []int16
 }
 
 func tryRenice(logger *logrus.Entry, renice, pid int64) {
@@ -193,7 +202,7 @@ func (p *PGXSink) findCheckpoint(ctx context.Context) (cp cursor.Checkpoint, err
 
 func (p *PGXSink) Apply(changes chan source.Change) chan cursor.Checkpoint {
 	var first bool
-	return p.BaseSink.apply(changes, func(change source.Change, committed chan cursor.Checkpoint) (err error) {
+	return p.BaseSink.apply(changes, func(sourceRemaining int, change source.Change, committed chan cursor.Checkpoint) (err error) {
 		if !first {
 			p.log.WithFields(logrus.Fields{
 				"MessageLSN":  change.Checkpoint.LSN,
@@ -205,8 +214,24 @@ func (p *PGXSink) Apply(changes chan source.Change) chan cursor.Checkpoint {
 
 		switch msg := change.Message.Type.(type) {
 		case *pb.Message_Begin:
+			if p.inTX {
+				p.log.WithFields(logrus.Fields{
+					"MessageLSN": change.Checkpoint.LSN,
+					"MidHex":     hex.EncodeToString(change.Checkpoint.Data),
+				}).Warn("receive incomplete transaction: begin")
+				p.queryParams = p.queryParams[:0]
+				break
+			}
+			p.inTX = true
 			p.handleBegin(msg.Begin)
 		case *pb.Message_Change:
+			if !p.inTX {
+				p.log.WithFields(logrus.Fields{
+					"MessageLSN": change.Checkpoint.LSN,
+					"MidHex":     hex.EncodeToString(change.Checkpoint.Data),
+				}).Warn("receive incomplete transaction: change")
+				break
+			}
 			if decode.IsDDL(msg.Change) {
 				err = p.handleDDL(msg.Change)
 			} else {
@@ -221,9 +246,17 @@ func (p *PGXSink) Apply(changes chan source.Change) chan cursor.Checkpoint {
 				err = p.handleChange(msg.Change)
 			}
 		case *pb.Message_Commit:
-			if err = p.handleCommit(change.Checkpoint, msg.Commit, change); err != nil {
-				break
+			if !p.inTX {
+				p.log.WithFields(logrus.Fields{
+					"MessageLSN": change.Checkpoint.LSN,
+					"MidHex":     hex.EncodeToString(change.Checkpoint.Data),
+				}).Warn("receive incomplete transaction: commit")
+			} else {
+				if err = p.handleCommit(sourceRemaining, change, msg.Commit); err != nil {
+					break
+				}
 			}
+			p.inTX = false
 			p.skip = nil
 			p.prevDDL = 0
 		}
@@ -414,7 +447,13 @@ func (p *PGXSink) flushInsert() (err error) {
 		PGVersion: p.pgVersion,
 	}
 
-	p.pipeline.SendQueryParams(sql.InsertQuery(opt), vals, oids, fmts, rets)
+	p.queryParams = append(p.queryParams, queryParam{
+		sql:           sql.InsertQuery(opt),
+		args:          vals,
+		paramOIDs:     oids,
+		paramFormats:  fmts,
+		resultFormats: rets,
+	})
 	return
 }
 
@@ -453,7 +492,13 @@ func (p *PGXSink) handleDelete(m *pb.Change) (err error) {
 			oids[i] = 0
 		}
 	}
-	p.pipeline.SendQueryParams(sql.DeleteQuery(m.Schema, m.Table, m.Old), vals, oids, fmts, fmts)
+	p.queryParams = append(p.queryParams, queryParam{
+		sql:           sql.DeleteQuery(m.Schema, m.Table, m.Old),
+		args:          vals,
+		paramOIDs:     oids,
+		paramFormats:  fmts,
+		resultFormats: fmts,
+	})
 	return
 }
 
@@ -535,7 +580,13 @@ func (p *PGXSink) handleUpdate(m *pb.Change) (err error) {
 		}
 	}
 
-	p.pipeline.SendQueryParams(sql.UpdateQuery(m.Schema, m.Table, sets, keys), vals, oids, fmts, fmts)
+	p.queryParams = append(p.queryParams, queryParam{
+		sql:           sql.UpdateQuery(m.Schema, m.Table, sets, keys),
+		args:          vals,
+		paramOIDs:     oids,
+		paramFormats:  fmts,
+		resultFormats: fmts,
+	})
 	return
 }
 
@@ -543,7 +594,7 @@ const (
 	UpdateSourceSQL = "update pgcapture.sources set commit=$1,seq=$2,mid=$3,commit_ts=$4,apply_ts=now() where id=$5"
 )
 
-func (p *PGXSink) handleCommit(cp cursor.Checkpoint, commit *pb.Commit, change source.Change) (err error) {
+func (p *PGXSink) handleCommit(sourceRemaining int, change source.Change, commit *pb.Commit) (err error) {
 	if err = p.flushInsert(); err != nil {
 		return err
 	}
@@ -556,6 +607,7 @@ func (p *PGXSink) handleCommit(cp cursor.Checkpoint, commit *pb.Commit, change s
 		id    []byte
 	)
 
+	cp := change.Checkpoint
 	// pgtype does not support uint64, so we have to encode it as text
 	cmt, err = p.conn.TypeMap().Encode(0, pgtype.TextFormatCode, pgLSN(cp.LSN), nil)
 	if err != nil {
@@ -578,11 +630,15 @@ func (p *PGXSink) handleCommit(cp cursor.Checkpoint, commit *pb.Commit, change s
 		return err
 	}
 
+	for _, q := range p.queryParams {
+		p.pipeline.SendQueryParams(q.sql, q.args, q.paramOIDs, q.paramFormats, q.resultFormats)
+	}
 	p.pipeline.SendQueryParams(UpdateSourceSQL, [][]byte{cmt, seq, mid, cmtTs, id}, []uint32{0, pgtype.Int4OID, pgtype.ByteaOID, pgtype.TimestamptzOID, pgtype.TextOID}, []int16{pgtype.TextFormatCode, pgtype.BinaryFormatCode, pgtype.BinaryFormatCode, pgtype.BinaryFormatCode, pgtype.BinaryFormatCode}, []int16{pgtype.TextFormatCode, pgtype.BinaryFormatCode, pgtype.BinaryFormatCode, pgtype.BinaryFormatCode, pgtype.BinaryFormatCode})
+	p.queryParams = p.queryParams[:0]
 	p.currentCommit = commit
 	p.pendingCommitted = append(p.pendingCommitted, change.Checkpoint)
 
-	if len(p.pendingCommitted) == p.BatchTXSize || !change.HasNext {
+	if len(p.pendingCommitted) == p.BatchTXSize || sourceRemaining == 0 {
 		err = p.endPipeline()
 	}
 	return
