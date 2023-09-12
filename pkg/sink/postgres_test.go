@@ -1,8 +1,11 @@
 package sink
 
 import (
+	"bufio"
+	"bytes"
 	"context"
-	"fmt"
+	"github.com/jackc/pgx/v5/pgproto3"
+	"io"
 	"log"
 	"os"
 	"strconv"
@@ -13,7 +16,7 @@ import (
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	. "github.com/onsi/gomega"
+	//. "github.com/onsi/gomega"
 	"github.com/rueian/pgcapture/internal/test"
 	"github.com/rueian/pgcapture/pkg/cursor"
 	"github.com/rueian/pgcapture/pkg/decode"
@@ -32,7 +35,6 @@ func newPGXSink(batchTXSize int) *PGXSink {
 }
 
 func TestPGXSink(t *testing.T) {
-	gomega := NewGomegaWithT(t)
 	ctx := context.Background()
 	conn, err := pgx.Connect(ctx, test.GetPostgresURL())
 	if err != nil {
@@ -53,7 +55,8 @@ func TestPGXSink(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sink := newPGXSink(3)
+	batchTxSize := 3
+	sink := newPGXSink(batchTxSize)
 
 	cp, err := sink.Setup()
 	if err != nil {
@@ -69,8 +72,8 @@ func TestPGXSink(t *testing.T) {
 		t.Fatalf("checkpoint of empty topic should be zero")
 	}
 
-	changes := make(chan source.Change)
-	committed := sink.Apply(changes)
+	changesSize := 10
+	changes := make(chan source.Change, changesSize)
 
 	lsn := uint64(0)
 	now := time.Now()
@@ -82,13 +85,13 @@ func TestPGXSink(t *testing.T) {
 	}
 
 	type task struct {
-		chs     []*pb.Change
-		verify  func(t *testing.T, changeCount int)
-		minVer  int64
-		hasNext bool
+		chs    []*pb.Change
+		verify func(t *testing.T, commitCheckpoint cursor.Checkpoint)
+		minVer int64
+		reset  func(t *testing.T)
 	}
 
-	doTx := func(opt task) {
+	doTx := func(opt task) (commitCheckpoint cursor.Checkpoint) {
 		if opt.minVer > pgVersion {
 			log.Printf("skip task due to pg version %d < %d", pgVersion, opt.minVer)
 			return
@@ -97,9 +100,8 @@ func TestPGXSink(t *testing.T) {
 		chs := opt.chs
 		now = now.Add(time.Second)
 		ts := now.Unix()*1000000 + int64(now.Nanosecond())/1000 - microsecFromUnixEpochToY2K
-		changeCount := 0
 		lsn++
-		changeCount++
+
 		changes <- source.Change{
 			Checkpoint: cursor.Checkpoint{LSN: lsn, Data: []byte(now.Format(time.RFC3339Nano))},
 			Message:    &pb.Message{Type: &pb.Message_Begin{Begin: &pb.Begin{}}},
@@ -107,7 +109,6 @@ func TestPGXSink(t *testing.T) {
 		for _, change := range chs {
 			now = now.Add(time.Second)
 			lsn++
-			changeCount++
 			changes <- source.Change{
 				Checkpoint: cursor.Checkpoint{LSN: lsn, Data: []byte(now.Format(time.RFC3339Nano))},
 				Message:    &pb.Message{Type: &pb.Message_Change{Change: change}},
@@ -115,15 +116,45 @@ func TestPGXSink(t *testing.T) {
 		}
 		now = now.Add(time.Second)
 		lsn++
-		changeCount++
+		commitCheckpoint = cursor.Checkpoint{LSN: lsn, Data: []byte(now.Format(time.RFC3339Nano))}
 		changes <- source.Change{
-			Checkpoint: cursor.Checkpoint{LSN: lsn, Data: []byte(now.Format(time.RFC3339Nano))},
+			Checkpoint: commitCheckpoint,
 			Message:    &pb.Message{Type: &pb.Message_Commit{Commit: &pb.Commit{CommitTime: uint64(ts)}}},
-			HasNext:    opt.hasNext,
 		}
 
 		if opt.verify != nil {
-			opt.verify(t, changeCount)
+			opt.verify(t, commitCheckpoint)
+		}
+		if opt.reset != nil {
+			opt.reset(t)
+		}
+		return
+	}
+
+	doTxs := func(tasks []task, verify func(t *testing.T, commitCheckpoints ...cursor.Checkpoint), reset func(t *testing.T)) {
+		var commitCheckpoints []cursor.Checkpoint
+		for _, task := range tasks {
+			commitCheckpoints = append(commitCheckpoints, doTx(task))
+		}
+		if verify != nil {
+			verify(t, commitCheckpoints...)
+		}
+		if reset != nil {
+			reset(t)
+		}
+	}
+
+	validateCommitted := func(t *testing.T, committed chan cursor.Checkpoint, commitCheckpoints ...cursor.Checkpoint) {
+		for _, commitCheckpoint := range commitCheckpoints {
+			if cp := <-committed; cp.LSN != commitCheckpoint.LSN || !bytes.Equal(cp.Data, commitCheckpoint.Data) {
+				t.Fatalf("unexpected %v %v %v", cp, commitCheckpoint.LSN, commitCheckpoint.Data)
+			}
+			if err = sink.Error(); err != nil {
+				t.Fatalf("unexpected %v", err)
+			}
+			if sink.ReplicationLagMilliseconds() == -1 {
+				t.Fatalf("replicaition lag should not be -1")
+			}
 		}
 	}
 
@@ -137,118 +168,104 @@ func TestPGXSink(t *testing.T) {
 				{Name: "tags", Value: &pb.Field_Binary{Binary: tags("CREATE TABLE")}},
 			},
 		}},
-		verify: func(t *testing.T, changeCount int) {
-			if cp := <-committed; cp.LSN != lsn || string(cp.Data) != now.Format(time.RFC3339Nano) {
-				t.Fatalf("unexpected %v %v %v", cp, lsn, now)
-			}
-			if err = sink.Error(); err != nil {
-				t.Fatalf("unexpected %v", err)
-			}
-			if sink.ReplicationLagMilliseconds() == -1 {
-				t.Fatalf("replicaition lag should not be -1")
-			}
+		verify: func(t *testing.T, commitCheckpoint cursor.Checkpoint) {
+			committed := sink.Apply(changes)
+			validateCommitted(t, committed, commitCheckpoint)
 		},
-		hasNext: false,
+		reset: func(t *testing.T) {
+			if err = resetPGSink(sink, batchTxSize); err != nil {
+				t.Fatalf("reset sink failed: %v", err)
+			}
+			close(changes)
+			changes = make(chan source.Change, 100)
+		},
 	})
 
-	doTx(task{
-		chs: []*pb.Change{{
+	tasks := []task{
+		{
+			chs: []*pb.Change{{
+				Op:     pb.Change_INSERT,
+				Schema: "public",
+				Table:  "t3",
+				New: []*pb.Field{
+					{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 1}}},
+					{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 1}}},
+					{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'A'}}},
+				},
+			}},
+		},
+		{
+			chs: []*pb.Change{{
+				Op:     pb.Change_UPDATE,
+				Schema: "public",
+				Table:  "t3",
+				New: []*pb.Field{
+					{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 1}}},
+					{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 1}}},
+					{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'B'}}},
+				},
+			}},
+		},
+		{
+			chs: []*pb.Change{{
+				Op:     pb.Change_UPDATE,
+				Schema: "public",
+				Table:  "t3",
+				New: []*pb.Field{
+					{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 2}}},
+					{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 3}}},
+					{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'B'}}},
+				},
+				Old: []*pb.Field{
+					{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 1}}},
+					{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 1}}},
+				},
+			}},
+		},
+	}
+
+	// test multiple tx in a single pipeline
+	doTxs(tasks, func(t *testing.T, commitCheckpoints ...cursor.Checkpoint) {
+		var traceBuffer bytes.Buffer
+		sink.raw.Frontend().Trace(&traceBuffer, pgproto3.TracerOptions{SuppressTimestamps: true})
+		committed := sink.Apply(changes)
+		validateCommitted(t, committed, commitCheckpoints...)
+		validatePipeline(t, &traceBuffer, validatePipelineOption{
+			expectedParseCount:    6,
+			expectedBindCount:     6,
+			expectedDescribeCount: 6,
+			expectedExecuteCount:  6,
+			expectedSyncCount:     1,
+		})
+	}, func(t *testing.T) {
+		if err := resetPGSink(sink, batchTxSize); err != nil {
+			t.Fatalf("reset sink failed: %v", err)
+		}
+		close(changes)
+		changes = make(chan source.Change, 100)
+	})
+
+	// ignore incomplete transaction: begin
+	changes <- source.Change{
+		Checkpoint: cursor.Checkpoint{LSN: lsn},
+		Message:    &pb.Message{Type: &pb.Message_Begin{Begin: &pb.Begin{}}},
+	}
+
+	changes <- source.Change{
+		Checkpoint: cursor.Checkpoint{LSN: lsn},
+		Message: &pb.Message{Type: &pb.Message_Change{Change: &pb.Change{
 			Op:     pb.Change_INSERT,
 			Schema: "public",
 			Table:  "t3",
 			New: []*pb.Field{
-				{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 1}}},
-				{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 1}}},
-				{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'A'}}},
-			},
-		}},
-		verify: func(t *testing.T, changeCount int) {
-			gomega.Eventually(func(g Gomega) {
-				g.Expect(committed).To(BeEmpty())
-			}).Should(Succeed())
-		},
-		hasNext: true,
-	})
-
-	doTx(task{
-		chs: []*pb.Change{{
-			Op:     pb.Change_UPDATE,
-			Schema: "public",
-			Table:  "t3",
-			New: []*pb.Field{
-				{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 1}}},
-				{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 1}}},
-				{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'B'}}},
-			},
-		}},
-		verify: func(t *testing.T, changeCount int) {
-			gomega.Eventually(func(g Gomega) {
-				g.Expect(committed).To(BeEmpty())
-			}).Should(Succeed())
-		},
-		hasNext: true,
-	})
-
-	// test for
-	// 1. update with key changes
-	// 2. should flush pending committed when pending committed size is reached
-	doTx(task{
-		chs: []*pb.Change{{
-			Op:     pb.Change_UPDATE,
-			Schema: "public",
-			Table:  "t3",
-			New: []*pb.Field{
-				{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 2}}},
+				{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 3}}},
 				{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 3}}},
 				{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'B'}}},
 			},
-			Old: []*pb.Field{
-				{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 1}}},
-				{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 1}}},
-			},
-		}},
-		verify: func(t *testing.T, changeCount int) {
-			gomega.Eventually(func(g Gomega) {
-				g.Expect(committed).To(HaveLen(sink.BatchTXSize))
-			}).Should(Succeed())
+		}}},
+	}
 
-			for i := 0; i < changeCount; i++ {
-				offset := changeCount * (len(committed) - 1)
-				targetLSN := lsn - uint64(offset)
-				current := now
-				targetData := current.Add(-time.Duration(offset) * time.Second).Format(time.RFC3339Nano)
-				if cp := <-committed; cp.LSN != targetLSN || string(cp.Data) != targetData {
-					t.Fatalf("unexpected %v %v %v", cp, lsn, now)
-				}
-				if err = sink.Error(); err != nil {
-					t.Fatalf("unexpected %v", err)
-				}
-				if sink.ReplicationLagMilliseconds() == -1 {
-					t.Fatalf("replicaition lag should not be -1")
-				}
-			}
-
-			var f3 string
-			err := conn.QueryRow(ctx, "select f3 from t3 where f1 = $1 and f2 = $2", 2, 3).Scan(&f3)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if f3 != "B" {
-				t.Fatalf("unexpected f3 %v", f3)
-			}
-
-			var count int
-			err = conn.QueryRow(ctx, "select count(1) from t3 where f1 = $1 and f2 = $2", 1, 1).Scan(&count)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if count != 0 {
-				t.Fatalf("unexpected count %v", count)
-			}
-		},
-		hasNext: true,
-	})
-
+	committed := sink.Apply(changes)
 	// handle select create case
 	doTx(task{
 		chs: []*pb.Change{{
@@ -266,16 +283,8 @@ func TestPGXSink(t *testing.T) {
 				{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'X'}}},
 			},
 		}},
-		verify: func(t *testing.T, changeCount int) {
-			if cp := <-committed; cp.LSN != lsn || string(cp.Data) != now.Format(time.RFC3339Nano) {
-				t.Fatalf("unexpected %v %v %v", cp, lsn, now)
-			}
-			if err = sink.Error(); err != nil {
-				t.Fatalf("unexpected %v", err)
-			}
-			if sink.ReplicationLagMilliseconds() == -1 {
-				t.Fatalf("replicaition lag should not be -1")
-			}
+		verify: func(t *testing.T, commitCheckpoint cursor.Checkpoint) {
+			validateCommitted(t, committed, commitCheckpoint)
 
 			var f3 string
 			err := conn.QueryRow(ctx, "select f3 from t4 where f1 = $1 and f2 = $2", 2, 3).Scan(&f3)
@@ -287,8 +296,22 @@ func TestPGXSink(t *testing.T) {
 				t.Fatalf("unexpected f3 %v", f3)
 			}
 		},
-		hasNext: false,
 	})
+
+	// ignore incomplete transaction: change
+	changes <- source.Change{
+		Checkpoint: cursor.Checkpoint{LSN: lsn},
+		Message: &pb.Message{Type: &pb.Message_Change{Change: &pb.Change{
+			Op:     pb.Change_INSERT,
+			Schema: "public",
+			Table:  "t3",
+			New: []*pb.Field{
+				{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 3}}},
+				{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 3}}},
+				{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'B'}}},
+			},
+		}}},
+	}
 
 	doTx(task{
 		chs: []*pb.Change{{
@@ -300,16 +323,8 @@ func TestPGXSink(t *testing.T) {
 				{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 3}}},
 			},
 		}},
-		verify: func(t *testing.T, changeCount int) {
-			if cp := <-committed; cp.LSN != lsn || string(cp.Data) != now.Format(time.RFC3339Nano) {
-				t.Fatalf("unexpected %v %v %v", cp, lsn, now)
-			}
-			if err = sink.Error(); err != nil {
-				t.Fatalf("unexpected %v", err)
-			}
-			if sink.ReplicationLagMilliseconds() == -1 {
-				t.Fatalf("replicaition lag should not be -1")
-			}
+		verify: func(t *testing.T, commitCheckpoint cursor.Checkpoint) {
+			validateCommitted(t, committed, commitCheckpoint)
 
 			var count int
 			err := conn.QueryRow(ctx, "select count(1) from t3 where f1 = $1 and f2 = $2", 2, 3).Scan(&count)
@@ -320,8 +335,13 @@ func TestPGXSink(t *testing.T) {
 				t.Fatalf("unexpected count %v", count)
 			}
 		},
-		hasNext: false,
 	})
+
+	// ignore incomplete transaction: commit
+	changes <- source.Change{
+		Checkpoint: cursor.Checkpoint{LSN: lsn, Data: []byte(now.Format(time.RFC3339Nano))},
+		Message:    &pb.Message{Type: &pb.Message_Commit{Commit: &pb.Commit{CommitTime: uint64(now.Second())}}},
+	}
 
 	doTx(task{
 		chs: []*pb.Change{{
@@ -333,19 +353,9 @@ func TestPGXSink(t *testing.T) {
 				{Name: "tags", Value: &pb.Field_Binary{Binary: tags("CREATE TABLE")}},
 			},
 		}},
-		verify: func(t *testing.T, changeCount int) {
-			if cp := <-committed; cp.LSN != lsn || string(cp.Data) != now.Format(time.RFC3339Nano) {
-				fmt.Print(cp.LSN, lsn, cp.Data, now.Format(time.RFC3339Nano))
-				t.Fatalf("unexpected %v %v %v", cp, lsn, now)
-			}
-			if err = sink.Error(); err != nil {
-				t.Fatalf("unexpected %v", err)
-			}
-			if sink.ReplicationLagMilliseconds() == -1 {
-				t.Fatalf("replicaition lag should not be -1")
-			}
+		verify: func(t *testing.T, commitCheckpoint cursor.Checkpoint) {
+			validateCommitted(t, committed, commitCheckpoint)
 		},
-		hasNext: false,
 	})
 
 	doTx(task{
@@ -359,17 +369,8 @@ func TestPGXSink(t *testing.T) {
 				{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'D'}}},
 			},
 		}},
-		verify: func(t *testing.T, changeCount int) {
-			if cp := <-committed; cp.LSN != lsn || string(cp.Data) != now.Format(time.RFC3339Nano) {
-				fmt.Print(cp.LSN, lsn, cp.Data, now.Format(time.RFC3339Nano))
-				t.Fatalf("unexpected %v %v %v", cp, lsn, now)
-			}
-			if err = sink.Error(); err != nil {
-				t.Fatalf("unexpected %v", err)
-			}
-			if sink.ReplicationLagMilliseconds() == -1 {
-				t.Fatalf("replicaition lag should not be -1")
-			}
+		verify: func(t *testing.T, commitCheckpoint cursor.Checkpoint) {
+			validateCommitted(t, committed, commitCheckpoint)
 
 			var (
 				f2 int
@@ -384,7 +385,6 @@ func TestPGXSink(t *testing.T) {
 				t.Fatalf("unexpected value for (f2, f3): (%v, %v)", f2, f3)
 			}
 		},
-		hasNext: false,
 	})
 
 	doTx(task{
@@ -398,17 +398,8 @@ func TestPGXSink(t *testing.T) {
 				{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'E'}}},
 			},
 		}},
-		verify: func(t *testing.T, changeCount int) {
-			if cp := <-committed; cp.LSN != lsn || string(cp.Data) != now.Format(time.RFC3339Nano) {
-				fmt.Print(cp.LSN, lsn, cp.Data, now.Format(time.RFC3339Nano))
-				t.Fatalf("unexpected %v %v %v", cp, lsn, now)
-			}
-			if err = sink.Error(); err != nil {
-				t.Fatalf("unexpected %v", err)
-			}
-			if sink.ReplicationLagMilliseconds() == -1 {
-				t.Fatalf("replicaition lag should not be -1")
-			}
+		verify: func(t *testing.T, commitCheckpoint cursor.Checkpoint) {
+			validateCommitted(t, committed, commitCheckpoint)
 
 			var (
 				f2 int
@@ -440,17 +431,8 @@ func TestPGXSink(t *testing.T) {
 				{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'F'}}},
 			},
 		}},
-		verify: func(t *testing.T, changeCount int) {
-			if cp := <-committed; cp.LSN != lsn || string(cp.Data) != now.Format(time.RFC3339Nano) {
-				fmt.Print(cp.LSN, lsn, cp.Data, now.Format(time.RFC3339Nano))
-				t.Fatalf("unexpected %v %v %v", cp, lsn, now)
-			}
-			if err = sink.Error(); err != nil {
-				t.Fatalf("unexpected %v", err)
-			}
-			if sink.ReplicationLagMilliseconds() == -1 {
-				t.Fatalf("replicaition lag should not be -1")
-			}
+		verify: func(t *testing.T, commitCheckpoint cursor.Checkpoint) {
+			validateCommitted(t, committed, commitCheckpoint)
 
 			var (
 				f2 int
@@ -464,7 +446,6 @@ func TestPGXSink(t *testing.T) {
 				t.Fatalf("unexpected value for (f2, f3): (%v, %v)", f2, f3)
 			}
 		},
-		hasNext: false,
 	})
 
 	doTx(task{
@@ -479,19 +460,9 @@ func TestPGXSink(t *testing.T) {
 		}},
 		// the tests for the generated columns are only for pg12 or above
 		minVer: 120000,
-		verify: func(t *testing.T, changeCount int) {
-			if cp := <-committed; cp.LSN != lsn || string(cp.Data) != now.Format(time.RFC3339Nano) {
-				fmt.Print(cp.LSN, lsn, cp.Data, now.Format(time.RFC3339Nano))
-				t.Fatalf("unexpected %v %v %v", cp, lsn, now)
-			}
-			if err = sink.Error(); err != nil {
-				t.Fatalf("unexpected %v", err)
-			}
-			if sink.ReplicationLagMilliseconds() == -1 {
-				t.Fatalf("replicaition lag should not be -1")
-			}
+		verify: func(t *testing.T, commitCheckpoint cursor.Checkpoint) {
+			validateCommitted(t, committed, commitCheckpoint)
 		},
-		hasNext: false,
 	})
 
 	doTx(task{
@@ -506,17 +477,8 @@ func TestPGXSink(t *testing.T) {
 				{Name: "f4", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'A'}}},
 			},
 		}},
-		verify: func(t *testing.T, changeCount int) {
-			if cp := <-committed; cp.LSN != lsn || string(cp.Data) != now.Format(time.RFC3339Nano) {
-				fmt.Print(cp.LSN, lsn, cp.Data, now.Format(time.RFC3339Nano))
-				t.Fatalf("unexpected %v %v %v", cp, lsn, now)
-			}
-			if err = sink.Error(); err != nil {
-				t.Fatalf("unexpected %v", err)
-			}
-			if sink.ReplicationLagMilliseconds() == -1 {
-				t.Fatalf("replicaition lag should not be -1")
-			}
+		verify: func(t *testing.T, commitCheckpoint cursor.Checkpoint) {
+			validateCommitted(t, committed, commitCheckpoint)
 
 			var (
 				f2 int
@@ -533,8 +495,7 @@ func TestPGXSink(t *testing.T) {
 				t.Fatalf("unexpected value for (f2, f3, f4): (%v, %v, %v)", f2, f3, f4)
 			}
 		},
-		minVer:  120000,
-		hasNext: false,
+		minVer: 120000,
 	})
 
 	doTx(task{
@@ -549,17 +510,8 @@ func TestPGXSink(t *testing.T) {
 				{Name: "f4", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'B'}}},
 			},
 		}},
-		verify: func(t *testing.T, changeCount int) {
-			if cp := <-committed; cp.LSN != lsn || string(cp.Data) != now.Format(time.RFC3339Nano) {
-				fmt.Print(cp.LSN, lsn, cp.Data, now.Format(time.RFC3339Nano))
-				t.Fatalf("unexpected %v %v %v", cp, lsn, now)
-			}
-			if err = sink.Error(); err != nil {
-				t.Fatalf("unexpected %v", err)
-			}
-			if sink.ReplicationLagMilliseconds() == -1 {
-				t.Fatalf("replicaition lag should not be -1")
-			}
+		verify: func(t *testing.T, commitCheckpoint cursor.Checkpoint) {
+			validateCommitted(t, committed, commitCheckpoint)
 
 			var (
 				f2 int
@@ -576,8 +528,7 @@ func TestPGXSink(t *testing.T) {
 				t.Fatalf("unexpected value for (f2, f3, f4): (%v, %v, %v)", f2, f3, f4)
 			}
 		},
-		minVer:  120000,
-		hasNext: false,
+		minVer: 120000,
 	})
 
 	doTx(task{
@@ -598,17 +549,8 @@ func TestPGXSink(t *testing.T) {
 				{Name: "f4", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'C'}}},
 			},
 		}},
-		verify: func(t *testing.T, changeCount int) {
-			if cp := <-committed; cp.LSN != lsn || string(cp.Data) != now.Format(time.RFC3339Nano) {
-				fmt.Print(cp.LSN, lsn, cp.Data, now.Format(time.RFC3339Nano))
-				t.Fatalf("unexpected %v %v %v", cp, lsn, now)
-			}
-			if err = sink.Error(); err != nil {
-				t.Fatalf("unexpected %v", err)
-			}
-			if sink.ReplicationLagMilliseconds() == -1 {
-				t.Fatalf("replicaition lag should not be -1")
-			}
+		verify: func(t *testing.T, commitCheckpoint cursor.Checkpoint) {
+			validateCommitted(t, committed, commitCheckpoint)
 
 			var (
 				f2 int
@@ -625,8 +567,7 @@ func TestPGXSink(t *testing.T) {
 				t.Fatalf("unexpected value for (f2, f3, f4): (%v, %v, %v)", f2, f3, f4)
 			}
 		},
-		minVer:  120000,
-		hasNext: false,
+		minVer: 120000,
 	})
 
 	sink.Stop()
@@ -642,6 +583,59 @@ func TestPGXSink(t *testing.T) {
 		t.Fatalf("unexpected %v %v %v", cp, lsn, now)
 	}
 	sink.Stop()
+}
+
+func resetPGSink(sink *PGXSink, batchTxSize int) error {
+	if err := sink.Stop(); err != nil {
+		return err
+	}
+	*sink = *newPGXSink(batchTxSize)
+	if _, err := sink.Setup(); err != nil {
+		return err
+	}
+	return nil
+}
+
+type validatePipelineOption struct {
+	expectedParseCount    int
+	expectedBindCount     int
+	expectedDescribeCount int
+	expectedExecuteCount  int
+	expectedSyncCount     int
+}
+
+func validatePipeline(t *testing.T, reader io.Reader, opt validatePipelineOption) {
+	scanner := bufio.NewScanner(reader)
+	var parseCount, bindCount, describeCount, executeCount, syncCount int
+	for scanner.Scan() {
+		switch {
+		case strings.Contains(scanner.Text(), "F\tParse"):
+			parseCount++
+		case strings.Contains(scanner.Text(), "F\tBind"):
+			bindCount++
+		case strings.Contains(scanner.Text(), "F\tDescribe"):
+			describeCount++
+		case strings.Contains(scanner.Text(), "F\tExecute"):
+			executeCount++
+		case strings.Contains(scanner.Text(), "F\tSync"):
+			syncCount++
+		}
+	}
+	if parseCount != opt.expectedParseCount {
+		t.Fatalf("unexpected parse count %v", parseCount)
+	}
+	if bindCount != opt.expectedBindCount {
+		t.Fatalf("unexpected bind count %v", bindCount)
+	}
+	if describeCount != opt.expectedDescribeCount {
+		t.Fatalf("unexpected describe count %v", describeCount)
+	}
+	if executeCount != opt.expectedExecuteCount {
+		t.Fatalf("unexpected execute count %v", executeCount)
+	}
+	if syncCount != opt.expectedSyncCount {
+		t.Fatalf("unexpected sync count %v", syncCount)
+	}
 }
 
 func tags(v ...string) []byte {
