@@ -39,22 +39,21 @@ type PGXSink struct {
 	LogReader   io.Reader
 	BatchTXSize int
 
-	conn             *pgx.Conn
-	raw              *pgconn.PgConn
-	pipeline         *pgconn.Pipeline
-	schema           *decode.PGXSchemaLoader
-	log              *logrus.Entry
-	prev             cursor.Checkpoint
-	pgSrcID          pgtype.Text
-	pgVersion        int64
-	replLag          int64
-	skip             map[string]bool
-	inserts          insertBatch
-	prevDDL          uint32
-	pendingCommitted []cursor.Checkpoint
-	inTX             bool
-	pendingChanges   []pendingChange
-	pendingCommit    *pendingCommit
+	conn           *pgx.Conn
+	raw            *pgconn.PgConn
+	pipeline       *pgconn.Pipeline
+	schema         *decode.PGXSchemaLoader
+	log            *logrus.Entry
+	prev           cursor.Checkpoint
+	pgSrcID        pgtype.Text
+	pgVersion      int64
+	replLag        int64
+	skip           map[string]bool
+	inserts        insertBatch
+	prevDDL        uint32
+	inTX           bool
+	pendingChanges []pendingChange
+	pendingCommits []pendingCommit
 }
 
 type insertBatch struct {
@@ -146,7 +145,7 @@ func (p *PGXSink) Setup() (cp cursor.Checkpoint, err error) {
 		"BatchTxSize": p.BatchTXSize,
 	})
 
-	p.pendingCommitted = make([]cursor.Checkpoint, 0, p.BatchTXSize)
+	p.pendingCommits = make([]pendingCommit, 0, p.BatchTXSize)
 
 	// try renice
 	if p.Renice < 0 {
@@ -268,10 +267,10 @@ func (p *PGXSink) Apply(changes chan source.Change) chan cursor.Checkpoint {
 
 		if err != nil {
 			p.log.WithFields(logrus.Fields{
-				"MessageLSN":       change.Checkpoint.LSN,
-				"MidHex":           hex.EncodeToString(change.Checkpoint.Data),
-				"Message":          change.Message.String(),
-				"PendingCommitted": p.pendingCommitted,
+				"MessageLSN":     change.Checkpoint.LSN,
+				"MidHex":         hex.EncodeToString(change.Checkpoint.Data),
+				"Message":        change.Message.String(),
+				"PendingCommits": p.pendingCommits,
 			}).Errorf("fail to apply message: %v", err)
 		}
 		return err
@@ -606,13 +605,12 @@ func (p *PGXSink) handleCommit(sourceRemaining int, cp cursor.Checkpoint, commit
 		p.pipeline.SendQueryParams(q.sql, q.args, q.paramOIDs, q.paramFormats, q.resultFormats)
 	}
 	p.pendingChanges = p.pendingChanges[:0]
-	p.pendingCommit = &pendingCommit{
+	p.pendingCommits = append(p.pendingCommits, pendingCommit{
 		checkPoint: cp,
 		commit:     commit,
-	}
-	p.pendingCommitted = append(p.pendingCommitted, cp)
+	})
 
-	if len(p.pendingCommitted) == p.BatchTXSize || sourceRemaining == 0 {
+	if len(p.pendingCommits) == p.BatchTXSize || sourceRemaining == 0 {
 		var (
 			cmt   []byte
 			seq   []byte
@@ -661,16 +659,14 @@ func (p *PGXSink) endPipeline() (err error) {
 	if err = p.pipeline.Close(); err != nil {
 		return err
 	}
-	if p.pendingCommit != nil {
-		atomic.StoreInt64(&p.replLag, time.Since(pgTz(p.pendingCommit.commit.CommitTime).Time).Milliseconds())
+	if len(p.pendingCommits) != 0 {
+		atomic.StoreInt64(&p.replLag, time.Since(pgTz(p.pendingCommits[len(p.pendingCommits)-1].commit.CommitTime).Time).Milliseconds())
 	}
 	p.pipeline = nil
-	p.pendingCommit = nil
-
-	for _, cp := range p.pendingCommitted {
-		p.committed <- cp
+	for _, commit := range p.pendingCommits {
+		p.committed <- commit.checkPoint
 	}
-	p.pendingCommitted = p.pendingCommitted[:0]
+	p.pendingCommits = p.pendingCommits[:0]
 	return
 }
 
