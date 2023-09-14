@@ -53,8 +53,8 @@ type PGXSink struct {
 	prevDDL          uint32
 	pendingCommitted []cursor.Checkpoint
 	inTX             bool
-	queryParams      []queryParam
-	currentCommit    *pb.Commit
+	pendingChanges   []pendingChange
+	pendingCommit    *pendingCommit
 }
 
 type insertBatch struct {
@@ -81,12 +81,17 @@ func (b *insertBatch) flush() [][]*pb.Field {
 	return records
 }
 
-type queryParam struct {
+type pendingChange struct {
 	sql           string
 	args          [][]byte
 	paramOIDs     []uint32
 	paramFormats  []int16
 	resultFormats []int16
+}
+
+type pendingCommit struct {
+	checkPoint cursor.Checkpoint
+	commit     *pb.Commit
 }
 
 func tryRenice(logger *logrus.Entry, renice, pid int64) {
@@ -219,7 +224,7 @@ func (p *PGXSink) Apply(changes chan source.Change) chan cursor.Checkpoint {
 					"MessageLSN": change.Checkpoint.LSN,
 					"MidHex":     hex.EncodeToString(change.Checkpoint.Data),
 				}).Warn("receive incomplete transaction: begin")
-				p.queryParams = p.queryParams[:0]
+				p.pendingChanges = p.pendingChanges[:0]
 				break
 			}
 			p.inTX = true
@@ -252,7 +257,7 @@ func (p *PGXSink) Apply(changes chan source.Change) chan cursor.Checkpoint {
 					"MidHex":     hex.EncodeToString(change.Checkpoint.Data),
 				}).Warn("receive incomplete transaction: commit")
 			} else {
-				if err = p.handleCommit(sourceRemaining, change, msg.Commit); err != nil {
+				if err = p.handleCommit(sourceRemaining, change.Checkpoint, msg.Commit); err != nil {
 					break
 				}
 			}
@@ -324,12 +329,9 @@ parse:
 	}
 
 	var stmts []*pg_query.RawStmt
-	// remove preceding dml commands, they were already present in previous change messages
 	// remove refresh materialized view stmt, otherwise they will block logical replication
-	preceding := true
 	for _, stmt := range tree.Stmts {
-		preceding = preceding && (stmt.Stmt.GetInsertStmt() != nil || stmt.Stmt.GetUpdateStmt() != nil || stmt.Stmt.GetDeleteStmt() != nil)
-		if preceding || stmt.Stmt.GetRefreshMatViewStmt() != nil {
+		if stmt.Stmt.GetRefreshMatViewStmt() != nil {
 			continue
 		}
 		stmts = append(stmts, stmt)
@@ -377,6 +379,7 @@ parse:
 }
 
 func (p *PGXSink) performDDL(ddl string) (err error) {
+	p.pendingChanges = p.pendingChanges[:0]
 	if err = p.endPipeline(); err != nil {
 		return err
 	}
@@ -447,7 +450,7 @@ func (p *PGXSink) flushInsert() (err error) {
 		PGVersion: p.pgVersion,
 	}
 
-	p.queryParams = append(p.queryParams, queryParam{
+	p.pendingChanges = append(p.pendingChanges, pendingChange{
 		sql:           sql.InsertQuery(opt),
 		args:          vals,
 		paramOIDs:     oids,
@@ -492,7 +495,7 @@ func (p *PGXSink) handleDelete(m *pb.Change) (err error) {
 			oids[i] = 0
 		}
 	}
-	p.queryParams = append(p.queryParams, queryParam{
+	p.pendingChanges = append(p.pendingChanges, pendingChange{
 		sql:           sql.DeleteQuery(m.Schema, m.Table, m.Old),
 		args:          vals,
 		paramOIDs:     oids,
@@ -580,7 +583,7 @@ func (p *PGXSink) handleUpdate(m *pb.Change) (err error) {
 		}
 	}
 
-	p.queryParams = append(p.queryParams, queryParam{
+	p.pendingChanges = append(p.pendingChanges, pendingChange{
 		sql:           sql.UpdateQuery(m.Schema, m.Table, sets, keys),
 		args:          vals,
 		paramOIDs:     oids,
@@ -594,51 +597,52 @@ const (
 	UpdateSourceSQL = "update pgcapture.sources set commit=$1,seq=$2,mid=$3,commit_ts=$4,apply_ts=now() where id=$5"
 )
 
-func (p *PGXSink) handleCommit(sourceRemaining int, change source.Change, commit *pb.Commit) (err error) {
+func (p *PGXSink) handleCommit(sourceRemaining int, cp cursor.Checkpoint, commit *pb.Commit) (err error) {
 	if err = p.flushInsert(); err != nil {
 		return err
 	}
 
-	var (
-		cmt   []byte
-		seq   []byte
-		mid   []byte
-		cmtTs []byte
-		id    []byte
-	)
-
-	cp := change.Checkpoint
-	// pgtype does not support uint64, so we have to encode it as text
-	cmt, err = p.conn.TypeMap().Encode(0, pgtype.TextFormatCode, pgLSN(cp.LSN), nil)
-	if err != nil {
-		return err
-	}
-	seq, err = p.conn.TypeMap().Encode(pgtype.Int4OID, pgtype.BinaryFormatCode, pgInt4(int32(cp.Seq)), nil)
-	if err != nil {
-		return err
-	}
-	mid, err = p.conn.TypeMap().Encode(pgtype.ByteaOID, pgtype.BinaryFormatCode, cp.Data, nil)
-	if err != nil {
-		return err
-	}
-	cmtTs, err = p.conn.TypeMap().Encode(pgtype.TimestamptzOID, pgtype.BinaryFormatCode, pgTz(commit.CommitTime), nil)
-	if err != nil {
-		return err
-	}
-	id, err = p.conn.TypeMap().Encode(pgtype.TextOID, pgtype.BinaryFormatCode, p.pgSrcID, nil)
-	if err != nil {
-		return err
-	}
-
-	for _, q := range p.queryParams {
+	for _, q := range p.pendingChanges {
 		p.pipeline.SendQueryParams(q.sql, q.args, q.paramOIDs, q.paramFormats, q.resultFormats)
 	}
-	p.pipeline.SendQueryParams(UpdateSourceSQL, [][]byte{cmt, seq, mid, cmtTs, id}, []uint32{0, pgtype.Int4OID, pgtype.ByteaOID, pgtype.TimestamptzOID, pgtype.TextOID}, []int16{pgtype.TextFormatCode, pgtype.BinaryFormatCode, pgtype.BinaryFormatCode, pgtype.BinaryFormatCode, pgtype.BinaryFormatCode}, []int16{pgtype.TextFormatCode, pgtype.BinaryFormatCode, pgtype.BinaryFormatCode, pgtype.BinaryFormatCode, pgtype.BinaryFormatCode})
-	p.queryParams = p.queryParams[:0]
-	p.currentCommit = commit
-	p.pendingCommitted = append(p.pendingCommitted, change.Checkpoint)
+	p.pendingChanges = p.pendingChanges[:0]
+	p.pendingCommit = &pendingCommit{
+		checkPoint: cp,
+		commit:     commit,
+	}
+	p.pendingCommitted = append(p.pendingCommitted, cp)
 
 	if len(p.pendingCommitted) == p.BatchTXSize || sourceRemaining == 0 {
+		var (
+			cmt   []byte
+			seq   []byte
+			mid   []byte
+			cmtTs []byte
+			id    []byte
+		)
+
+		// pgtype does not support uint64, so we have to encode it as text
+		cmt, err = p.conn.TypeMap().Encode(0, pgtype.TextFormatCode, pgLSN(cp.LSN), nil)
+		if err != nil {
+			return err
+		}
+		seq, err = p.conn.TypeMap().Encode(pgtype.Int4OID, pgtype.BinaryFormatCode, pgInt4(int32(cp.Seq)), nil)
+		if err != nil {
+			return err
+		}
+		mid, err = p.conn.TypeMap().Encode(pgtype.ByteaOID, pgtype.BinaryFormatCode, cp.Data, nil)
+		if err != nil {
+			return err
+		}
+		cmtTs, err = p.conn.TypeMap().Encode(pgtype.TimestamptzOID, pgtype.BinaryFormatCode, pgTz(commit.CommitTime), nil)
+		if err != nil {
+			return err
+		}
+		id, err = p.conn.TypeMap().Encode(pgtype.TextOID, pgtype.BinaryFormatCode, p.pgSrcID, nil)
+		if err != nil {
+			return err
+		}
+		p.pipeline.SendQueryParams(UpdateSourceSQL, [][]byte{cmt, seq, mid, cmtTs, id}, []uint32{0, pgtype.Int4OID, pgtype.ByteaOID, pgtype.TimestamptzOID, pgtype.TextOID}, []int16{pgtype.TextFormatCode, pgtype.BinaryFormatCode, pgtype.BinaryFormatCode, pgtype.BinaryFormatCode, pgtype.BinaryFormatCode}, []int16{pgtype.TextFormatCode, pgtype.BinaryFormatCode, pgtype.BinaryFormatCode, pgtype.BinaryFormatCode, pgtype.BinaryFormatCode})
 		err = p.endPipeline()
 	}
 	return
@@ -657,11 +661,12 @@ func (p *PGXSink) endPipeline() (err error) {
 	if err = p.pipeline.Close(); err != nil {
 		return err
 	}
-	p.pipeline = nil
-
-	if p.currentCommit != nil {
-		atomic.StoreInt64(&p.replLag, time.Since(pgTz(p.currentCommit.CommitTime).Time).Milliseconds())
+	if p.pendingCommit != nil {
+		atomic.StoreInt64(&p.replLag, time.Since(pgTz(p.pendingCommit.commit.CommitTime).Time).Milliseconds())
 	}
+	p.pipeline = nil
+	p.pendingCommit = nil
+
 	for _, cp := range p.pendingCommitted {
 		p.committed <- cp
 	}

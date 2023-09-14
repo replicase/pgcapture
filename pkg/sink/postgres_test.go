@@ -231,10 +231,10 @@ func TestPGXSink(t *testing.T) {
 		committed := sink.Apply(changes)
 		validateCommitted(t, committed, commitCheckpoints...)
 		validatePipeline(t, &traceBuffer, validatePipelineOption{
-			expectedParseCount:    6,
-			expectedBindCount:     6,
-			expectedDescribeCount: 6,
-			expectedExecuteCount:  6,
+			expectedParseCount:    4,
+			expectedBindCount:     4,
+			expectedDescribeCount: 4,
+			expectedExecuteCount:  4,
 			expectedSyncCount:     1,
 		})
 	}, func(t *testing.T) {
@@ -294,6 +294,60 @@ func TestPGXSink(t *testing.T) {
 			if f3 != "B" {
 				// the value should not be updated
 				t.Fatalf("unexpected f3 %v", f3)
+			}
+		},
+	})
+
+	// handle {DML, DDL, DML} case
+	doTx(task{
+		chs: []*pb.Change{{
+			Op:     pb.Change_UPDATE,
+			Schema: "public",
+			Table:  "t3",
+			New: []*pb.Field{
+				{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 2}}},
+				{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 3}}},
+				{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'X'}}},
+			},
+			Old: []*pb.Field{
+				{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 2}}},
+				{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 3}}},
+				{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'B'}}},
+			},
+		}, {
+			Op:     pb.Change_INSERT,
+			Schema: decode.ExtensionSchema,
+			Table:  decode.ExtensionDDLLogs,
+			New:    []*pb.Field{{Name: "query", Value: &pb.Field_Binary{Binary: []byte(`update t3 set f3='X' where f1=2 and f2=3; alter table t3 add column f4 text; update t3 set f4='Y' where f1=2 and f2=3;`)}}, {Name: "tags", Value: &pb.Field_Binary{Binary: tags("ALTER TABLE")}}},
+		}, {
+			Op:     pb.Change_UPDATE,
+			Schema: "public",
+			Table:  "t3",
+			New: []*pb.Field{
+				{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 2}}},
+				{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 3}}},
+				{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'X'}}},
+				{Name: "f4", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'Y'}}},
+			},
+			Old: []*pb.Field{
+				{Name: "f1", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 2}}},
+				{Name: "f2", Oid: 23, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 3}}},
+				{Name: "f3", Oid: 25, Value: &pb.Field_Binary{Binary: []byte{'X'}}},
+			},
+		}},
+		verify: func(t *testing.T, commitCheckpoint cursor.Checkpoint) {
+			validateCommitted(t, committed, commitCheckpoint)
+
+			var f3, f4 string
+			err := conn.QueryRow(ctx, "select f3, f4 from t3 where f1 = $1 and f2 = $2", 2, 3).Scan(&f3, &f4)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if f3 != "X" {
+				t.Fatalf("unexpected f3 %v", f3)
+			}
+			if f4 != "Y" {
+				t.Fatalf("unexpected f4 %v", f3)
 			}
 		},
 	})
