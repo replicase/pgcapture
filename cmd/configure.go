@@ -26,6 +26,7 @@ var (
 	ConfigPulsarTrackerInterval       string
 	ConfigPulsarTrackerReplicateState bool
 	ConfigDecodePlugin                string
+	ConfigBatchTXSize                 int
 )
 
 func init() {
@@ -42,6 +43,7 @@ func init() {
 	configure.Flags().StringVarP(&ConfigPulsarTrackerInterval, "PulsarTrackerInterval", "", "", "the commit interval for the pg2pulsar, optional")
 	configure.Flags().BoolVarP(&ConfigPulsarTrackerReplicateState, "PulsarTrackerReplicateState", "", false, "the replicate state for the pg2pulsar, optional")
 	configure.Flags().StringVarP(&ConfigDecodePlugin, "DecodePlugin", "", decode.PGOutputPlugin, "the logical decoding plugin name")
+	configure.Flags().IntVarP(&ConfigBatchTXSize, "BatchTxSize", "", 100, "the max number of tx in a pipeline")
 	configure.MarkFlagRequired("AgentAddr")
 	configure.MarkFlagRequired("AgentCommand")
 	configure.MarkFlagRequired("PGConnURL")
@@ -65,6 +67,7 @@ var configure = &cobra.Command{
 			"PulsarTrackerInterval":       ConfigPulsarTrackerInterval,
 			"PulsarTrackerReplicateState": strconv.FormatBool(ConfigPulsarTrackerReplicateState),
 			"DecodePlugin":                ConfigDecodePlugin,
+			"BatchTxSize":                 ConfigBatchTXSize,
 		})
 		if err != nil {
 			panic(err)

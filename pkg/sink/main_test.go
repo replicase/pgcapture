@@ -24,7 +24,7 @@ func (s *sink) Setup() (cp cursor.Checkpoint, err error) {
 }
 
 func (s *sink) Apply(changes chan source.Change) (committed chan cursor.Checkpoint) {
-	return s.BaseSink.apply(changes, func(message source.Change, committed chan cursor.Checkpoint) error {
+	return s.BaseSink.apply(changes, func(sourceBufferSize int, message source.Change, committed chan cursor.Checkpoint) error {
 		if message.Message != nil {
 			return ErrAny
 		}
