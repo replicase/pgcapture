@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/rueian/pgcapture/pkg/pb"
+	"github.com/replicase/pgcapture/pkg/pb"
 )
 
 func DeleteQuery(namespace, table string, fields []*pb.Field) string {

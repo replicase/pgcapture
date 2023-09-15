@@ -6,7 +6,7 @@ import (
 	"net"
 	"testing"
 
-	"github.com/rueian/pgcapture/pkg/pb"
+	"github.com/replicase/pgcapture/pkg/pb"
 	"google.golang.org/grpc"
 )
 

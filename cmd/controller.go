@@ -3,8 +3,8 @@ package main
 import (
 	"time"
 
-	"github.com/rueian/pgcapture/pkg/dblog"
-	"github.com/rueian/pgcapture/pkg/pb"
+	"github.com/replicase/pgcapture/pkg/dblog"
+	"github.com/replicase/pgcapture/pkg/pb"
 	"github.com/spf13/cobra"
 )
 

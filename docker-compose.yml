@@ -70,7 +70,7 @@ services:
     <<: *common-build
     command: [ "make" ]
   pgcapture:
-    image: rueian/pgcapture:latest
+    image: replicase/pgcapture:latest
     build:
       context: .
   test:

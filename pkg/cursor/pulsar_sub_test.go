@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar"
-	"github.com/rueian/pgcapture/internal/test"
+	"github.com/replicase/pgcapture/internal/test"
 )
 
 func newPulsarSubscriptionTracker(topic string) (*PulsarSubscriptionTracker, func(), error) {

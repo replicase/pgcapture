@@ -10,10 +10,10 @@ import (
 
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v5"
-	"github.com/rueian/pgcapture/internal/test"
-	"github.com/rueian/pgcapture/pkg/cursor"
-	"github.com/rueian/pgcapture/pkg/decode"
-	"github.com/rueian/pgcapture/pkg/pb"
+	"github.com/replicase/pgcapture/internal/test"
+	"github.com/replicase/pgcapture/pkg/cursor"
+	"github.com/replicase/pgcapture/pkg/decode"
+	"github.com/replicase/pgcapture/pkg/pb"
 	"google.golang.org/protobuf/proto"
 )
 

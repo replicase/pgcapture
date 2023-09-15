@@ -11,9 +11,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
-	"github.com/rueian/pgcapture/pkg/cursor"
-	"github.com/rueian/pgcapture/pkg/decode"
-	"github.com/rueian/pgcapture/pkg/sql"
+	"github.com/replicase/pgcapture/pkg/cursor"
+	"github.com/replicase/pgcapture/pkg/decode"
+	"github.com/replicase/pgcapture/pkg/sql"
 	"github.com/sirupsen/logrus"
 )
 

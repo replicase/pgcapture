@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/rueian/pgcapture"
+	"github.com/replicase/pgcapture"
 	"github.com/spf13/cobra"
 )
 

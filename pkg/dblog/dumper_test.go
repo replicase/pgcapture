@@ -8,9 +8,9 @@ import (
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v4"
-	"github.com/rueian/pgcapture/internal/test"
-	"github.com/rueian/pgcapture/pkg/pb"
-	"github.com/rueian/pgcapture/pkg/sql"
+	"github.com/replicase/pgcapture/internal/test"
+	"github.com/replicase/pgcapture/pkg/pb"
+	"github.com/replicase/pgcapture/pkg/sql"
 )
 
 func TestPGXSourceDumper(t *testing.T) {

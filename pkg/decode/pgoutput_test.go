@@ -12,9 +12,9 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/rueian/pgcapture/internal/test"
-	"github.com/rueian/pgcapture/pkg/pb"
-	"github.com/rueian/pgcapture/pkg/sql"
+	"github.com/replicase/pgcapture/internal/test"
+	"github.com/replicase/pgcapture/pkg/pb"
+	"github.com/replicase/pgcapture/pkg/sql"
 	"google.golang.org/protobuf/proto"
 )
 

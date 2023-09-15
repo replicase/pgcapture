@@ -7,11 +7,11 @@ import (
 
 	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/golang/mock/gomock"
-	"github.com/rueian/pgcapture/internal/cursormock"
-	"github.com/rueian/pgcapture/internal/test"
-	"github.com/rueian/pgcapture/pkg/cursor"
-	"github.com/rueian/pgcapture/pkg/pb"
-	"github.com/rueian/pgcapture/pkg/source"
+	"github.com/replicase/pgcapture/internal/cursormock"
+	"github.com/replicase/pgcapture/internal/test"
+	"github.com/replicase/pgcapture/pkg/cursor"
+	"github.com/replicase/pgcapture/pkg/pb"
+	"github.com/replicase/pgcapture/pkg/source"
 )
 
 func newPulsarSink(topic string, tracker *cursormock.MockTracker) *PulsarSink {

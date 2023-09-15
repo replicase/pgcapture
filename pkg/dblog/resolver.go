@@ -5,7 +5,7 @@ import (
 	"errors"
 
 	"github.com/apache/pulsar-client-go/pulsar"
-	"github.com/rueian/pgcapture/pkg/source"
+	"github.com/replicase/pgcapture/pkg/source"
 )
 
 type SourceResolver interface {

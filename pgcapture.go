@@ -3,10 +3,10 @@ package pgcapture
 import (
 	"context"
 
-	"github.com/rueian/pgcapture/pkg/dblog"
-	"github.com/rueian/pgcapture/pkg/pb"
-	"github.com/rueian/pgcapture/pkg/pgcapture"
-	"github.com/rueian/pgcapture/pkg/source"
+	"github.com/replicase/pgcapture/pkg/dblog"
+	"github.com/replicase/pgcapture/pkg/pb"
+	"github.com/replicase/pgcapture/pkg/pgcapture"
+	"github.com/replicase/pgcapture/pkg/source"
 	"google.golang.org/grpc"
 )
 

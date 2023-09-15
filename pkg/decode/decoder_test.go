@@ -1,8 +1,9 @@
 package decode
 
 import (
-	"github.com/rueian/pgcapture/pkg/pb"
 	"testing"
+
+	"github.com/replicase/pgcapture/pkg/pb"
 )
 
 func TestIsDDL(t *testing.T) {

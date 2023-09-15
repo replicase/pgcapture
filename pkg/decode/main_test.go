@@ -7,7 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/rueian/pgcapture/pkg/pb"
+	"github.com/replicase/pgcapture/pkg/pb"
 )
 
 const TestSlot = "test_slot"

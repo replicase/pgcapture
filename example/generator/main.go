@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/rueian/pgcapture/example"
+	"github.com/replicase/pgcapture/example"
 )
 
 func main() {

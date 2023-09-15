@@ -7,8 +7,8 @@ import (
 	"os"
 
 	"github.com/apache/pulsar-client-go/pulsar"
-	"github.com/rueian/pgcapture/pkg/cursor"
-	"github.com/rueian/pgcapture/pkg/source"
+	"github.com/replicase/pgcapture/pkg/cursor"
+	"github.com/replicase/pgcapture/pkg/source"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/proto"
 )

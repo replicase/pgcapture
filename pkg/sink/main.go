@@ -7,8 +7,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/rueian/pgcapture/pkg/cursor"
-	"github.com/rueian/pgcapture/pkg/source"
+	"github.com/replicase/pgcapture/pkg/cursor"
+	"github.com/replicase/pgcapture/pkg/source"
 )
 
 type CleanFn func()

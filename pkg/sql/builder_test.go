@@ -3,7 +3,7 @@ package sql
 import (
 	"testing"
 
-	"github.com/rueian/pgcapture/pkg/pb"
+	"github.com/replicase/pgcapture/pkg/pb"
 )
 
 func TestInsertQuery(t *testing.T) {

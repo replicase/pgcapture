@@ -4,8 +4,8 @@ import (
 	"os"
 
 	"github.com/apache/pulsar-client-go/pulsar"
-	"github.com/rueian/pgcapture/pkg/sink"
-	"github.com/rueian/pgcapture/pkg/source"
+	"github.com/replicase/pgcapture/pkg/sink"
+	"github.com/replicase/pgcapture/pkg/source"
 	"github.com/spf13/cobra"
 )
 

@@ -1,4 +1,4 @@
-module github.com/rueian/pgcapture
+module github.com/replicase/pgcapture
 
 go 1.20
 
@@ -13,7 +13,6 @@ require (
 	github.com/jackc/pgtype v1.7.0
 	github.com/jackc/pgx/v4 v4.10.1
 	github.com/jackc/pgx/v5 v5.4.3
-	github.com/onsi/gomega v1.27.10
 	github.com/pganalyze/pg_query_go/v2 v2.0.2
 	github.com/prometheus/client_golang v1.11.1
 	github.com/sirupsen/logrus v1.6.0
@@ -51,6 +50,7 @@ require (
 	github.com/linkedin/goavro/v2 v2.9.8 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
 	github.com/mtibben/percent v0.2.1 // indirect
+	github.com/onsi/gomega v1.27.10 // indirect
 	github.com/pierrec/lz4 v2.0.5+incompatible // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/prometheus/client_model v0.2.0 // indirect
@@ -70,5 +70,4 @@ require (
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20210602131652-f16073e35f0c // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

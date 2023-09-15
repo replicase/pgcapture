@@ -7,9 +7,9 @@ import (
 
 	pgtypeV4 "github.com/jackc/pgtype"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/rueian/pgcapture/pkg/cursor"
-	"github.com/rueian/pgcapture/pkg/pb"
-	"github.com/rueian/pgcapture/pkg/source"
+	"github.com/replicase/pgcapture/pkg/cursor"
+	"github.com/replicase/pgcapture/pkg/pb"
+	"github.com/replicase/pgcapture/pkg/source"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/structpb"
 )

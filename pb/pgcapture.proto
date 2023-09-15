@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 package pgcapture;
-option go_package = "github.com/rueian/pgcapture/pkg/pb";
+option go_package = "github.com/replicase/pgcapture/pkg/pb";
 
 import "google/protobuf/struct.proto";
 import "google/protobuf/duration.proto";

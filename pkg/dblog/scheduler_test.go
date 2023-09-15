@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rueian/pgcapture/pkg/pb"
+	"github.com/replicase/pgcapture/pkg/pb"
 )
 
 func TestMemoryScheduler_Schedule(t *testing.T) {
