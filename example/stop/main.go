@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 
+	"github.com/replicase/pgcapture"
 	"github.com/replicase/pgcapture/example"
 	"github.com/replicase/pgcapture/pkg/pb"
 	"google.golang.org/grpc"

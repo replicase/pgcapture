@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/replicase/pgcapture"
 	"github.com/replicase/pgcapture/example"
 	"github.com/replicase/pgcapture/pkg/pb"
 	"google.golang.org/grpc"
