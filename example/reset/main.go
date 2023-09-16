@@ -5,7 +5,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/rueian/pgcapture/example"
+	"github.com/replicase/pgcapture/example"
 )
 
 func main() {

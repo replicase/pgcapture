@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"github.com/jackc/pgx/v5/pgproto3"
 	"io"
 	"log"
 	"os"
@@ -13,16 +12,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgproto3"
+
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	//. "github.com/onsi/gomega"
-	"github.com/rueian/pgcapture/internal/test"
-	"github.com/rueian/pgcapture/pkg/cursor"
-	"github.com/rueian/pgcapture/pkg/decode"
-	"github.com/rueian/pgcapture/pkg/pb"
-	"github.com/rueian/pgcapture/pkg/source"
-	"github.com/rueian/pgcapture/pkg/sql"
+	"github.com/replicase/pgcapture/internal/test"
+	"github.com/replicase/pgcapture/pkg/cursor"
+	"github.com/replicase/pgcapture/pkg/decode"
+	"github.com/replicase/pgcapture/pkg/pb"
+	"github.com/replicase/pgcapture/pkg/source"
+	"github.com/replicase/pgcapture/pkg/sql"
 )
 
 func newPGXSink(batchTXSize int) *PGXSink {

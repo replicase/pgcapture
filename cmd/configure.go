@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/rueian/pgcapture/pkg/decode"
-	"github.com/rueian/pgcapture/pkg/pb"
+	"github.com/replicase/pgcapture/pkg/decode"
+	"github.com/replicase/pgcapture/pkg/pb"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/structpb"

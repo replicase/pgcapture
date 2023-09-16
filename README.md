@@ -64,7 +64,7 @@ import (
 
     pgtypeV4 "github.com/jackc/pgtype"
     "github.com/jackc/pgx/v5/pgtype"
-    "github.com/rueian/pgcapture"
+    "github.com/replicase/pgcapture"
     "google.golang.org/grpc"
 )
 
@@ -144,7 +144,7 @@ import (
     "context"
     "net"
 	
-    "github.com/rueian/pgcapture"
+    "github.com/replicase/pgcapture"
     "google.golang.org/grpc"
 )
 

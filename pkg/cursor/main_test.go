@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/golang/protobuf/proto"
-	"github.com/rueian/pgcapture/internal/test"
+	"github.com/replicase/pgcapture/internal/test"
 	pulsaradmin "github.com/streamnative/pulsar-admin-go"
 	"github.com/streamnative/pulsar-admin-go/pkg/utils"
 )

@@ -13,10 +13,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/rueian/pgcapture/example"
-	"github.com/rueian/pgcapture/internal/test"
-	"github.com/rueian/pgcapture/pkg/dblog"
-	"github.com/rueian/pgcapture/pkg/pb"
+	"github.com/replicase/pgcapture/example"
+	"github.com/replicase/pgcapture/internal/test"
+	"github.com/replicase/pgcapture/pkg/dblog"
+	"github.com/replicase/pgcapture/pkg/pb"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/structpb"
 )

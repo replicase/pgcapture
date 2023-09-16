@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgtype"
-	"github.com/rueian/pgcapture"
-	"github.com/rueian/pgcapture/example"
+	"github.com/replicase/pgcapture"
+	"github.com/replicase/pgcapture/example"
 	"google.golang.org/grpc"
 )
 

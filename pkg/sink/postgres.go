@@ -22,11 +22,11 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	pg_query "github.com/pganalyze/pg_query_go/v2"
-	"github.com/rueian/pgcapture/pkg/cursor"
-	"github.com/rueian/pgcapture/pkg/decode"
-	"github.com/rueian/pgcapture/pkg/pb"
-	"github.com/rueian/pgcapture/pkg/source"
-	"github.com/rueian/pgcapture/pkg/sql"
+	"github.com/replicase/pgcapture/pkg/cursor"
+	"github.com/replicase/pgcapture/pkg/decode"
+	"github.com/replicase/pgcapture/pkg/pb"
+	"github.com/replicase/pgcapture/pkg/source"
+	"github.com/replicase/pgcapture/pkg/sql"
 	"github.com/sirupsen/logrus"
 )
 

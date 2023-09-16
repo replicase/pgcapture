@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rueian/pgcapture/pkg/pb"
+	"github.com/replicase/pgcapture/pkg/pb"
 )
 
 type OnSchedule func(response *pb.DumpInfoResponse) error

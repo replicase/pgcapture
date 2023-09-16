@@ -1,6 +1,6 @@
 package decode
 
-import "github.com/rueian/pgcapture/pkg/pb"
+import "github.com/replicase/pgcapture/pkg/pb"
 
 const (
 	ExtensionSchema  = "pgcapture"

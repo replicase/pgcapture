@@ -1,6 +1,6 @@
 package example
 
-import "github.com/rueian/pgcapture/internal/test"
+import "github.com/replicase/pgcapture/internal/test"
 
 const (
 	PGHost      = "127.0.0.1"

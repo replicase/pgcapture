@@ -9,7 +9,7 @@ import (
 
 	pulsar "github.com/apache/pulsar-client-go/pulsar"
 	gomock "github.com/golang/mock/gomock"
-	cursor "github.com/rueian/pgcapture/pkg/cursor"
+	cursor "github.com/replicase/pgcapture/pkg/cursor"
 )
 
 // MockTracker is a mock of Tracker interface.

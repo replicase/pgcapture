@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rueian/pgcapture/pkg/pb"
+	"github.com/replicase/pgcapture/pkg/pb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
