@@ -237,7 +237,7 @@ func (a *Agent) pg2pulsar(params *structpb.Struct) (*pb.AgentConfigResponse, err
 }
 
 func (a *Agent) pulsar2pg(params *structpb.Struct) (*pb.AgentConfigResponse, error) {
-	v, err := extract(params, "PGConnURL", "PulsarURL", "PulsarTopic", "BatchTxSize")
+	v, err := extract(params, "PGConnURL", "PulsarURL", "PulsarTopic", "?BatchTxSize")
 	if err != nil {
 		return nil, err
 	}
