@@ -51,7 +51,7 @@ To begin consuming changes and dumps, there are some server side components shou
 * dblog controller
 * dblog grpc gateway server
 
-Please checkout https://github.com/KennyChenFight/docker-pgcapture for guidance.
+Please checkout [docker-pgcapture](https://github.com/replicase/docker-pgcapture) for guidance.
 
 ## Consume changes with Golang
 
