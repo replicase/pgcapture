@@ -106,7 +106,7 @@ func makeNewPBTuple(schema *PGXSchemaLoader, rel Relation, old, new []Field, noN
 		case 'u':
 			// fill the unchanged field with old value when ReplicaIdentity is full
 			// otherwise, skip the unchanged field
-			if typeInfo.ReplicaIdentity == ReplicaIdentityFull {
+			if typeInfo.ReplicaIdentity == ReplicaIdentityFull && old[i].Format != 'u' {
 				s.Format = old[i].Format
 				s.Datum = old[i].Datum
 				goto ReAppend
