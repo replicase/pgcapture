@@ -30,6 +30,8 @@ func TestPGOutputDecoder(t *testing.T) {
 
 	conn.Exec(ctx, "DROP SCHEMA public CASCADE; CREATE SCHEMA public; CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";")
 	conn.Exec(ctx, "CREATE TABLE t (id bigint primary key, uid uuid, txt text, js jsonb, ts timestamptz, bs bytea)")
+	conn.Exec(ctx, "CREATE TABLE t2 (id bigint primary key, uid uuid, txt text, js jsonb, ts timestamptz, bs bytea)")
+	conn.Exec(ctx, "ALTER TABLE t2 REPLICA IDENTITY FULL")
 	conn.Exec(ctx, fmt.Sprintf("SELECT pg_drop_replication_slot('%s')", TestSlot))
 	conn.Exec(ctx, fmt.Sprintf("CREATE PUBLICATION %s FOR ALL TABLES;", TestSlot))
 	conn.Exec(ctx, sql.CreateLogicalSlot, TestSlot, PGOutputPlugin)
@@ -103,6 +105,49 @@ func TestPGOutputDecoder(t *testing.T) {
 			Expect: &pb.Change{Op: pb.Change_DELETE, Schema: "public", Table: "t",
 				Old: []*pb.Field{
 					{Name: "id", Oid: 20, Value: &pb.Field_Binary{Binary: b(1, pgtype.Int8OID)}},
+				},
+			},
+		},
+		{
+			Expect: &pb.Change{Op: pb.Change_INSERT, Schema: "public", Table: "t2",
+				New: []*pb.Field{
+					{Name: "id", Oid: 20, Value: &pb.Field_Binary{Binary: b(1, pgtype.Int8OID)}},
+					{Name: "uid", Oid: 2950, Value: &pb.Field_Binary{Binary: b([]byte("08d6af78-550c-4071-80be-2fece2db0474"), pgtype.UUIDOID)}},
+					{Name: "txt", Oid: 25, Value: &pb.Field_Binary{Binary: b(nT(5), pgtype.TextOID)}},
+					{Name: "js", Oid: 3802, Value: &pb.Field_Binary{Binary: b([]byte(`{"a": {"b": {"c": {"d": null}}}}`), pgtype.JSONBOID)}},
+					{Name: "ts", Oid: 1184, Value: &pb.Field_Binary{Binary: b(now, pgtype.TimestamptzOID)}},
+					{Name: "bs", Oid: 17, Value: &pb.Field_Binary{Binary: b(nB(10), pgtype.ByteaOID)}},
+				},
+			},
+		},
+		{
+			Expect: &pb.Change{Op: pb.Change_UPDATE, Schema: "public", Table: "t2",
+				New: []*pb.Field{
+					{Name: "id", Oid: 20, Value: &pb.Field_Binary{Binary: b(1, pgtype.Int8OID)}},
+					{Name: "uid", Oid: 2950, Value: &pb.Field_Binary{Binary: b([]byte("782b2492-3e7c-431b-9238-c1136ea57190"), pgtype.UUIDOID)}},
+					{Name: "txt", Oid: 25, Value: nil},
+					{Name: "js", Oid: 3802, Value: &pb.Field_Binary{Binary: b([]byte(`{"a": {"b": {"c": {"d": null}}}}`), pgtype.JSONBOID)}},
+					{Name: "ts", Oid: 1184, Value: &pb.Field_Binary{Binary: b(now.Add(time.Second), pgtype.TimestamptzOID)}},
+					{Name: "bs", Oid: 17, Value: &pb.Field_Binary{Binary: b(nB(10), pgtype.ByteaOID)}},
+				},
+				Old: []*pb.Field{
+					{Name: "id", Oid: 20, Value: &pb.Field_Binary{Binary: b(1, pgtype.Int8OID)}},
+					{Name: "uid", Oid: 2950, Value: &pb.Field_Binary{Binary: b([]byte("08d6af78-550c-4071-80be-2fece2db0474"), pgtype.UUIDOID)}},
+					{Name: "txt", Oid: 25, Value: &pb.Field_Binary{Binary: b(nT(5), pgtype.TextOID)}},
+					{Name: "js", Oid: 3802, Value: &pb.Field_Binary{Binary: b([]byte(`{"a": {"b": {"c": {"d": null}}}}`), pgtype.JSONBOID)}},
+					{Name: "ts", Oid: 1184, Value: &pb.Field_Binary{Binary: b(now, pgtype.TimestamptzOID)}},
+					{Name: "bs", Oid: 17, Value: &pb.Field_Binary{Binary: b(nB(10), pgtype.ByteaOID)}},
+				},
+			},
+		},
+		{
+			Expect: &pb.Change{Op: pb.Change_DELETE, Schema: "public", Table: "t2",
+				Old: []*pb.Field{
+					{Name: "id", Oid: 20, Value: &pb.Field_Binary{Binary: b(1, pgtype.Int8OID)}},
+					{Name: "uid", Oid: 2950, Value: &pb.Field_Binary{Binary: b([]byte("782b2492-3e7c-431b-9238-c1136ea57190"), pgtype.UUIDOID)}},
+					{Name: "js", Oid: 3802, Value: &pb.Field_Binary{Binary: b([]byte(`{"a": {"b": {"c": {"d": null}}}}`), pgtype.JSONBOID)}},
+					{Name: "ts", Oid: 1184, Value: &pb.Field_Binary{Binary: b(now.Add(time.Second), pgtype.TimestamptzOID)}},
+					{Name: "bs", Oid: 17, Value: &pb.Field_Binary{Binary: b(nB(10), pgtype.ByteaOID)}},
 				},
 			},
 		},

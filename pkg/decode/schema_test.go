@@ -24,7 +24,7 @@ func TestSchemaLoader(t *testing.T) {
 
 	schema := NewPGXSchemaLoader(conn)
 
-	t.Run("GetTypeOID", func(t *testing.T) {
+	t.Run("GetTypeInfo", func(t *testing.T) {
 		var columns []string
 		for _, name := range pgTypeNames {
 			if strings.HasPrefix("name", "_") {
@@ -46,20 +46,22 @@ func TestSchemaLoader(t *testing.T) {
 			if !ok {
 				t.Fatalf("%s type missing from pgx", name)
 			}
-			if oid, err := schema.GetTypeOID("public", "t", name); err != nil {
-				t.Fatalf("GetTypeOID fail: %v", err)
-			} else if oid != dt.OID {
-				t.Fatalf("GetTypeOID OID mismatch: %s %v %v", name, oid, dt.OID)
+			if typeInfo, err := schema.GetTypeInfo("public", "t", name); err != nil {
+				t.Fatalf("GetTypeInfo fail: %v", err)
+			} else if typeInfo.OID != dt.OID {
+				t.Fatalf("GetTypeInfo OID mismatch: %s %v %v", name, typeInfo.OID, dt.OID)
+			} else if typeInfo.ReplicaIdentity != 'd' {
+				t.Fatalf("GetTypeInfo ReplicaIdentity mismatch: %s %v %v", name, typeInfo.ReplicaIdentity, 'd')
 			}
 		}
 
-		if _, err = schema.GetTypeOID("other", "other", "other"); !errors.Is(err, ErrSchemaTableMissing) {
+		if _, err = schema.GetTypeInfo("other", "other", "other"); !errors.Is(err, ErrSchemaNamespaceMissing) {
 			t.Fatalf("unexpected %v", err)
 		}
-		if _, err = schema.GetTypeOID("public", "other", "other"); !errors.Is(err, ErrSchemaTableMissing) {
+		if _, err = schema.GetTypeInfo("public", "other", "other"); !errors.Is(err, ErrSchemaTableMissing) {
 			t.Fatalf("unexpected %v", err)
 		}
-		if _, err = schema.GetTypeOID("public", "t", "other"); !errors.Is(err, ErrSchemaColumnMissing) {
+		if _, err = schema.GetTypeInfo("public", "t", "other"); !errors.Is(err, ErrSchemaColumnMissing) {
 			t.Fatalf("unexpected %v", err)
 		}
 	})
