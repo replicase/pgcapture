@@ -1,6 +1,6 @@
 package sql
 
-var QueryAttrTypeOID = `SELECT nspname, relname, attname, atttypid
+var QueryAttrTypeOID = `SELECT nspname, relname, attname, atttypid, relreplident
 FROM pg_catalog.pg_namespace n
 JOIN pg_catalog.pg_class c ON c.relnamespace = n.oid AND c.relkind = 'r'
 JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 and a.attisdropped = false

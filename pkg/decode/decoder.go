@@ -1,6 +1,8 @@
 package decode
 
-import "github.com/replicase/pgcapture/pkg/pb"
+import (
+	"github.com/replicase/pgcapture/pkg/pb"
+)
 
 const (
 	ExtensionSchema  = "pgcapture"
@@ -49,4 +51,68 @@ func IsDDL(m *pb.Change) bool {
 
 func Ignore(m *pb.Change) bool {
 	return m.Schema == ExtensionSchema && m.Table == ExtensionSources
+}
+
+func makeOldPBTuple(schema *PGXSchemaLoader, rel Relation, src []Field, noNull bool) (fields []*pb.Field) {
+	if src == nil {
+		return nil
+	}
+	fields = make([]*pb.Field, 0, len(src))
+	for i, s := range src {
+		if noNull && s.Datum == nil {
+			continue
+		}
+		typeInfo, err := schema.GetTypeInfo(rel.NspName, rel.RelName, rel.Fields[i])
+		if err != nil {
+			// TODO: add optional logging, because it will generate a lot of logs when refreshing materialized view
+			continue
+		}
+		switch s.Format {
+		case 'b':
+			fields = append(fields, &pb.Field{Name: rel.Fields[i], Oid: typeInfo.OID, Value: &pb.Field_Binary{Binary: s.Datum}})
+		case 'n':
+			fields = append(fields, &pb.Field{Name: rel.Fields[i], Oid: typeInfo.OID, Value: nil})
+		case 't':
+			fields = append(fields, &pb.Field{Name: rel.Fields[i], Oid: typeInfo.OID, Value: &pb.Field_Text{Text: string(s.Datum)}})
+		case 'u':
+			continue // unchanged toast field should be excluded
+		}
+	}
+	return fields
+}
+
+func makeNewPBTuple(schema *PGXSchemaLoader, rel Relation, old, new []Field, noNull bool) (fields []*pb.Field) {
+	if new == nil {
+		return nil
+	}
+	fields = make([]*pb.Field, 0, len(new))
+	for i, s := range new {
+		if noNull && s.Datum == nil {
+			continue
+		}
+		typeInfo, err := schema.GetTypeInfo(rel.NspName, rel.RelName, rel.Fields[i])
+		if err != nil {
+			// TODO: add optional logging, because it will generate a lot of logs when refreshing materialized view
+			continue
+		}
+	ReAppend:
+		switch s.Format {
+		case 'b':
+			fields = append(fields, &pb.Field{Name: rel.Fields[i], Oid: typeInfo.OID, Value: &pb.Field_Binary{Binary: s.Datum}})
+		case 'n':
+			fields = append(fields, &pb.Field{Name: rel.Fields[i], Oid: typeInfo.OID, Value: nil})
+		case 't':
+			fields = append(fields, &pb.Field{Name: rel.Fields[i], Oid: typeInfo.OID, Value: &pb.Field_Text{Text: string(s.Datum)}})
+		case 'u':
+			// fill the unchanged field with old value when ReplicaIdentity is full
+			// otherwise, skip the unchanged field
+			if typeInfo.ReplicaIdentity == ReplicaIdentityFull && old[i].Format != 'u' {
+				s.Format = old[i].Format
+				s.Datum = old[i].Datum
+				goto ReAppend
+			}
+			continue
+		}
+	}
+	return fields
 }

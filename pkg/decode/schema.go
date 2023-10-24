@@ -97,7 +97,21 @@ func (i ColumnInfo) Filter(fields []*pb.Field, fieldSelector fieldSelector) (fie
 	return set, fFields
 }
 
-type TypeCache map[string]map[string]map[string]uint32
+type ReplicaIdentity rune
+
+const (
+	ReplicaIdentityDefault ReplicaIdentity = 'd'
+	ReplicaIdentityFull    ReplicaIdentity = 'f'
+	ReplicaIdentityIndex   ReplicaIdentity = 'i'
+	ReplicaIdentityNothing ReplicaIdentity = 'n'
+)
+
+type TypeInfo struct {
+	OID             uint32
+	ReplicaIdentity ReplicaIdentity
+}
+
+type TypeCache map[string]map[string]map[string]TypeInfo
 type KeysCache map[string]map[string]ColumnInfo
 
 func NewPGXSchemaLoader(conn *pgx.Conn) *PGXSchemaLoader {
@@ -117,23 +131,29 @@ func (p *PGXSchemaLoader) RefreshType() error {
 	}
 	defer rows.Close()
 
-	var nspname, relname, attname string
-	var atttypid uint32
+	var (
+		nspname, relname, attname string
+		atttypid                  uint32
+		relreplident              ReplicaIdentity
+	)
 	for rows.Next() {
-		if err := rows.Scan(&nspname, &relname, &attname, &atttypid); err != nil {
+		if err := rows.Scan(&nspname, &relname, &attname, &atttypid, &relreplident); err != nil {
 			return err
 		}
 		tbls, ok := p.types[nspname]
 		if !ok {
-			tbls = make(map[string]map[string]uint32)
+			tbls = make(map[string]map[string]TypeInfo)
 			p.types[nspname] = tbls
 		}
 		cols, ok := tbls[relname]
 		if !ok {
-			cols = make(map[string]uint32)
+			cols = make(map[string]TypeInfo)
 			tbls[relname] = cols
 		}
-		cols[attname] = atttypid
+		cols[attname] = TypeInfo{
+			OID:             atttypid,
+			ReplicaIdentity: relreplident,
+		}
 	}
 	return nil
 }
@@ -170,15 +190,16 @@ func (p *PGXSchemaLoader) RefreshColumnInfo() error {
 	return nil
 }
 
-func (p *PGXSchemaLoader) GetTypeOID(namespace, table, field string) (oid uint32, err error) {
+func (p *PGXSchemaLoader) GetTypeInfo(namespace, table, field string) (*TypeInfo, error) {
 	if tbls, ok := p.types[namespace]; !ok {
-		return 0, fmt.Errorf("%s.%s %w", namespace, table, ErrSchemaTableMissing)
+		return nil, fmt.Errorf("%s.%s %w", namespace, table, ErrSchemaNamespaceMissing)
 	} else if cols, ok := tbls[table]; !ok {
-		return 0, fmt.Errorf("%s.%s %w", namespace, table, ErrSchemaTableMissing)
-	} else if oid, ok = cols[field]; !ok {
-		return 0, fmt.Errorf("%s.%s.%s %w", namespace, table, field, ErrSchemaColumnMissing)
+		return nil, fmt.Errorf("%s.%s %w", namespace, table, ErrSchemaTableMissing)
+	} else if typeInfo, ok := cols[field]; !ok {
+		return nil, fmt.Errorf("%s.%s.%s %w", namespace, table, field, ErrSchemaColumnMissing)
+	} else {
+		return &typeInfo, nil
 	}
-	return oid, nil
 }
 
 func (p *PGXSchemaLoader) GetColumnInfo(namespace, table string) (*ColumnInfo, error) {
@@ -214,7 +235,8 @@ func (p *PGXSchemaLoader) GetVersion() (version int64, err error) {
 }
 
 var (
-	ErrSchemaTableMissing    = errors.New("table missing")
-	ErrSchemaColumnMissing   = errors.New("column missing")
-	ErrSchemaIdentityMissing = errors.New("table identity keys missing")
+	ErrSchemaNamespaceMissing = errors.New("namespace missing")
+	ErrSchemaTableMissing     = errors.New("table missing")
+	ErrSchemaColumnMissing    = errors.New("column missing")
+	ErrSchemaIdentityMissing  = errors.New("table identity keys missing")
 )

@@ -29,7 +29,9 @@ func TestPGLogicalDecoder(t *testing.T) {
 	defer conn.Close(ctx)
 
 	conn.Exec(ctx, "DROP SCHEMA public CASCADE; CREATE SCHEMA public; CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";")
-	conn.Exec(ctx, "CREATE TABLE t (id bigint primary key, uid uuid, txt text, js jsonb, ts timestamptz, bs bytea)")
+	conn.Exec(ctx, "CREATE TABLE t1 (id bigint primary key, uid uuid, txt text, js jsonb, ts timestamptz, bs bytea)")
+	conn.Exec(ctx, "CREATE TABLE t2 (id bigint primary key, uid uuid, txt text, js jsonb, ts timestamptz, bs bytea)")
+	conn.Exec(ctx, "ALTER TABLE t2 REPLICA IDENTITY FULL")
 	conn.Exec(ctx, fmt.Sprintf("SELECT pg_drop_replication_slot('%s')", TestSlot))
 	conn.Exec(ctx, sql.CreateLogicalSlot, TestSlot, PGLogicalOutputPlugin)
 
@@ -45,7 +47,7 @@ func TestPGLogicalDecoder(t *testing.T) {
 	now := time.Now()
 	changes := []*change{
 		{
-			Expect: &pb.Change{Op: pb.Change_INSERT, Schema: "public", Table: "t",
+			Expect: &pb.Change{Op: pb.Change_INSERT, Schema: "public", Table: "t1",
 				New: []*pb.Field{
 					{Name: "id", Oid: 20, Value: &pb.Field_Binary{Binary: b(1, pgtype.Int8OID)}},
 					{Name: "uid", Oid: 2950, Value: &pb.Field_Binary{Binary: b([]byte("08d6af78-550c-4071-80be-2fece2db0474"), pgtype.UUIDOID)}},
@@ -57,7 +59,7 @@ func TestPGLogicalDecoder(t *testing.T) {
 			},
 		},
 		{
-			Expect: &pb.Change{Op: pb.Change_INSERT, Schema: "public", Table: "t",
+			Expect: &pb.Change{Op: pb.Change_INSERT, Schema: "public", Table: "t1",
 				New: []*pb.Field{
 					{Name: "id", Oid: 20, Value: &pb.Field_Binary{Binary: b(2, pgtype.Int8OID)}},
 					{Name: "uid", Oid: 2950, Value: &pb.Field_Binary{Binary: b([]byte("3e89ee8c-3657-4103-99a7-680292a0c22c"), pgtype.UUIDOID)}},
@@ -69,7 +71,7 @@ func TestPGLogicalDecoder(t *testing.T) {
 			},
 		},
 		{
-			Expect: &pb.Change{Op: pb.Change_UPDATE, Schema: "public", Table: "t",
+			Expect: &pb.Change{Op: pb.Change_UPDATE, Schema: "public", Table: "t1",
 				New: []*pb.Field{
 					{Name: "id", Oid: 20, Value: &pb.Field_Binary{Binary: b(1, pgtype.Int8OID)}},
 					{Name: "uid", Oid: 2950, Value: &pb.Field_Binary{Binary: b([]byte("782b2492-3e7c-431b-9238-c1136ea57190"), pgtype.UUIDOID)}},
@@ -80,7 +82,7 @@ func TestPGLogicalDecoder(t *testing.T) {
 			},
 		},
 		{
-			Expect: &pb.Change{Op: pb.Change_UPDATE, Schema: "public", Table: "t",
+			Expect: &pb.Change{Op: pb.Change_UPDATE, Schema: "public", Table: "t1",
 				New: []*pb.Field{
 					{Name: "id", Oid: 20, Value: &pb.Field_Binary{Binary: b(3, pgtype.Int8OID)}},
 					{Name: "uid", Oid: 2950, Value: &pb.Field_Binary{Binary: b([]byte("f0d3ad8e-709f-4f67-9860-e149c671d82a"), pgtype.UUIDOID)}},
@@ -94,16 +96,59 @@ func TestPGLogicalDecoder(t *testing.T) {
 			},
 		},
 		{
-			Expect: &pb.Change{Op: pb.Change_DELETE, Schema: "public", Table: "t",
+			Expect: &pb.Change{Op: pb.Change_DELETE, Schema: "public", Table: "t1",
 				Old: []*pb.Field{
 					{Name: "id", Oid: 20, Value: &pb.Field_Binary{Binary: b(3, pgtype.Int8OID)}},
 				},
 			},
 		},
 		{
-			Expect: &pb.Change{Op: pb.Change_DELETE, Schema: "public", Table: "t",
+			Expect: &pb.Change{Op: pb.Change_DELETE, Schema: "public", Table: "t1",
 				Old: []*pb.Field{
 					{Name: "id", Oid: 20, Value: &pb.Field_Binary{Binary: b(1, pgtype.Int8OID)}},
+				},
+			},
+		},
+		{
+			Expect: &pb.Change{Op: pb.Change_INSERT, Schema: "public", Table: "t2",
+				New: []*pb.Field{
+					{Name: "id", Oid: 20, Value: &pb.Field_Binary{Binary: b(1, pgtype.Int8OID)}},
+					{Name: "uid", Oid: 2950, Value: &pb.Field_Binary{Binary: b([]byte("08d6af78-550c-4071-80be-2fece2db0474"), pgtype.UUIDOID)}},
+					{Name: "txt", Oid: 25, Value: &pb.Field_Binary{Binary: b(nT(5), pgtype.TextOID)}},
+					{Name: "js", Oid: 3802, Value: &pb.Field_Binary{Binary: b([]byte(`{"a": {"b": {"c": {"d": null}}}}`), pgtype.JSONBOID)}},
+					{Name: "ts", Oid: 1184, Value: &pb.Field_Binary{Binary: b(now, pgtype.TimestamptzOID)}},
+					{Name: "bs", Oid: 17, Value: &pb.Field_Binary{Binary: b(nB(500000), pgtype.ByteaOID)}},
+				},
+			},
+		},
+		{
+			Expect: &pb.Change{Op: pb.Change_UPDATE, Schema: "public", Table: "t2",
+				New: []*pb.Field{
+					{Name: "id", Oid: 20, Value: &pb.Field_Binary{Binary: b(1, pgtype.Int8OID)}},
+					{Name: "uid", Oid: 2950, Value: &pb.Field_Binary{Binary: b([]byte("782b2492-3e7c-431b-9238-c1136ea57190"), pgtype.UUIDOID)}},
+					{Name: "txt", Oid: 25, Value: nil},
+					{Name: "js", Oid: 3802, Value: &pb.Field_Binary{Binary: b([]byte(`{"a": {"b": {"c": {"d": null}}}}`), pgtype.JSONBOID)}},
+					{Name: "ts", Oid: 1184, Value: &pb.Field_Binary{Binary: b(now.Add(time.Second), pgtype.TimestamptzOID)}},
+					{Name: "bs", Oid: 17, Value: &pb.Field_Binary{Binary: b(nB(500000), pgtype.ByteaOID)}},
+				},
+				Old: []*pb.Field{
+					{Name: "id", Oid: 20, Value: &pb.Field_Binary{Binary: b(1, pgtype.Int8OID)}},
+					{Name: "uid", Oid: 2950, Value: &pb.Field_Binary{Binary: b([]byte("08d6af78-550c-4071-80be-2fece2db0474"), pgtype.UUIDOID)}},
+					{Name: "txt", Oid: 25, Value: &pb.Field_Binary{Binary: b(nT(5), pgtype.TextOID)}},
+					{Name: "js", Oid: 3802, Value: &pb.Field_Binary{Binary: b([]byte(`{"a": {"b": {"c": {"d": null}}}}`), pgtype.JSONBOID)}},
+					{Name: "ts", Oid: 1184, Value: &pb.Field_Binary{Binary: b(now, pgtype.TimestamptzOID)}},
+					{Name: "bs", Oid: 17, Value: &pb.Field_Binary{Binary: b(nB(500000), pgtype.ByteaOID)}},
+				},
+			},
+		},
+		{
+			Expect: &pb.Change{Op: pb.Change_DELETE, Schema: "public", Table: "t2",
+				Old: []*pb.Field{
+					{Name: "id", Oid: 20, Value: &pb.Field_Binary{Binary: b(1, pgtype.Int8OID)}},
+					{Name: "uid", Oid: 2950, Value: &pb.Field_Binary{Binary: b([]byte("782b2492-3e7c-431b-9238-c1136ea57190"), pgtype.UUIDOID)}},
+					{Name: "js", Oid: 3802, Value: &pb.Field_Binary{Binary: b([]byte(`{"a": {"b": {"c": {"d": null}}}}`), pgtype.JSONBOID)}},
+					{Name: "ts", Oid: 1184, Value: &pb.Field_Binary{Binary: b(now.Add(time.Second), pgtype.TimestamptzOID)}},
+					{Name: "bs", Oid: 17, Value: &pb.Field_Binary{Binary: b(nB(500000), pgtype.ByteaOID)}},
 				},
 			},
 		},
@@ -165,7 +210,8 @@ recv:
 					}
 				case 2:
 					if c := m.GetChange(); c == nil || !proto.Equal(c, changes[(count-2)/3].Expect) {
-						t.Fatalf("unexpected %v", m.String())
+						fmt.Println(count)
+						t.Fatalf("unexpected %v\n %v", m.String(), changes[(count-2)/3].Expect.String())
 					}
 				}
 			}

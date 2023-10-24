@@ -3,6 +3,7 @@ package decode
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -27,9 +28,10 @@ func (c *change) Apply(ctx context.Context, conn *pgx.Conn) (err error) {
 		fmts[i] = 1
 	}
 
+	table := c.Expect.Table
 	switch c.Expect.Op {
 	case pb.Change_INSERT:
-		_, err = conn.PgConn().ExecParams(ctx, "insert into t values ($1,$2,$3,$4,$5,$6)", vals, oids, fmts, fmts).Close()
+		_, err = conn.PgConn().ExecParams(ctx, fmt.Sprintf("insert into %s values ($1,$2,$3,$4,$5,$6)", table), vals, oids, fmts, fmts).Close()
 	case pb.Change_UPDATE:
 		if c.Expect.Old != nil {
 			vals[5] = c.Expect.Old[0].GetBinary()
@@ -39,12 +41,12 @@ func (c *change) Apply(ctx context.Context, conn *pgx.Conn) (err error) {
 			oids[5] = c.Expect.New[0].Oid
 		}
 		fmts[5] = 1
-		_, err = conn.PgConn().ExecParams(ctx, "update t set id=$1,uid=$2,txt=$3,js=$4,ts=$5 where id=$6", vals, oids, fmts, fmts).Close()
+		_, err = conn.PgConn().ExecParams(ctx, fmt.Sprintf("update %s set id=$1,uid=$2,txt=$3,js=$4,ts=$5 where id=$6", table), vals, oids, fmts, fmts).Close()
 	case pb.Change_DELETE:
 		vals[0] = c.Expect.Old[0].GetBinary()
 		oids[0] = c.Expect.Old[0].Oid
 		fmts[0] = 1
-		_, err = conn.PgConn().ExecParams(ctx, "delete from t where id=$1", vals[:1], oids[:1], fmts[:1], fmts[:1]).Close()
+		_, err = conn.PgConn().ExecParams(ctx, fmt.Sprintf("delete from %s where id=$1", table), vals[:1], oids[:1], fmts[:1], fmts[:1]).Close()
 	}
 	return err
 }
