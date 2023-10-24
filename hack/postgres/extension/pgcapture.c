@@ -83,5 +83,5 @@ sql_command_tags(PG_FUNCTION_ARGS)
     }
     if (astate == NULL)
                 elog(ERROR, "Invalid sql command");
-    PG_RETURN_ARRAYTYPE_P(makeArrayResult(astate, CurrentMemoryContext));
+    PG_RETURN_ARRAYTYPE_P(DatumGetPointer(makeArrayResult(astate, CurrentMemoryContext)));
 }
