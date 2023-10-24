@@ -62,8 +62,8 @@ func (p *PGLogicalDecoder) Decode(in []byte) (m *pb.Message, err error) {
 		}
 
 		c := &pb.Change{Schema: rel.NspName, Table: rel.RelName, Op: OpMap[in[0]]}
-		c.Old = p.makePBTuple(rel, r.Old, true)
-		c.New = p.makePBTuple(rel, r.New, false)
+		c.Old = makeOldPBTuple(p.schema, rel, r.Old, true)
+		c.New = makeNewPBTuple(p.schema, rel, r.Old, r.New, false)
 
 		if len(c.Old) != 0 || len(c.New) != 0 {
 			return &pb.Message{Type: &pb.Message_Change{Change: c}}, nil
@@ -76,34 +76,6 @@ func (p *PGLogicalDecoder) Decode(in []byte) (m *pb.Message, err error) {
 
 func (p *PGLogicalDecoder) GetPluginArgs() []string {
 	return p.pluginArgs
-}
-
-func (p *PGLogicalDecoder) makePBTuple(rel Relation, src []Field, noNull bool) (fields []*pb.Field) {
-	if src == nil {
-		return nil
-	}
-	fields = make([]*pb.Field, 0, len(src))
-	for i, s := range src {
-		if noNull && s.Datum == nil {
-			continue
-		}
-		oid, err := p.schema.GetTypeOID(rel.NspName, rel.RelName, rel.Fields[i])
-		if err != nil {
-			// TODO: add optional logging, because it will generate a lot of logs when refreshing materialized view
-			continue
-		}
-		switch s.Format {
-		case 'b':
-			fields = append(fields, &pb.Field{Name: rel.Fields[i], Oid: oid, Value: &pb.Field_Binary{Binary: s.Datum}})
-		case 'n':
-			fields = append(fields, &pb.Field{Name: rel.Fields[i], Oid: oid, Value: nil})
-		case 't':
-			fields = append(fields, &pb.Field{Name: rel.Fields[i], Oid: oid, Value: &pb.Field_Text{Text: string(s.Datum)}})
-		case 'u':
-			continue // unchanged toast field should be excluded
-		}
-	}
-	return fields
 }
 
 func (p *PGLogicalDecoder) ReadBegin(in []byte) (*pb.Message, error) {
