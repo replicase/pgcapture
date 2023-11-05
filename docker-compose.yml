@@ -44,7 +44,7 @@ x-common-build: &common-build
 services:
   pg_11:
     <<: *common-pg
-    image: rueian/postgres:11-logical
+    image: dcard/postgres:11-logical
     container_name: postgres
   pg_12:
     <<: *common-pg
@@ -57,6 +57,14 @@ services:
   pg_14:
     <<: *common-pg
     image: dcard/postgres:14-logical
+    container_name: postgres
+  pg_15:
+    <<: *common-pg
+    image: replicase/postgres:15-logical
+    container_name: postgres
+  pg_16:
+    <<: *common-pg
+    image: replicase/postgres:16-logical
     container_name: postgres
   pulsar:
     image: apachepulsar/pulsar:2.10.4
