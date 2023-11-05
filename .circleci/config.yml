@@ -44,6 +44,18 @@ jobs:
       - checkout
       - test-with-pg:
           version: 14
+  test-pg-15:
+    executor: default
+    steps:
+      - checkout
+      - test-with-pg:
+          version: 15
+  test-pg-16:
+    executor: default
+    steps:
+      - checkout
+      - test-with-pg:
+          version: 16
 
 workflows:
   test:
@@ -52,3 +64,5 @@ workflows:
       - test-pg-12
       - test-pg-13
       - test-pg-14
+      - test-pg-15
+      - test-pg-16
