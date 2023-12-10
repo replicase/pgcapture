@@ -17,8 +17,13 @@ var (
 
 type (
 	Model            = pgcapture.Model
+	Handlers         = pgcapture.Handlers
+	Table            = pgcapture.Table
+	Message          = pgcapture.Message
 	Change           = pgcapture.Change
 	ModelHandlerFunc = pgcapture.ModelHandlerFunc
+	HandlerFunc      = pgcapture.HandlerFunc
+	AsyncHandlerFunc = pgcapture.AsyncHandlerFunc
 	ConsumerOption   = pgcapture.ConsumerOption
 	SourceResolver   = dblog.SourceResolver
 	SourceDumper     = dblog.SourceDumper

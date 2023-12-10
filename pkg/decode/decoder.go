@@ -33,6 +33,11 @@ type RowChange struct {
 	New []Field
 }
 
+type CustomMessage struct {
+	Prefix  string
+	Content []byte
+}
+
 type Field struct {
 	Format byte
 	Datum  []byte

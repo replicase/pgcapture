@@ -58,6 +58,15 @@ func (p *PGOutputDecoder) Decode(in []byte) (m *pb.Message, err error) {
 		if len(c.Old) != 0 || len(c.New) != 0 {
 			return &pb.Message{Type: &pb.Message_Change{Change: c}}, nil
 		}
+	case 'M':
+		r := CustomMessage{}
+		if err = p.ReadCustomMessage(in, &r); err != nil {
+			return nil, err
+		}
+		return &pb.Message{Type: &pb.Message_Custom{Custom: &pb.Custom{
+			Prefix:  r.Prefix,
+			Content: r.Content,
+		}}}, nil
 	default:
 		// TODO log unmatched message
 	}
@@ -159,6 +168,20 @@ func (p *PGOutputDecoder) ReadRowChange(in []byte, m *RowChange) (err error) {
 	if kind == 'N' {
 		m.New, err = p.readTuple(reader)
 	}
+	return err
+}
+
+func (p *PGOutputDecoder) ReadCustomMessage(in []byte, m *CustomMessage) (err error) {
+	reader := NewBytesReader(in)
+	// skip operation
+	_, err = reader.Byte()
+	// skip transactional flag
+	_, err = reader.Int8()
+	// skip lsn
+	_, err = reader.Int64()
+
+	m.Prefix, err = reader.StringEnd()
+	m.Content, err = reader.Bytes32()
 	return err
 }
 

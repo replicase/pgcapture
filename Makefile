@@ -1,10 +1,14 @@
 PATH := ${CURDIR}/bin:$(PATH)
 go_exe = $(shell go env GOEXE)
-protoc_version = 3.19.1
+protoc_version = 24.0
 protoc_arch = x86_64
 
 ifeq ($(shell uname -s),Darwin)
 	protoc_os = osx
+
+	ifeq ($(shell uname -m),arm64)
+		protoc_arch = aarch_64
+	endif
 else
 	protoc_os = linux
 
@@ -49,6 +53,7 @@ bin/protoc-$(protoc_version).zip:
 	curl -o $@ --location https://github.com/protocolbuffers/protobuf/releases/download/v$(protoc_version)/protoc-$(protoc_version)-$(protoc_os)-$(protoc_arch).zip
 
 bin/protoc-$(protoc_version): bin/protoc-$(protoc_version).zip
+	echo $<
 	mkdir -p $@
 	unzip -d $@ -o $<
 

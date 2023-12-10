@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"time"
 
@@ -25,6 +24,15 @@ func (t *T1) DebounceKey() string {
 	return strconv.Itoa(int(t.ID.Int))
 }
 
+type T2 struct {
+	ID pgtype.Int4 `pg:"id"`
+	V  pgtype.Int4 `pg:"v"`
+}
+
+func (t *T2) Deserialize(data []byte) error {
+	return nil
+}
+
 func main() {
 	conn, err := grpc.Dial(example.GatewayAddr, grpc.WithInsecure())
 	if err != nil {
@@ -39,10 +47,16 @@ func main() {
 	})
 	defer consumer.Stop()
 
-	err = consumer.Consume(map[pgcapture.Model]pgcapture.ModelHandlerFunc{
-		&T1{}: func(change pgcapture.Change) error {
-			fmt.Println(change.New)
-			return nil
+	err = consumer.Consume2(pgcapture.Handlers{
+		TableHandlers: map[pgcapture.Table]pgcapture.HandlerFunc{
+			&T1{}: func(change pgcapture.Change) error {
+				return nil
+			},
+		},
+		MessageHandlers: map[pgcapture.Message]pgcapture.HandlerFunc{
+			&T2{}: func(change pgcapture.Change) error {
+				return nil
+			},
 		},
 	})
 	if err != nil {

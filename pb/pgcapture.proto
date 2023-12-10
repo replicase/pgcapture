@@ -17,6 +17,7 @@ message Message {
     Begin begin = 1;
     Commit commit = 2;
     Change change = 3;
+    Custom custom = 4;
   }
 }
 
@@ -43,6 +44,11 @@ message Change {
   string table = 3;
   repeated Field new = 4;
   repeated Field old = 5;
+}
+
+message Custom {
+  string prefix = 1;
+  bytes content = 2;
 }
 
 message Field {

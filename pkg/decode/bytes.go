@@ -39,6 +39,16 @@ func (b *BytesReader) Uint32() (v uint32, err error) {
 	return
 }
 
+func (b *BytesReader) Uint64() (v uint64, err error) {
+	end := b.off + 8
+	if end > len(b.data) {
+		return 0, io.EOF
+	}
+	v = binary.BigEndian.Uint64(b.data[b.off:end])
+	b.off = end
+	return
+}
+
 func (b *BytesReader) Uint16() (v uint16, err error) {
 	end := b.off + 2
 	if end > len(b.data) {
@@ -51,6 +61,11 @@ func (b *BytesReader) Uint16() (v uint16, err error) {
 
 func (b *BytesReader) Int32() (v int, err error) {
 	uv, err := b.Uint32()
+	return int(uv), err
+}
+
+func (b *BytesReader) Int64() (v int, err error) {
+	uv, err := b.Uint64()
 	return int(uv), err
 }
 

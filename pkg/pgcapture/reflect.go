@@ -14,6 +14,15 @@ type Model interface {
 	TableName() (schema, table string)
 }
 
+type Table interface {
+	TableName() (schema, table string)
+}
+
+type Message interface {
+	Topic() string
+	Deserialize(data []byte) error
+}
+
 type Change struct {
 	Op         pb.Change_Operation
 	Checkpoint cursor.Checkpoint
@@ -23,10 +32,44 @@ type Change struct {
 
 type ModelHandlerFunc func(change Change) error
 type ModelAsyncHandlerFunc func(change Change, done func(err error))
+
+type HandlerFunc func(change Change) error
+type AsyncHandlerFunc func(change Change, done func(err error))
+
 type ModelHandlers map[Model]ModelHandlerFunc
 type ModelAsyncHandlers map[Model]ModelAsyncHandlerFunc
 
+type TableHandlers map[Table]HandlerFunc
+type TableAsyncHandlers map[Table]AsyncHandlerFunc
+
+type MessageHandlers map[Message]HandlerFunc
+type MessageAsyncHandlers map[Message]AsyncHandlerFunc
+
+type ModelV2HandlerFunc func(change Change) error
+type ModelV2AsyncHandlerFunc func(change Change, done func(err error))
+
+type ModelV2Handlers struct {
+	TableHandlers   map[Table]HandlerFunc
+	MessageHandlers map[Message]HandlerFunc
+}
+
+type Handlers struct {
+	TableHandlers   map[Table]HandlerFunc
+	MessageHandlers map[Message]HandlerFunc
+}
+
+type AsyncHandlers struct {
+	TableHandlers   map[Table]AsyncHandlerFunc
+	MessageHandlers map[Message]AsyncHandlerFunc
+}
+
 func toAsyncHandlerFunc(fn ModelHandlerFunc) ModelAsyncHandlerFunc {
+	return func(change Change, done func(err error)) {
+		done(fn(change))
+	}
+}
+
+func toAsyncHandlerFuncV2(fn HandlerFunc) AsyncHandlerFunc {
 	return func(change Change, done func(err error)) {
 		done(fn(change))
 	}

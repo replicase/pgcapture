@@ -78,7 +78,7 @@ type ConsumerOption struct {
 
 type Consumer struct {
 	Source  source.RequeueSource
-	Bouncer BounceHandler
+	Bouncer BounceHandlerV2
 	ctx     context.Context
 	errFn   OnDecodeError
 }
@@ -133,12 +133,77 @@ func (c *Consumer) ConsumeAsync(mh ModelAsyncHandlers) error {
 	return c.Source.Error()
 }
 
+func (c *Consumer) ConsumeAsync2(ah AsyncHandlers) error {
+	if err := c.Bouncer.Initialize(c.ctx, ah); err != nil {
+		return err
+	}
+
+	refs := make(map[string]reflection, len(mh))
+	for m, h := range mh {
+		ref, err := reflectModel(m)
+		if err != nil {
+			return err
+		}
+		ref.hdl = h
+		refs[ModelName(m.TableName())] = ref
+	}
+
+	changes, err := c.Source.Capture(cursor.Checkpoint{})
+	if err != nil {
+		return err
+	}
+
+	for change := range changes {
+		switch m := change.Message.Type.(type) {
+		case *pb.Message_Change:
+			ref, ok := refs[ModelName(m.Change.Schema, m.Change.Table)]
+			if !ok {
+				break
+			}
+			n, err := makeModel(ref, m.Change.New)
+			if err != nil {
+				c.errFn(change, err)
+				break
+			}
+			o, err := makeModel(ref, m.Change.Old)
+			if err != nil {
+				c.errFn(change, err)
+				break
+			}
+			c.Bouncer.Handle(ref.hdl, change.Checkpoint, Change{
+				Op:         m.Change.Op,
+				Checkpoint: change.Checkpoint,
+				New:        n,
+				Old:        o,
+			})
+			continue
+		}
+		c.Source.Commit(change.Checkpoint)
+	}
+	return c.Source.Error()
+}
+
 func (c *Consumer) Consume(mh ModelHandlers) error {
 	mah := make(ModelAsyncHandlers, len(mh))
 	for m, fn := range mh {
 		mah[m] = toAsyncHandlerFunc(fn)
 	}
 	return c.ConsumeAsync(mah)
+}
+
+func (c *Consumer) Consume2(h Handlers) error {
+	tah := make(TableAsyncHandlers, len(h.TableHandlers))
+	for t, fn := range h.TableHandlers {
+		tah[t] = toAsyncHandlerFuncV2(fn)
+	}
+	mah := make(MessageAsyncHandlers, len(h.MessageHandlers))
+	for m, fn := range h.MessageHandlers {
+		mah[m] = toAsyncHandlerFuncV2(fn)
+	}
+	return c.ConsumeAsync2(AsyncHandlers{
+		TableHandlers:   tah,
+		MessageHandlers: mah,
+	})
 }
 
 func makeModel(ref reflection, fields []*pb.Field) (interface{}, error) {

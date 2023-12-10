@@ -192,6 +192,8 @@ func (p *PGXSource) fetching(ctx context.Context) (change Change, err error) {
 					}
 				}
 				p.currentSeq++
+			} else if msg := m.GetCustom(); msg != nil {
+				p.currentSeq++
 			} else if b := m.GetBegin(); b != nil {
 				p.currentLsn = b.FinalLsn
 				p.currentSeq = 0

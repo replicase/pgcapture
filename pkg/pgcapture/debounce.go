@@ -16,6 +16,11 @@ type BounceHandler interface {
 	Handle(fn ModelAsyncHandlerFunc, checkpoint cursor.Checkpoint, change Change)
 }
 
+type BounceHandlerV2 interface {
+	Initialize(ctx context.Context, ah AsyncHandlers) error
+	Handle(fn AsyncHandlerFunc, checkpoint cursor.Checkpoint, change Change)
+}
+
 type NoBounceHandler struct {
 	source source.RequeueSource
 }
