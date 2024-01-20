@@ -64,6 +64,17 @@ func TestPulsarSink(t *testing.T) {
 			}
 		}
 	}
+
+	// should send keep alive message to the committed
+	// but tracker should not be committed
+	change := source.Change{Checkpoint: cursor.Checkpoint{LSN: 4, Seq: 0}, Message: &pb.Message{Type: &pb.Message_KeepAlive{
+		KeepAlive: &pb.KeepAlive{},
+	}}}
+	changes <- change
+	if recv := <-committed; recv.LSN != change.Checkpoint.LSN || recv.Seq != change.Checkpoint.Seq {
+		t.Fatalf("unexpected %v", change.Checkpoint.LSN)
+	}
+
 	close(changes)
 
 	tracker.EXPECT().Close()
@@ -98,6 +109,7 @@ func TestPulsarSink(t *testing.T) {
 			changes <- source.Change{Checkpoint: cursor.Checkpoint{LSN: i, Seq: j}, Message: &pb.Message{Type: &pb.Message_Commit{Commit: &pb.Commit{EndLsn: i}}}}
 		}
 	}
+
 	// these new changes should be accepted
 	for i := uint64(3); i < 5; i++ {
 		for j := uint32(4); j < 5; j++ {

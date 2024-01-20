@@ -126,6 +126,11 @@ func (p *PulsarSink) Apply(changes chan source.Change) chan cursor.Checkpoint {
 			return nil
 		}
 
+		if change.Message.GetKeepAlive() != nil {
+			committed <- change.Checkpoint
+			return nil
+		}
+
 		bs, err := proto.Marshal(change.Message)
 		if err != nil {
 			return err

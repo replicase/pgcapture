@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/replicase/pgcapture/pkg/cursor"
 	"github.com/replicase/pgcapture/pkg/decode"
+	"github.com/replicase/pgcapture/pkg/pb"
 	"github.com/replicase/pgcapture/pkg/sql"
 	"github.com/sirupsen/logrus"
 )
@@ -163,6 +164,7 @@ func (p *PGXSource) fetching(ctx context.Context) (change Change, err error) {
 	if err != nil {
 		return change, err
 	}
+
 	switch msg := msg.(type) {
 	case *pgproto3.CopyData:
 		switch msg.Data[0] {
@@ -170,6 +172,14 @@ func (p *PGXSource) fetching(ctx context.Context) (change Change, err error) {
 			var pkm pglogrepl.PrimaryKeepaliveMessage
 			if pkm, err = pglogrepl.ParsePrimaryKeepaliveMessage(msg.Data[1:]); err == nil && pkm.ReplyRequested {
 				p.nextReportTime = time.Time{}
+				// We aim to catch up to the ServerWALEnd position.
+				// For instance, PostgreSQL sends a keepalive message when shutting down.
+				// If we don't report the ServerWALEnd position, the replication connection cannot close.
+				// Consequently, PostgreSQL could be indefinitely stuck in the shutdown process.
+				change = Change{
+					Checkpoint: cursor.Checkpoint{LSN: uint64(pkm.ServerWALEnd)},
+					Message:    &pb.Message{Type: &pb.Message_KeepAlive{KeepAlive: &pb.KeepAlive{}}},
+				}
 			}
 		case pglogrepl.XLogDataByteID:
 			xld, err := pglogrepl.ParseXLogData(msg.Data[1:])
