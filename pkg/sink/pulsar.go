@@ -127,6 +127,9 @@ func (p *PulsarSink) Apply(changes chan source.Change) chan cursor.Checkpoint {
 		}
 
 		if change.Message.GetKeepAlive() != nil {
+			if err := p.producer.Flush(); err != nil {
+				return err
+			}
 			committed <- change.Checkpoint
 			return nil
 		}
