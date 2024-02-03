@@ -107,13 +107,23 @@ func (p *PGXSource) Capture(cp cursor.Checkpoint) (changes chan Change, err erro
 		return nil, err
 	}
 
+	var confirmedFlushLSN pglogrepl.LSN
+	if err = p.setupConn.QueryRow(context.Background(), sql.QueryReplicationSlot, p.ReplSlot).Scan(&confirmedFlushLSN); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, errors.New("replication slot not found")
+		}
+		return nil, err
+	}
+
 	p.log = logrus.WithFields(logrus.Fields{"From": "PGXSource"})
 	p.log.WithFields(logrus.Fields{
-		"SystemID": ident.SystemID,
-		"Timeline": ident.Timeline,
-		"XLogPos":  int64(ident.XLogPos),
-		"DBName":   ident.DBName,
-		"Decoder":  p.DecodePlugin,
+		"SystemID":                  ident.SystemID,
+		"Timeline":                  ident.Timeline,
+		"XLogPos":                   int64(ident.XLogPos),
+		"DBName":                    ident.DBName,
+		"Decoder":                   p.DecodePlugin,
+		"ReplSlot":                  p.ReplSlot,
+		"ReplSlotConfirmedFlushLSN": uint64(confirmedFlushLSN),
 	}).Info("retrieved current info of source database")
 
 	if cp.LSN != 0 {
@@ -131,7 +141,7 @@ func (p *PGXSource) Capture(cp cursor.Checkpoint) (changes chan Change, err erro
 			}
 			p.currentLsn = uint64(startLsn)
 		} else {
-			p.currentLsn = uint64(ident.XLogPos)
+			p.currentLsn = uint64(confirmedFlushLSN)
 		}
 		p.currentSeq = 0
 		p.log.WithFields(logrus.Fields{
