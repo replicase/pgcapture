@@ -1,0 +1,24 @@
+name: Go Binary Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Build
+        run: ./dockerbuild.sh build && sudo mv ./bin/out/pgcapture ./bin/out/pgcapture-linux-amd64
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ./bin/out/pgcapture-linux-amd64
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
