@@ -257,13 +257,21 @@ type Tx struct {
 func readTx(t *testing.T, changes chan Change, n int) (tx Tx) {
 	var finalLSN uint64
 
-	if m := <-changes; m.Message.GetBegin() == nil {
-		t.Fatalf("unexpected %v", m.Message.String())
+	var target Change
+	for m := range changes {
+		if m.Message.GetKeepAlive() == nil {
+			target = m
+			break
+		}
+	}
+
+	if target.Message.GetBegin() == nil {
+		t.Fatalf("unexpected %v", target.Message.String())
 	} else {
-		tx.Begin = m
-		begin := m.Message.GetBegin()
-		if m.Checkpoint.LSN != begin.FinalLsn || m.Checkpoint.Seq != 0 {
-			t.Fatalf("unexpected begin checkpoint %v", m.Checkpoint)
+		tx.Begin = target
+		begin := target.Message.GetBegin()
+		if target.Checkpoint.LSN != begin.FinalLsn || target.Checkpoint.Seq != 0 {
+			t.Fatalf("unexpected begin checkpoint %v", target.Checkpoint)
 		}
 		finalLSN = begin.FinalLsn
 	}
