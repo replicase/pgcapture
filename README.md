@@ -21,7 +21,7 @@ A scalable Netflix DBLog implementation for PostgreSQL
 * Primary keys of tables aren't limited to be a single numeric column, because dumps are performed by PostgreSQL TID Scan instead of performed on the primary key.
   
 ## Use cases
-* Robust Microservice Event Sourcing
+* Robust Microservice Event Queueing
 * Data synchronization, Moving data to other databases (ex. for OLAP)
 * Upgrade PostgreSQL with minimum downtime
 
