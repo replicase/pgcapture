@@ -4,15 +4,17 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/jackc/pglogrepl"
 )
 
 type Checkpoint struct {
-	LSN  uint64
-	Seq  uint32
-	Data []byte
+	LSN        uint64
+	Seq        uint32
+	Data       []byte
+	ServerTime time.Time
 }
 
 func (cp *Checkpoint) Equal(cp2 Checkpoint) bool {
