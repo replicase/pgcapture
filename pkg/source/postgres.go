@@ -189,8 +189,15 @@ func (p *PGXSource) fetching(ctx context.Context) (change Change, err error) {
 				p.nextReportTime = time.Time{}
 			}
 			change = Change{
-				Checkpoint: cursor.Checkpoint{LSN: uint64(pkm.ServerWALEnd)},
-				Message:    &pb.Message{Type: &pb.Message_KeepAlive{KeepAlive: &pb.KeepAlive{}}},
+				Checkpoint: cursor.Checkpoint{
+					LSN:        uint64(pkm.ServerWALEnd),
+					ServerTime: pkm.ServerTime,
+				},
+				Message: &pb.Message{
+					Type: &pb.Message_KeepAlive{
+						KeepAlive: &pb.KeepAlive{},
+					},
+				},
 			}
 		case pglogrepl.XLogDataByteID:
 			xld, err := pglogrepl.ParseXLogData(msg.Data[1:])
@@ -221,7 +228,7 @@ func (p *PGXSource) fetching(ctx context.Context) (change Change, err error) {
 				p.currentSeq++
 			}
 			change = Change{
-				Checkpoint: cursor.Checkpoint{LSN: p.currentLsn, Seq: p.currentSeq},
+				Checkpoint: cursor.Checkpoint{LSN: p.currentLsn, Seq: p.currentSeq, ServerTime: xld.ServerTime},
 				Message:    m,
 			}
 			if !p.first {
