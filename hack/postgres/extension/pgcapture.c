@@ -1,51 +1,131 @@
-// source: https://github.com/enova/pgl_ddl_deploy/blob/master/pgl_ddl_deploy.c
-
 #include "postgres.h"
-#include "fmgr.h"
+
 #include "catalog/pg_type.h"
+#include "commands/extension.h"
+#include "fmgr.h"
+#include "parser/parser.h"
+#include "parser/scansup.h"
 #include "tcop/utility.h"
 #include "utils/builtins.h"
-#include "parser/parser.h"
+
+/*--- Local includes ---*/
+
+#include "pgcapture.h"
 
 PG_MODULE_MAGIC;
+
+/*--- Private variables ---*/
+
+/* Cache of the current utility command query string. */
+char *pgc_current_utility_string = NULL;
+
+/*--- Functions --- */
+
+PGDLLEXPORT void _PG_init(void);
+
+static void pgc_ProcessUtility_hook(UTILITY_HOOK_ARGS);
+static ProcessUtility_hook_type prev_ProcessUtility = NULL;
+
+char *extract_query_text(const char *query, int query_location, int query_len);
 
 PG_FUNCTION_INFO_V1(pgl_ddl_deploy_current_query);
 PG_FUNCTION_INFO_V1(sql_command_tags);
 
-/* Our own version of debug_query_string - see below */
-const char *pgl_ddl_deploy_debug_query_string;
+/*
+ * Module load callback
+ */
+void
+_PG_init(void)
+{
+	/* Install hooks */
+	prev_ProcessUtility = ProcessUtility_hook;
+	ProcessUtility_hook = pgc_ProcessUtility_hook;
+}
+
 
 /*
- * A near-copy of the current_query postgres function which caches the value, ignoring
- * the change if the string is changed to NULL, as is being done in pglogical 2.2.2.
- * This allows multiple subsequent calls to pglogical.replicate_ddl_command without
- * losing access to current_query.
+ * ProcessUtility hook
  *
- * Please revisit if pglogical changes behavior and stop setting debug_query_string to NULL.
+ * Cache the relevant part of the current utility query string.
+ *
+ * Utility commands executed by a CREATE EXTENSION command are ignored.
+ */
+static void
+pgc_ProcessUtility_hook(UTILITY_HOOK_ARGS)
+{
+	char *old = pgc_current_utility_string;
+
+	if (creating_extension)
+		pgc_current_utility_string = NULL;
+	else
+		pgc_current_utility_string = extract_query_text(queryString,
+														pstmt->stmt_location,
+														pstmt->stmt_len);
+
+	if (prev_ProcessUtility)
+		prev_ProcessUtility(UTILITY_HOOK_ARG_NAMES);
+	else
+		standard_ProcessUtility(UTILITY_HOOK_ARG_NAMES);
+
+	pgc_current_utility_string = old;
+}
+
+
+/*
+ * Given a possibly multi-statement source string, return a palloc'd copy of
+ * the relevant part of the string.
+ *
+* Adapted from upstream pg_stat_statements / CleanQuerytext.
+ */
+char *
+extract_query_text(const char *query, int query_location, int query_len)
+{
+	char *extracted;
+
+	/* First apply starting offset, unless it's -1 (unknown). */
+	if (query_location >= 0)
+	{
+		Assert(query_location <= strlen(query));
+		query += query_location;
+		/* Length of 0 (or -1) means "rest of string" */
+		if (query_len <= 0)
+			query_len = strlen(query);
+		else
+			Assert(query_len <= strlen(query));
+	}
+	else
+	{
+		/* If query location is unknown, distrust query_len as well */
+		query_location = 0;
+		query_len = strlen(query);
+	}
+
+	/*
+	 * Discard leading and trailing whitespace, too.  Use scanner_isspace()
+	 * not libc's isspace(), because we want to match the lexer's behavior.
+	 */
+	while (query_len > 0 && scanner_isspace(query[0]))
+		query++, query_location++, query_len--;
+	while (query_len > 0 && scanner_isspace(query[query_len - 1]))
+		query_len--;
+
+	extracted = palloc(query_len + 1);
+	strncpy(extracted, query, query_len);
+	extracted[query_len] = 0;
+
+	return extracted;
+}
+
+/*
+ * Returns the cached current utility command query string if any.
  */
 Datum
 pgl_ddl_deploy_current_query(PG_FUNCTION_ARGS)
 {
-    /* If debug_query_string is set, we always want the same value */
-    if (debug_query_string)
-    {
-        pgl_ddl_deploy_debug_query_string = debug_query_string;
-        PG_RETURN_TEXT_P(cstring_to_text(pgl_ddl_deploy_debug_query_string));
-    }
-    /* If it is NULL, we want to take pgl_ddl_deploy_debug_query_string instead,
-       which in most cases in this code path is used in pgl_ddl_deploy we expect
-       is because pglogical has reset the string to null.  But we still want to
-       return the same value in this SQL statement we are executing.
-    */
-    else if (pgl_ddl_deploy_debug_query_string)
-    {
-        PG_RETURN_TEXT_P(cstring_to_text(pgl_ddl_deploy_debug_query_string));
-    }
-    else
-    /* If both are NULL, that is legit and we want to return NULL. */
-    {
-        PG_RETURN_NULL();
-    }
+	if (pgc_current_utility_string)
+		PG_RETURN_TEXT_P(cstring_to_text(pgc_current_utility_string));
+	else
+		PG_RETURN_NULL();
 }
 
 /*
