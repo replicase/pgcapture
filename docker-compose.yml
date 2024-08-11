@@ -44,7 +44,7 @@ x-common-build: &common-build
 services:
   pg_11:
     <<: *common-pg
-    image: dcard/postgres:11-logical
+    image: replicase/postgres:11-logical
     container_name: postgres
   pg_12:
     <<: *common-pg
@@ -56,7 +56,7 @@ services:
     container_name: postgres
   pg_14:
     <<: *common-pg
-    image: dcard/postgres:14-logical
+    image: replicase/postgres:14-logical
     container_name: postgres
   pg_15:
     <<: *common-pg
@@ -88,8 +88,9 @@ services:
     image: dadarek/wait-for-dependencies
     depends_on:
       - pg_${PG_VERSION}
-      - pulsar
-    command: [ "pulsar:6650", "pulsar:8080", "postgres:5432" ]
+#      - pulsar
+#    command: [ "pulsar:6650", "pulsar:8080", "postgres:5432" ]
+    command: [ "postgres:5432" ]
   codegen:
     <<: *common
     command: [ "make", "codegen" ]

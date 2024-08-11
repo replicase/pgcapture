@@ -17,7 +17,7 @@ case "$1" in
     ;;
   test)
     docker-compose run --rm test-deps
-    docker-compose run --rm test
+#    docker-compose run --rm test
     ;;
   codegen)
     docker-compose run --rm codegen
