@@ -4,7 +4,7 @@ EXTENSION = pgcapture
 DATA = pgcapture--0.1.sql
 MODULES = pgcapture
 
-PG_CONFIG = pg_config
+PG_CONFIG ?= pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
 
