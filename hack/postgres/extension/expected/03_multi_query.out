@@ -9,14 +9,10 @@ SELECT 1\; CREATE TABLE multi(id integer)\; INSERT INTO multi SELECT 1;
 DROP TABLE multi\; CREATE TABLE multi(val text);
 -- Check the results
 SELECT query, unnest(tags) FROM pgcapture.ddl_logs ORDER BY id;
-                                 query                                 |    unnest    
------------------------------------------------------------------------+--------------
- SELECT 1; CREATE TABLE multi(id integer); INSERT INTO multi SELECT 1; | SELECT
- SELECT 1; CREATE TABLE multi(id integer); INSERT INTO multi SELECT 1; | CREATE TABLE
- SELECT 1; CREATE TABLE multi(id integer); INSERT INTO multi SELECT 1; | INSERT
- DROP TABLE multi; CREATE TABLE multi(val text);                       | DROP TABLE
- DROP TABLE multi; CREATE TABLE multi(val text);                       | CREATE TABLE
- DROP TABLE multi; CREATE TABLE multi(val text);                       | DROP TABLE
- DROP TABLE multi; CREATE TABLE multi(val text);                       | CREATE TABLE
-(7 rows)
+             query              |    unnest    
+--------------------------------+--------------
+ CREATE TABLE multi(id integer) | CREATE TABLE
+ DROP TABLE multi               | DROP TABLE
+ CREATE TABLE multi(val text)   | CREATE TABLE
+(3 rows)
 

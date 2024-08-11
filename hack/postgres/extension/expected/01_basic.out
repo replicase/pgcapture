@@ -1,8 +1,8 @@
 -- Test the DDL SRF
 SELECT * FROM pgcapture.current_query();
-              current_query               
-------------------------------------------
- SELECT * FROM pgcapture.current_query();
+ current_query 
+---------------
+ 
 (1 row)
 
 -- Test some basic DDL commands
@@ -15,13 +15,13 @@ CREATE INDEX ON nsp1.tbl (val) WHERE id % 2 = 0;
 CREATE SCHEMA nsp2\g
 -- Check the results
 SELECT query, unnest(tags) FROM pgcapture.ddl_logs ORDER BY id;
-                      query                       |     unnest      
---------------------------------------------------+-----------------
- CREATE TABLE ctas AS SELECT 1 as id;             | CREATE TABLE AS
- CREATE TABLE ct(id integer);                     | CREATE TABLE
- CREATE SCHEMA nsp1;                              | CREATE SCHEMA
- CREATE TABLE nsp1.tbl(id integer, val text);     | CREATE TABLE
- CREATE INDEX ON nsp1.tbl (val) WHERE id % 2 = 0; | CREATE INDEX
- CREATE SCHEMA nsp2                               | CREATE SCHEMA
+                      query                      |     unnest      
+-------------------------------------------------+-----------------
+ CREATE TABLE ctas AS SELECT 1 as id             | CREATE TABLE AS
+ CREATE TABLE ct(id integer)                     | CREATE TABLE
+ CREATE SCHEMA nsp1                              | CREATE SCHEMA
+ CREATE TABLE nsp1.tbl(id integer, val text)     | CREATE TABLE
+ CREATE INDEX ON nsp1.tbl (val) WHERE id % 2 = 0 | CREATE INDEX
+ CREATE SCHEMA nsp2                              | CREATE SCHEMA
 (6 rows)
 

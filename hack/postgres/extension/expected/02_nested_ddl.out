@@ -9,55 +9,10 @@ $$ LANGUAGE plpgsql;
 CREATE EXTENSION pg_stat_statements;
 -- Check the results
 SELECT query, unnest(tags) FROM pgcapture.ddl_logs ORDER BY id;
-                query                 |      unnest      
---------------------------------------+------------------
- DO $$                               +| DO
- BEGIN                               +| 
-     CREATE TABLE tbl1();            +| 
-     CREATE TABLE tbl2();            +| 
- END;                                +| 
- $$ LANGUAGE plpgsql;                 | 
- DO $$                               +| DO
- BEGIN                               +| 
-     CREATE TABLE tbl1();            +| 
-     CREATE TABLE tbl2();            +| 
- END;                                +| 
- $$ LANGUAGE plpgsql;                 | 
- CREATE EXTENSION pg_stat_statements; | CREATE EXTENSION
- CREATE EXTENSION pg_stat_statements; | CREATE EXTENSION
- CREATE EXTENSION pg_stat_statements; | CREATE EXTENSION
- CREATE EXTENSION pg_stat_statements; | CREATE EXTENSION
- CREATE EXTENSION pg_stat_statements; | CREATE EXTENSION
- CREATE EXTENSION pg_stat_statements; | CREATE EXTENSION
- CREATE EXTENSION pg_stat_statements; | CREATE EXTENSION
- CREATE EXTENSION pg_stat_statements; | CREATE EXTENSION
- CREATE EXTENSION pg_stat_statements; | CREATE EXTENSION
- CREATE EXTENSION pg_stat_statements; | CREATE EXTENSION
- CREATE EXTENSION pg_stat_statements; | CREATE EXTENSION
- CREATE EXTENSION pg_stat_statements; | CREATE EXTENSION
- CREATE EXTENSION pg_stat_statements; | CREATE EXTENSION
- CREATE EXTENSION pg_stat_statements; | CREATE EXTENSION
- CREATE EXTENSION pg_stat_statements; | CREATE EXTENSION
- CREATE EXTENSION pg_stat_statements; | CREATE EXTENSION
- CREATE EXTENSION pg_stat_statements; | CREATE EXTENSION
- CREATE EXTENSION pg_stat_statements; | CREATE EXTENSION
- CREATE EXTENSION pg_stat_statements; | CREATE EXTENSION
- CREATE EXTENSION pg_stat_statements; | CREATE EXTENSION
- CREATE EXTENSION pg_stat_statements; | CREATE EXTENSION
- CREATE EXTENSION pg_stat_statements; | CREATE EXTENSION
- CREATE EXTENSION pg_stat_statements; | CREATE EXTENSION
- CREATE EXTENSION pg_stat_statements; | CREATE EXTENSION
- CREATE EXTENSION pg_stat_statements; | CREATE EXTENSION
- CREATE EXTENSION pg_stat_statements; | CREATE EXTENSION
- CREATE EXTENSION pg_stat_statements; | CREATE EXTENSION
- CREATE EXTENSION pg_stat_statements; | CREATE EXTENSION
- CREATE EXTENSION pg_stat_statements; | CREATE EXTENSION
- CREATE EXTENSION pg_stat_statements; | CREATE EXTENSION
- CREATE EXTENSION pg_stat_statements; | CREATE EXTENSION
- CREATE EXTENSION pg_stat_statements; | CREATE EXTENSION
- CREATE EXTENSION pg_stat_statements; | CREATE EXTENSION
- CREATE EXTENSION pg_stat_statements; | CREATE EXTENSION
- CREATE EXTENSION pg_stat_statements; | CREATE EXTENSION
- CREATE EXTENSION pg_stat_statements; | CREATE EXTENSION
-(38 rows)
+                query                |      unnest      
+-------------------------------------+------------------
+ CREATE TABLE tbl1()                 | CREATE TABLE
+ CREATE TABLE tbl2()                 | CREATE TABLE
+ CREATE EXTENSION pg_stat_statements | CREATE EXTENSION
+(3 rows)
 
