@@ -44,19 +44,19 @@ x-common-build: &common-build
 services:
   pg_11:
     <<: *common-pg
-    image: dcard/postgres:11-logical
+    image: replicase/postgres:11-logical
     container_name: postgres
   pg_12:
     <<: *common-pg
-    image: dcard/postgres:12-logical
+    image: replicase/postgres:12-logical
     container_name: postgres
   pg_13:
     <<: *common-pg
-    image: dcard/postgres:13-logical
+    image: replicase/postgres:13-logical
     container_name: postgres
   pg_14:
     <<: *common-pg
-    image: dcard/postgres:14-logical
+    image: replicase/postgres:14-logical
     container_name: postgres
   pg_15:
     <<: *common-pg
