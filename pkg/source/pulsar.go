@@ -159,6 +159,7 @@ type PulsarConsumerSource struct {
 	PulsarSubscription   string
 	PulsarReplicateState bool
 	PulsarMaxReconnect   *uint
+	Exclusive            bool
 
 	client   pulsar.Client
 	consumer pulsar.Consumer
@@ -176,6 +177,14 @@ func (p *PulsarConsumerSource) Capture(cp cursor.Checkpoint) (changes chan Chang
 		return nil, err
 	}
 
+	var subType pulsar.SubscriptionType
+	if p.Exclusive {
+		subType = pulsar.Exclusive
+	} else {
+		// not use key_shared on xid, because transaction sizes are vary dramatically
+		subType = pulsar.Shared
+	}
+
 	p.consumer, err = p.client.Subscribe(pulsar.ConsumerOptions{
 		Name:                       host,
 		Topic:                      p.PulsarTopic,
@@ -183,7 +192,7 @@ func (p *PulsarConsumerSource) Capture(cp cursor.Checkpoint) (changes chan Chang
 		ReplicateSubscriptionState: p.PulsarReplicateState,
 		MaxReconnectToBroker:       p.PulsarMaxReconnect,
 		ReceiverQueueSize:          ReceiverQueueSize,
-		Type:                       pulsar.Shared, // not use key_shared on xid, because transaction sizes are vary dramatically
+		Type:                       subType,
 	})
 	if err != nil {
 		return nil, err

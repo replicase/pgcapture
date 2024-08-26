@@ -19,6 +19,7 @@ type StaticAgentPulsarURIConfig struct {
 	PulsarSubscription   string
 	PulsarReplicateState bool
 	AgentURL             string
+	ExclusiveConsumer    bool
 }
 
 func NewStaticAgentPulsarResolver(config map[string]StaticAgentPulsarURIConfig) *StaticAgentPulsarResolver {
@@ -39,6 +40,7 @@ func (r *StaticAgentPulsarResolver) Source(ctx context.Context, uri string) (sou
 		PulsarTopic:          config.PulsarTopic,
 		PulsarSubscription:   config.PulsarSubscription,
 		PulsarReplicateState: config.PulsarReplicateState,
+		Exclusive:            config.ExclusiveConsumer,
 	}, nil
 }
 
