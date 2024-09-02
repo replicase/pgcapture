@@ -3,17 +3,22 @@ package source
 import (
 	"context"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar"
+	"github.com/bits-and-blooms/bitset"
 	"github.com/replicase/pgcapture/pkg/cursor"
 	"github.com/replicase/pgcapture/pkg/pb"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/proto"
 )
 
-var ReceiverQueueSize = 5000
+const (
+	ReceiverQueueSize = 5000
+	AckTrackerSize    = 1000
+)
 
 type PulsarReaderSource struct {
 	BaseSource
@@ -160,9 +165,10 @@ type PulsarConsumerSource struct {
 	PulsarReplicateState bool
 	PulsarMaxReconnect   *uint
 
-	client   pulsar.Client
-	consumer pulsar.Consumer
-	log      *logrus.Entry
+	client      pulsar.Client
+	consumer    pulsar.Consumer
+	log         *logrus.Entry
+	ackTrackers map[string]*ackTracker
 }
 
 func (p *PulsarConsumerSource) Capture(cp cursor.Checkpoint) (changes chan Change, err error) {
@@ -188,6 +194,8 @@ func (p *PulsarConsumerSource) Capture(cp cursor.Checkpoint) (changes chan Chang
 	if err != nil {
 		return nil, err
 	}
+
+	p.ackTrackers = make(map[string]*ackTracker, AckTrackerSize)
 
 	p.log = logrus.WithFields(logrus.Fields{
 		"From":           "PulsarConsumerSource",
@@ -222,9 +230,11 @@ func (p *PulsarConsumerSource) Capture(cp cursor.Checkpoint) (changes chan Chang
 			first = true
 		}
 
-		if m.GetChange() == nil {
-			p.consumer.Ack(msg)
-			return
+		if msg.ID().BatchSize() > 1 {
+			key := p.ackTrackerKey(msg.ID())
+			if _, ok := p.ackTrackers[key]; !ok {
+				p.ackTrackers[key] = newAckTracker(uint(msg.ID().BatchSize()))
+			}
 		}
 
 		change = Change{Checkpoint: checkpoint, Message: m}
@@ -239,7 +249,13 @@ func (p *PulsarConsumerSource) Capture(cp cursor.Checkpoint) (changes chan Chang
 
 func (p *PulsarConsumerSource) Commit(cp cursor.Checkpoint) {
 	if mid, err := pulsar.DeserializeMessageID(cp.Data); err == nil {
-		p.consumer.AckID(mid)
+		tracker, ok := p.ackTrackers[p.ackTrackerKey(mid)]
+		if ok && tracker.ack(int(mid.BatchIdx())) {
+			_ = p.consumer.AckID(mid)
+			delete(p.ackTrackers, p.ackTrackerKey(mid))
+		} else if !ok {
+			_ = p.consumer.AckID(mid)
+		}
 	}
 }
 
@@ -247,4 +263,32 @@ func (p *PulsarConsumerSource) Requeue(cp cursor.Checkpoint, reason string) {
 	if mid, err := pulsar.DeserializeMessageID(cp.Data); err == nil {
 		p.consumer.NackID(mid)
 	}
+}
+
+func (p *PulsarConsumerSource) ackTrackerKey(id pulsar.MessageID) string {
+	return fmt.Sprintf("%d:%d", id.LedgerID(), id.EntryID())
+}
+
+type ackTracker struct {
+	size     uint
+	batchIDs *bitset.BitSet
+}
+
+func newAckTracker(size uint) *ackTracker {
+	batchIDs := bitset.New(size)
+	for i := uint(0); i < size; i++ {
+		batchIDs.Set(i)
+	}
+	return &ackTracker{
+		size:     size,
+		batchIDs: batchIDs,
+	}
+}
+
+func (t *ackTracker) ack(batchID int) bool {
+	if batchID < 0 {
+		return true
+	}
+	t.batchIDs.Clear(uint(batchID))
+	return t.batchIDs.None()
 }

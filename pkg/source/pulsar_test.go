@@ -132,8 +132,10 @@ func TestPulsarConsumerSource(t *testing.T) {
 	defer client.Close()
 
 	producer, err := client.CreateProducer(pulsar.ProducerOptions{
-		Topic: topic,
-		Name:  topic,
+		Topic:                   topic,
+		Name:                    topic,
+		BatchingMaxPublishDelay: 3 * time.Second,
+		BatchingMaxMessages:     3,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -155,58 +157,72 @@ func TestPulsarConsumerSource(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// begin, commit message should be ignored
-	cp := cursor.Checkpoint{LSN: 1}
-	bs, _ := proto.Marshal(&pb.Message{Type: &pb.Message_Begin{Begin: &pb.Begin{}}})
-	if _, err = producer.Send(context.Background(), &pulsar.ProducerMessage{
-		Key:     cp.ToKey(),
-		Payload: bs,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	cp = cursor.Checkpoint{LSN: 1}
-	bs, _ = proto.Marshal(&pb.Message{Type: &pb.Message_Commit{Commit: &pb.Commit{}}})
-	if _, err = producer.Send(context.Background(), &pulsar.ProducerMessage{
-		Key:     cp.ToKey(),
-		Payload: bs,
-	}); err != nil {
-		t.Fatal(err)
+	messages := []*pb.Message{
+		{
+			Type: &pb.Message_Begin{Begin: &pb.Begin{FinalLsn: 0}},
+		},
+		{
+			Type: &pb.Message_Change{Change: &pb.Change{Table: "1"}},
+		},
+		{
+			Type: &pb.Message_Change{Change: &pb.Change{Table: "2"}},
+		},
+		{
+			Type: &pb.Message_Commit{Commit: &pb.Commit{CommitLsn: 3}},
+		},
 	}
 
-	lsn := 0
-	for ; lsn < 3; lsn++ {
-		cp := cursor.Checkpoint{LSN: uint64(lsn)}
-		bs, _ := proto.Marshal(&pb.Message{Type: &pb.Message_Change{Change: &pb.Change{Table: strconv.Itoa(lsn)}}})
-		if _, err = producer.Send(context.Background(), &pulsar.ProducerMessage{
+	for i, m := range messages {
+		cp := cursor.Checkpoint{LSN: uint64(i)}
+		bs, _ := proto.Marshal(m)
+		producer.SendAsync(context.Background(), &pulsar.ProducerMessage{
 			Key:     cp.ToKey(),
 			Payload: bs,
-		}); err != nil {
-			t.Fatal(err)
-		}
+		}, func(id pulsar.MessageID, message *pulsar.ProducerMessage, err error) {
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 	producer.Flush()
 
-	for i := 0; i < lsn; i++ {
+	for i := 0; i < len(messages); i++ {
 		change := <-changes
-		if c := change.Message.GetChange(); c == nil || c.Table != strconv.Itoa(i) {
-			t.Fatalf("unexpected %v", change.Message.String())
+		msgID, err := pulsar.DeserializeMessageID(change.Checkpoint.Data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if msgID.BatchSize() > 1 && msgID.BatchSize() != int32(len(messages)-1) {
+			t.Fatalf("unexpected pulsar message id batch size %v %v", msgID.BatchSize(), len(messages))
+		}
+
+		if i == 0 {
+			if b := change.Message.GetBegin(); b == nil || b.FinalLsn != uint64(i) {
+				t.Fatalf("unexpected begin message %v", change.Message.String())
+			}
+		} else if i == len(messages)-1 {
+			if c := change.Message.GetCommit(); c == nil || c.CommitLsn != uint64(len(messages)-1) {
+				t.Fatalf("unexpected commit message %v", change.Message.String())
+			}
+		} else {
+			if c := change.Message.GetChange(); c == nil || c.Table != strconv.Itoa(i) {
+				t.Fatalf("unexpected change message %v", change.Message.String())
+			}
 		}
 	}
 	// stop without ack
 	src.Stop()
 
-	// restart to receive same messages, and commit '0' and '2', but abort '1'
+	// restart to receive same messages, and only abort the last message of the batch
 	src = newPulsarConsumerSource()
 	changes, err = src.Capture(cursor.Checkpoint{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < lsn; i++ {
+
+	for i := 0; i < len(messages); i++ {
 		change := <-changes
-		if c := change.Message.GetChange(); c == nil || c.Table != strconv.Itoa(i) {
-			t.Fatalf("unexpected %v", change.Message.String())
-		}
-		if i == 1 {
+		if i == 2 {
 			src.Requeue(change.Checkpoint, "")
 		} else {
 			src.Commit(change.Checkpoint)
@@ -214,16 +230,19 @@ func TestPulsarConsumerSource(t *testing.T) {
 	}
 	src.Stop()
 
-	// the '1' message should be redelivered
+	// restart to receive same batch messages
 	src = newPulsarConsumerSource()
 	changes, err = src.Capture(cursor.Checkpoint{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	change := <-changes
-	if c := change.Message.GetChange(); c == nil || c.Table != strconv.Itoa(1) {
-		t.Fatalf("unexpected %v", change.Message.String())
+
+	// should only redeliver same batch messages
+	for i := 0; i < len(messages)-1; i++ {
+		change := <-changes
+		src.Commit(change.Checkpoint)
 	}
+
 	select {
 	case <-changes:
 		t.Fatal("unexpected message")
