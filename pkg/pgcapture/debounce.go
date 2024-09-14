@@ -96,19 +96,25 @@ func (b *DebounceHandler) Handle(fn ModelAsyncHandlerFunc, checkpoint cursor.Che
 
 	switch change.Op {
 	case pb.Change_INSERT:
-		if prev, ok := b.store[debounceKey(change.New)]; ok {
+		key := debounceKey(change.New)
+		if prev, ok := b.store[key]; ok {
 			b.handle(prev)
+			delete(b.store, key)
 		}
 		b.handle(e)
 	case pb.Change_DELETE:
-		if prev, ok := b.store[debounceKey(change.Old)]; ok {
+		key := debounceKey(change.Old)
+		if prev, ok := b.store[key]; ok {
 			b.handle(prev)
+			delete(b.store, key)
 		}
 		b.handle(e)
 	case pb.Change_UPDATE:
 		if change.Old != nil {
-			if prev, ok := b.store[debounceKey(change.Old)]; ok {
+			key := debounceKey(change.Old)
+			if prev, ok := b.store[key]; ok {
 				b.handle(prev)
+				delete(b.store, key)
 			}
 		}
 		key := debounceKey(change.New)
