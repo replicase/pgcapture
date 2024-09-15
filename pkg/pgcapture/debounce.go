@@ -122,8 +122,12 @@ func (b *DebounceHandler) Handle(fn ModelAsyncHandlerFunc, checkpoint cursor.Che
 			// since requeue order is not guaranteed, we need to check if the new event is newer than the previous one
 			// then we commit the previous one and store the new one
 			// workaround for the LSN == 0 issue because schedule dump lsn is 0 and should be always the latest event
+			// also, when the checkpoint is equal, we cannot commit the previous event because it might be a same event
 			if change.Checkpoint.LSN == 0 || change.Checkpoint.After(prev.Checkpoint) {
 				b.source.Commit(prev.Checkpoint)
+				b.store[key] = e
+			} else if change.Checkpoint.Equal(prev.Checkpoint) {
+				b.handle(prev)
 				b.store[key] = e
 			} else {
 				b.source.Commit(change.Checkpoint)
