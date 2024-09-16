@@ -12,18 +12,18 @@ export PGCAPTURE_VERSION=$(git describe --tags --abbrev=0)
 
 case "$1" in
   build)
-    docker-compose run --rm build
-    docker-compose build --force-rm pgcapture
+    docker compose run --rm build
+    docker compose build --force-rm pgcapture
     ;;
   test)
-    docker-compose run --rm test-deps
-    docker-compose run --rm test
+    docker compose run --rm test-deps
+    docker compose run --rm test
     ;;
   codegen)
-    docker-compose run --rm codegen
+    docker compose run --rm codegen
     ;;
   clean)
-    docker-compose down
+    docker compose down
     ;;
   *)
     echo "\"$1\" is an unknown command"
