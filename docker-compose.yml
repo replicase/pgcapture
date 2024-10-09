@@ -45,27 +45,38 @@ services:
   pg_11:
     <<: *common-pg
     image: replicase/postgres:11-logical
-    container_name: postgres
+    container_name: postgres11
+    hostname: postgres
   pg_12:
     <<: *common-pg
     image: replicase/postgres:12-logical
-    container_name: postgres
+    container_name: postgres12
+    hostname: postgres
   pg_13:
     <<: *common-pg
     image: replicase/postgres:13-logical
-    container_name: postgres
+    container_name: postgres13
+    hostname: postgres
   pg_14:
     <<: *common-pg
     image: replicase/postgres:14-logical
-    container_name: postgres
+    container_name: postgres14
+    hostname: postgres
   pg_15:
     <<: *common-pg
     image: replicase/postgres:15-logical
-    container_name: postgres
+    container_name: postgres15
+    hostname: postgres
   pg_16:
     <<: *common-pg
     image: replicase/postgres:16-logical
-    container_name: postgres
+    container_name: postgres16
+    hostname: postgres
+  pg_17:
+    <<: *common-pg
+    image: replicase/postgres:17-logical
+    container_name: postgres17
+    hostname: postgres
   pulsar:
     image: apachepulsar/pulsar:2.10.4
     container_name: pulsar

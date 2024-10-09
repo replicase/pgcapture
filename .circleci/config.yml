@@ -4,7 +4,7 @@ version: 2.1
 executors:
   default:
     machine:
-      image: ubuntu-2004:202201-02
+      image: ubuntu-2204:2024.05.1
 
 commands:
   test-with-pg:
@@ -56,6 +56,12 @@ jobs:
       - checkout
       - test-with-pg:
           version: 16
+  test-pg-17:
+    executor: default
+    steps:
+      - checkout
+      - test-with-pg:
+          version: 17
 
 workflows:
   test:
@@ -66,3 +72,4 @@ workflows:
       - test-pg-14
       - test-pg-15
       - test-pg-16
+      - test-pg-17
