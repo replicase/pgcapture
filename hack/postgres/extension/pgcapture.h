@@ -7,6 +7,10 @@
 #ifndef PGCAPTURE_H
 #define PGCAPTURE_H
 
+#if PG_VERSION_NUM < 150000
+#define parse_analyze_fixedparams(a,b,c,d,e) parse_analyze(a,b,c,d,e)
+#endif
+
 /* ProcessUtility_hook */
 #if PG_VERSION_NUM >= 140000
 #define UTILITY_HOOK_ARGS PlannedStmt *pstmt, const char *queryString, \
