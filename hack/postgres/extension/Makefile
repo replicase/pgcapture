@@ -4,7 +4,10 @@ EXTENSION = pgcapture
 TESTS = $(wildcard sql/*)
 REGRESS = $(patsubst sql/%.sql,%,$(TESTS))
 DATA = pgcapture--0.1.sql
-MODULES = pgcapture
+MODULE_big = pgcapture
+
+OBJS = pgcapture.o \
+       pg_import.o
 
 PG_CONFIG ?= pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
