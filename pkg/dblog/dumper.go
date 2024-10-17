@@ -109,13 +109,15 @@ func (p *PGXSourceDumper) Stop() {
 	p.mu.Unlock()
 }
 
-// DumpQuery try to generate all possible ctids in a given page range.
-// The maximum rip_posid is caculated as current_setting('block_size')::int-24)/28
-//
-//	where 24 is the size of PageHeaderData, and
-//	where 28 is the minimum size of a tuple which is ItemIdData(4 bytes) + HeapTupleHeaderData(23 bytes) with alignment
-//	ref: https://github.com/postgres/postgres/blob/c3b011d9918100c6ec2d72297fb51635bce70e80/src/include/access/htup_details.h#L573-L575
-const DumpQuery = `select * from "%s"."%s" where ctid = any(array(select format('(%%s,%%s)', i, j)::tid from generate_series($1::int,$2::int) as gs(i), generate_series(1,(current_setting('block_size')::int-24)/28) as gs2(j)))`
+// DumpQuery retrieves all the rows in the specified block range.
+// pg14 and above knows how to directly access those blocks using a TID Range
+// Scan node, so partial scans are efficient.
+// The tid format is (block_number, offset_number), the offset number
+// being an unsigned short integer (<= 65535).
+// Note that we have to use the upper bound as is (and therefore add knowledge
+// about the maximum offset number) rather than use (block_number + 1, 0), in
+// the unlikely event that we were provided the maximum block number
+const DumpQuery = `select * from "%s"."%s" where ctid >= ($1::bigint, 0)::text::tid AND ctid <= ($2::bigint, 65535)::text::tid`
 
 func (p *PGXSourceDumper) load(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.Change, error) {
 	ctx := context.Background()
