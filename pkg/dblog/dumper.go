@@ -117,7 +117,9 @@ func (p *PGXSourceDumper) Stop() {
 // Note that we have to use the upper bound as is (and therefore add knowledge
 // about the maximum offset number) rather than use (block_number + 1, 0), in
 // the unlikely event that we were provided the maximum block number
-const DumpQuery = `select * from "%s"."%s" where ctid >= ($1::bigint, 0)::text::tid AND ctid <= ($2::bigint, 65535)::text::tid`
+// Note also that the caller is responsible for providing a properly quoted and
+// fully qualified relation name.
+const DumpQuery = `SELECT * FROM %s WHERE ctid >= ($1::bigint, 0)::text::tid AND ctid <= ($2::bigint, 65535)::text::tid`
 
 func (p *PGXSourceDumper) load(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.Change, error) {
 	ctx := context.Background()
@@ -134,7 +136,11 @@ func (p *PGXSourceDumper) load(minLSN uint64, info *pb.DumpInfoResponse) ([]*pb.
 		}
 	}
 
-	rows, err := tx.Query(ctx, fmt.Sprintf(DumpQuery, info.Schema, info.Table), info.PageBegin, info.PageEnd)
+	// Properly quote and escape the provided identifiers
+	var identifiers pgx.Identifier = []string{info.Schema, info.Table};
+	relation := identifiers.Sanitize()
+
+	rows, err := tx.Query(ctx, fmt.Sprintf(DumpQuery, relation), info.PageBegin, info.PageEnd)
 	if err != nil {
 		var pge *pgconn.PgError
 		if errors.As(err, &pge) && pge.Code == "42P01" {
