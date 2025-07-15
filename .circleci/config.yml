@@ -17,7 +17,7 @@ commands:
       - run: chmod +x ./cc-test-reporter
       - run: ./cc-test-reporter before-build
       - run: PG_VERSION=<< parameters.version >> ./dockerbuild.sh test
-      - run: ./cc-test-reporter after-build -p $(go list -m) --exit-code $?
+      - run: ./cc-test-reporter after-build -p github.com/replicase/pgcapture --exit-code $?
 
 jobs:
   test-pg-11:
