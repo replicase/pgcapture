@@ -178,6 +178,7 @@ func (p *PulsarConsumerSource) getConsumerName() (string, error) {
 	if p.ConsumerName != "" {
 		return p.ConsumerName, nil
 	}
+
 	hostname, err := os.Hostname()
 	if err != nil {
 		return "", err
@@ -187,6 +188,11 @@ func (p *PulsarConsumerSource) getConsumerName() (string, error) {
 
 func (p *PulsarConsumerSource) Capture(cp cursor.Checkpoint) (changes chan Change, err error) {
 	consumerName, err := p.getConsumerName()
+	if err != nil {
+		return nil, err
+	}
+
+	p.client, err = pulsar.NewClient(p.PulsarOption)
 	if err != nil {
 		return nil, err
 	}
