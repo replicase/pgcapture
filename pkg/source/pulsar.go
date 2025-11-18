@@ -165,6 +165,7 @@ type PulsarConsumerSource struct {
 	PulsarSubscription   string
 	PulsarReplicateState bool
 	PulsarMaxReconnect   *uint
+	ConsumerName         string
 
 	client   pulsar.Client
 	consumer pulsar.Consumer
@@ -173,19 +174,25 @@ type PulsarConsumerSource struct {
 	ackTrackers *ackTrackers
 }
 
-func (p *PulsarConsumerSource) Capture(cp cursor.Checkpoint) (changes chan Change, err error) {
-	host, err := os.Hostname()
-	if err != nil {
-		return nil, err
+func (p *PulsarConsumerSource) getConsumerName() (string, error) {
+	if p.ConsumerName != "" {
+		return p.ConsumerName, nil
 	}
+	hostname, err := os.Hostname()
+	if err != nil {
+		return "", err
+	}
+	return hostname, nil
+}
 
-	p.client, err = pulsar.NewClient(p.PulsarOption)
+func (p *PulsarConsumerSource) Capture(cp cursor.Checkpoint) (changes chan Change, err error) {
+	consumerName, err := p.getConsumerName()
 	if err != nil {
 		return nil, err
 	}
 
 	p.consumer, err = p.client.Subscribe(pulsar.ConsumerOptions{
-		Name:                       host,
+		Name:                       consumerName,
 		Topic:                      p.PulsarTopic,
 		SubscriptionName:           p.PulsarSubscription,
 		ReplicateSubscriptionState: p.PulsarReplicateState,

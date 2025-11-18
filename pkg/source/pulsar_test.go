@@ -2,6 +2,7 @@ package source
 
 import (
 	"context"
+	"os"
 	"strconv"
 	"testing"
 	"time"
@@ -249,4 +250,36 @@ func TestPulsarConsumerSource(t *testing.T) {
 	case <-time.NewTimer(time.Millisecond * 100).C:
 	}
 	src.Stop()
+}
+
+func TestPulsarConsumerSourceGetConsumerName(t *testing.T) {
+	// test with custom consumer name set
+	src := &PulsarConsumerSource{
+		ConsumerName: "custom-test-consumer",
+	}
+
+	name, err := src.getConsumerName()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if name != "custom-test-consumer" {
+		t.Fatalf("expected consumer name 'custom-test-consumer', got '%s'", name)
+	}
+
+	// test with empty consumer name (should fall back to hostname)
+	src2 := &PulsarConsumerSource{}
+
+	name2, err := src2.getConsumerName()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if name2 == "" {
+		t.Fatal("expected non-empty hostname, got empty string")
+	}
+
+	// verify that hostname fallback returns a non-empty string
+	hostname, _ := os.Hostname()
+	if name2 != hostname {
+		t.Fatalf("expected hostname '%s', got '%s'", hostname, name2)
+	}
 }
