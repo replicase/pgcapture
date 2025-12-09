@@ -10,12 +10,13 @@ import (
 )
 
 var (
-	SinkPGConnURL     string
-	SinkPGLogPath     string
-	SourcePulsarURL   string
-	SourcePulsarTopic string
-	Renice            int64
-	BatchTXSize       int
+	SinkPGConnURL       string
+	SinkPGLogPath       string
+	SourcePulsarURL     string
+	SourcePulsarTopic   string
+	SourceReaderPrefix  string
+	Renice              int64
+	BatchTXSize         int
 )
 
 func init() {
@@ -24,6 +25,7 @@ func init() {
 	pulsar2pg.Flags().StringVarP(&SinkPGLogPath, "PGLogPath", "", "", "pg log path for finding last checkpoint lsn")
 	pulsar2pg.Flags().StringVarP(&SourcePulsarURL, "PulsarURL", "", "", "connection url to sink pulsar cluster")
 	pulsar2pg.Flags().StringVarP(&SourcePulsarTopic, "PulsarTopic", "", "", "the sink pulsar topic name and as well as the logical replication slot name")
+	pulsar2pg.Flags().StringVarP(&SourceReaderPrefix, "ReaderPrefix", "", "", "subscription role prefix for pulsar reader")
 	pulsar2pg.Flags().Int64VarP(&Renice, "Renice", "", -10, "try renice the sink pg process")
 	pulsar2pg.Flags().IntVarP(&BatchTXSize, "BatchTxSize", "", 100, "the max number of tx in a pipeline")
 	pulsar2pg.MarkFlagRequired("PGConnURL")
@@ -44,7 +46,11 @@ var pulsar2pg = &cobra.Command{
 			defer pgLog.Close()
 			pgSink.LogReader = pgLog
 		}
-		pulsarSrc := &source.PulsarReaderSource{PulsarOption: pulsar.ClientOptions{URL: SourcePulsarURL}, PulsarTopic: SourcePulsarTopic}
+		pulsarSrc := &source.PulsarReaderSource{
+			PulsarOption: pulsar.ClientOptions{URL: SourcePulsarURL},
+			PulsarTopic:  SourcePulsarTopic,
+			ReaderPrefix: SourceReaderPrefix,
+		}
 		return sourceToSink(pulsarSrc, pgSink)
 	},
 }

@@ -26,6 +26,7 @@ type PulsarReaderSource struct {
 
 	PulsarOption pulsar.ClientOptions
 	PulsarTopic  string
+	ReaderPrefix string
 
 	client     pulsar.Client
 	reader     pulsar.Reader
@@ -67,6 +68,7 @@ func (p *PulsarReaderSource) Capture(cp cursor.Checkpoint) (changes chan Change,
 		StartMessageID:          start,
 		StartMessageIDInclusive: true,
 		ReceiverQueueSize:       ReceiverQueueSize,
+		SubscriptionRolePrefix:  p.ReaderPrefix,
 	})
 	if err != nil {
 		return nil, err
