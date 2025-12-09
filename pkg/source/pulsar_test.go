@@ -59,17 +59,18 @@ func TestPulsarReaderSource(t *testing.T) {
 	}
 	producer.Flush()
 
-	newPulsarReaderSource := func() *PulsarReaderSource {
+	newPulsarReaderSource := func(readerPrefix string) *PulsarReaderSource {
 		return &PulsarReaderSource{
 			BaseSource:   BaseSource{ReadTimeout: time.Millisecond * 100},
 			PulsarOption: option,
 			PulsarTopic:  topic,
+			ReaderPrefix: readerPrefix,
 			seekOffset:   time.Millisecond * -100,
 		}
 	}
 
-	// test from start
-	src := newPulsarReaderSource()
+	// test from start (without reader prefix)
+	src := newPulsarReaderSource("")
 	changes, err := src.Capture(cursor.Checkpoint{})
 	if err != nil {
 		t.Fatal(err)
@@ -104,8 +105,8 @@ func TestPulsarReaderSource(t *testing.T) {
 
 	src.Stop()
 
-	// test from specified time and lsn, and not include specified lsn
-	src = newPulsarReaderSource()
+	// test from specified time and lsn, and not include specified lsn (with reader prefix)
+	src = newPulsarReaderSource("test-prefix")
 	changes, err = src.Capture(cursor.Checkpoint{LSN: uint64(1), Data: []byte(now.Add(time.Millisecond * 500).Format(time.RFC3339Nano))})
 	if err != nil {
 		t.Fatal(err)
