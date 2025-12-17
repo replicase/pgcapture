@@ -77,6 +77,11 @@ services:
     image: replicase/postgres:17-logical
     container_name: postgres17
     hostname: postgres
+  pg_18:
+    <<: *common-pg
+    image: replicase/postgres:18-logical
+    container_name: postgres18
+    hostname: postgres
   pulsar:
     image: apachepulsar/pulsar:2.10.4
     container_name: pulsar
