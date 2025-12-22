@@ -14,6 +14,7 @@ var (
 	SinkPulsarURL   string
 	SinkPulsarTopic string
 	DecodePlugin    string
+	SourceTables    []string
 )
 
 func init() {
@@ -23,6 +24,7 @@ func init() {
 	pg2pulsar.Flags().StringVarP(&SinkPulsarURL, "PulsarURL", "", "", "connection url to sink pulsar cluster")
 	pg2pulsar.Flags().StringVarP(&SinkPulsarTopic, "PulsarTopic", "", "", "the sink pulsar topic name and as well as the logical replication slot name")
 	pg2pulsar.Flags().StringVar(&DecodePlugin, "DecodePlugin", decode.PGOutputPlugin, "the logical decoding plugin name")
+	pg2pulsar.Flags().StringSliceVar(&SourceTables, "Tables", nil, "tables to capture (e.g., public.users,public.orders); empty for all tables (pgoutput plugin only)")
 	pg2pulsar.MarkFlagRequired("PGConnURL")
 	pg2pulsar.MarkFlagRequired("PGReplURL")
 	pg2pulsar.MarkFlagRequired("PulsarURL")
@@ -33,7 +35,7 @@ var pg2pulsar = &cobra.Command{
 	Use:   "pg2pulsar",
 	Short: "Capture logical replication logs to a Pulsar Topic from a PostgreSQL logical replication slot",
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
-		pgSrc := &source.PGXSource{SetupConnStr: SourcePGConnURL, ReplConnStr: SourcePGReplURL, ReplSlot: trimSlot(SinkPulsarTopic), CreateSlot: true, CreatePublication: true, DecodePlugin: DecodePlugin}
+		pgSrc := &source.PGXSource{SetupConnStr: SourcePGConnURL, ReplConnStr: SourcePGReplURL, ReplSlot: trimSlot(SinkPulsarTopic), CreateSlot: true, CreatePublication: true, DecodePlugin: DecodePlugin, Tables: source.ParseTableIdents(SourceTables...)}
 		pulsarSink := &sink.PulsarSink{PulsarOption: pulsar.ClientOptions{URL: SinkPulsarURL}, PulsarTopic: SinkPulsarTopic}
 		return sourceToSink(pgSrc, pulsarSink)
 	},

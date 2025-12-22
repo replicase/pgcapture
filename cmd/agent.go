@@ -179,12 +179,17 @@ func (a *Agent) cleanup() error {
 }
 
 func (a *Agent) pg2pulsar(params *structpb.Struct) (*pb.AgentConfigResponse, error) {
-	v, err := extract(params, "PGConnURL", "PGReplURL", "PulsarURL", "PulsarTopic", "DecodePlugin", "?StartLSN", "?PulsarTracker", "?PulsarTrackerInterval", "?PulsarTrackerReplicateState")
+	v, err := extract(params, "PGConnURL", "PGReplURL", "PulsarURL", "PulsarTopic", "DecodePlugin", "?StartLSN", "?PulsarTracker", "?PulsarTrackerInterval", "?PulsarTrackerReplicateState", "?Tables")
 	if err != nil {
 		return nil, err
 	}
 
-	pgSrc := &source.PGXSource{SetupConnStr: v["PGConnURL"].GetStringValue(), ReplConnStr: v["PGReplURL"].GetStringValue(), ReplSlot: trimSlot(v["PulsarTopic"].GetStringValue()), CreateSlot: true, CreatePublication: true, StartLSN: v["StartLSN"].GetStringValue(), DecodePlugin: v["DecodePlugin"].GetStringValue()}
+	var tables []source.TableIdent
+	if tablesStr := v["Tables"].GetStringValue(); tablesStr != "" {
+		tables = source.ParseTableIdents(strings.Split(tablesStr, ",")...)
+	}
+
+	pgSrc := &source.PGXSource{SetupConnStr: v["PGConnURL"].GetStringValue(), ReplConnStr: v["PGReplURL"].GetStringValue(), ReplSlot: trimSlot(v["PulsarTopic"].GetStringValue()), CreateSlot: true, CreatePublication: true, StartLSN: v["StartLSN"].GetStringValue(), DecodePlugin: v["DecodePlugin"].GetStringValue(), Tables: tables}
 	pulsarSink := &sink.PulsarSink{PulsarOption: pulsar.ClientOptions{URL: v["PulsarURL"].GetStringValue()}, PulsarTopic: v["PulsarTopic"].GetStringValue()}
 
 	switch v["PulsarTracker"].GetStringValue() {

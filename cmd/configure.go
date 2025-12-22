@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/replicase/pgcapture/pkg/decode"
@@ -27,6 +28,7 @@ var (
 	ConfigPulsarTrackerReplicateState bool
 	ConfigDecodePlugin                string
 	ConfigBatchTXSize                 int
+	ConfigTables                      []string
 )
 
 func init() {
@@ -44,6 +46,7 @@ func init() {
 	configure.Flags().BoolVarP(&ConfigPulsarTrackerReplicateState, "PulsarTrackerReplicateState", "", false, "the replicate state for the pg2pulsar, optional")
 	configure.Flags().StringVarP(&ConfigDecodePlugin, "DecodePlugin", "", decode.PGOutputPlugin, "the logical decoding plugin name")
 	configure.Flags().IntVarP(&ConfigBatchTXSize, "BatchTxSize", "", 100, "the max number of tx in a pipeline")
+	configure.Flags().StringSliceVar(&ConfigTables, "Tables", nil, "tables to capture (e.g., public.users,public.orders); empty for all tables (pgoutput plugin only)")
 	configure.MarkFlagRequired("AgentAddr")
 	configure.MarkFlagRequired("AgentCommand")
 	configure.MarkFlagRequired("PGConnURL")
@@ -68,6 +71,7 @@ var configure = &cobra.Command{
 			"PulsarTrackerReplicateState": strconv.FormatBool(ConfigPulsarTrackerReplicateState),
 			"DecodePlugin":                ConfigDecodePlugin,
 			"BatchTxSize":                 ConfigBatchTXSize,
+			"Tables":                      strings.Join(ConfigTables, ","),
 		})
 		if err != nil {
 			panic(err)
