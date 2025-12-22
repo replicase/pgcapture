@@ -214,6 +214,101 @@ func TestPGXSource_Capture(t *testing.T) {
 	}
 }
 
+func TestPGXSource_CaptureWithTables(t *testing.T) {
+	// This test only applies to pgoutput plugin since pglogical doesn't use publication
+	test.ShouldSkipTestByPGVersion(t, 14)
+
+	const testSlotWithTables = "test_slot_with_tables"
+
+	ctx := context.Background()
+	conn, err := newPGConn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close(ctx)
+
+	// Cleanup
+	conn.Exec(ctx, fmt.Sprintf("select pg_drop_replication_slot('%s')", testSlotWithTables))
+	conn.Exec(ctx, fmt.Sprintf("DROP PUBLICATION %s", testSlotWithTables))
+
+	// Create tables before starting replication
+	if _, err := conn.Exec(ctx, "CREATE TABLE t_included (id bigint)"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Exec(ctx, "CREATE TABLE t_excluded (id bigint)"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create source with only t_included in Tables
+	src := &PGXSource{
+		SetupConnStr:      test.GetPostgresURL(),
+		ReplConnStr:       test.GetPostgresReplURL(),
+		ReplSlot:          testSlotWithTables,
+		DecodePlugin:      decode.PGOutputPlugin,
+		CreateSlot:        true,
+		CreatePublication: true,
+		Tables:            []TableIdent{{Schema: "public", Table: "t_included"}},
+	}
+
+	changes, err := src.Capture(cursor.Checkpoint{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer src.Stop()
+
+	// Insert into both tables
+	if _, err := conn.Exec(ctx, "INSERT INTO t_included VALUES (1)"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Exec(ctx, "INSERT INTO t_excluded VALUES (2)"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Exec(ctx, "INSERT INTO t_included VALUES (3)"); err != nil {
+		t.Fatal(err)
+	}
+
+	time.Sleep(time.Second)
+
+	// Collect changes for t_included, should get 2 inserts
+	var includedChanges []*pb.Change
+	timeout := time.After(5 * time.Second)
+
+	for {
+		select {
+		case change := <-changes:
+			if c := change.Message.GetChange(); c != nil {
+				if c.Table == "t_excluded" {
+					t.Fatalf("should not receive changes from t_excluded, got: %v", c)
+				}
+				if c.Table == "t_included" {
+					includedChanges = append(includedChanges, c)
+				}
+			}
+			if len(includedChanges) >= 2 {
+				goto done
+			}
+		case <-timeout:
+			goto done
+		}
+	}
+
+done:
+	if len(includedChanges) != 2 {
+		t.Fatalf("expected 2 changes from t_included, got %d", len(includedChanges))
+	}
+
+	// Verify the values
+	expect1 := &pb.Change{Op: pb.Change_INSERT, Schema: "public", Table: "t_included", New: []*pb.Field{{Name: "id", Oid: 20, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 0, 0, 0, 0, 1}}}}}
+	expect3 := &pb.Change{Op: pb.Change_INSERT, Schema: "public", Table: "t_included", New: []*pb.Field{{Name: "id", Oid: 20, Value: &pb.Field_Binary{Binary: []byte{0, 0, 0, 0, 0, 0, 0, 3}}}}}
+
+	if !proto.Equal(includedChanges[0], expect1) {
+		t.Fatalf("unexpected first change: %v", includedChanges[0])
+	}
+	if !proto.Equal(includedChanges[1], expect3) {
+		t.Fatalf("unexpected second change: %v", includedChanges[1])
+	}
+}
+
 func TestPGXSource_DuplicatedCapture(t *testing.T) {
 	for _, te := range pgxSourceTests {
 		t.Run(te.decodePlugin, func(t *testing.T) {
@@ -305,3 +400,135 @@ func expectedDDL(change *pb.Change, sql string) bool {
 		change.New[1].Name == "query" &&
 		bytes.Equal(change.New[1].GetBinary(), []byte(sql))
 }
+
+func TestPGXSource_buildPublicationSQL(t *testing.T) {
+	tests := []struct {
+		name     string
+		slot     string
+		tables   []TableIdent
+		expected string
+	}{
+		{
+			name:     "all tables when Tables is empty",
+			slot:     "my_slot",
+			tables:   nil,
+			expected: `CREATE PUBLICATION "my_slot" FOR ALL TABLES;`,
+		},
+		{
+			name:     "single table with schema",
+			slot:     "my_slot",
+			tables:   []TableIdent{{Schema: "public", Table: "users"}},
+			expected: `CREATE PUBLICATION "my_slot" FOR TABLE "pgcapture"."ddl_logs", "public"."users";`,
+		},
+		{
+			name:     "multiple tables",
+			slot:     "my_slot",
+			tables:   []TableIdent{{Schema: "public", Table: "users"}, {Schema: "public", Table: "orders"}, {Schema: "audit", Table: "logs"}},
+			expected: `CREATE PUBLICATION "my_slot" FOR TABLE "pgcapture"."ddl_logs", "public"."users", "public"."orders", "audit"."logs";`,
+		},
+		{
+			name:     "table name with special characters",
+			slot:     "my_slot",
+			tables:   []TableIdent{{Schema: "public", Table: "user-data"}, {Schema: "public", Table: "order_items"}},
+			expected: `CREATE PUBLICATION "my_slot" FOR TABLE "pgcapture"."ddl_logs", "public"."user-data", "public"."order_items";`,
+		},
+		{
+			name:     "slot name with special characters",
+			slot:     "my-slot",
+			tables:   []TableIdent{{Schema: "public", Table: "users"}},
+			expected: `CREATE PUBLICATION "my-slot" FOR TABLE "pgcapture"."ddl_logs", "public"."users";`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			src := &PGXSource{
+				ReplSlot: tt.slot,
+				Tables:   tt.tables,
+			}
+			result := src.buildPublicationSQL()
+			if result != tt.expected {
+				t.Errorf("buildPublicationSQL() = %q, want %q", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestPGXSource_quoteTables(t *testing.T) {
+	tests := []struct {
+		name     string
+		tables   []TableIdent
+		expected string
+	}{
+		{
+			name:     "single table",
+			tables:   []TableIdent{{Schema: "public", Table: "users"}},
+			expected: `"pgcapture"."ddl_logs", "public"."users"`,
+		},
+		{
+			name:     "multiple tables",
+			tables:   []TableIdent{{Schema: "public", Table: "users"}, {Schema: "audit", Table: "logs"}},
+			expected: `"pgcapture"."ddl_logs", "public"."users", "audit"."logs"`,
+		},
+		{
+			name:     "table with reserved word",
+			tables:   []TableIdent{{Schema: "public", Table: "select"}},
+			expected: `"pgcapture"."ddl_logs", "public"."select"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			src := &PGXSource{Tables: tt.tables}
+			result := src.quoteTables()
+			if result != tt.expected {
+				t.Errorf("quoteTables() = %q, want %q", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestParseTableIdents(t *testing.T) {
+	result := ParseTableIdents("public.users", "audit.logs", "users", "my_schema.my_table")
+	expected := []TableIdent{
+		{Schema: "public", Table: "users"},
+		{Schema: "audit", Table: "logs"},
+		{Schema: "public", Table: "users"},
+		{Schema: "my_schema", Table: "my_table"},
+	}
+
+	if len(result) != len(expected) {
+		t.Fatalf("ParseTableIdents returned %d items, want %d", len(result), len(expected))
+	}
+	for i, e := range expected {
+		if result[i] != e {
+			t.Errorf("ParseTableIdents[%d] = %+v, want %+v", i, result[i], e)
+		}
+	}
+}
+
+func TestTableIdent_Quoted(t *testing.T) {
+	tests := []struct {
+		input    TableIdent
+		expected string
+	}{
+		{
+			input:    TableIdent{Schema: "public", Table: "users"},
+			expected: `"public"."users"`,
+		},
+		{
+			input:    TableIdent{Schema: "my-schema", Table: "my-table"},
+			expected: `"my-schema"."my-table"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.expected, func(t *testing.T) {
+			result := tt.input.Quoted()
+			if result != tt.expected {
+				t.Errorf("Quoted() = %q, want %q", result, tt.expected)
+			}
+		})
+	}
+}
+
