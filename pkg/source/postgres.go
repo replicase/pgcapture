@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -28,6 +29,7 @@ type PGXSource struct {
 	CreatePublication bool
 	StartLSN          string
 	DecodePlugin      string
+	Tables            []TableIdent // Tables to capture; empty means all tables
 
 	setupConn      *pgx.Conn
 	replConn       *pgconn.PgConn
@@ -54,6 +56,7 @@ func (p *PGXSource) Capture(cp cursor.Checkpoint) (changes chan Change, err erro
 	}()
 
 	ctx := context.Background()
+	p.log = logrus.WithFields(logrus.Fields{"From": "PGXSource"})
 	p.setupConn, err = pgx.Connect(ctx, p.SetupConnStr)
 	if err != nil {
 		return nil, err
@@ -77,11 +80,8 @@ func (p *PGXSource) Capture(cp cursor.Checkpoint) (changes chan Change, err erro
 	case decode.PGOutputPlugin:
 		p.decoder = decode.NewPGOutputDecoder(p.schema, p.ReplSlot)
 		if p.CreatePublication {
-			if _, err = p.setupConn.Exec(ctx, fmt.Sprintf(sql.CreatePublication, p.ReplSlot)); err != nil {
-				var pge *pgconn.PgError
-				if !errors.As(err, &pge) || pge.Code != "42710" {
-					return nil, err
-				}
+			if err = p.ensurePublication(ctx); err != nil {
+				return nil, err
 			}
 		}
 	default:
@@ -115,7 +115,6 @@ func (p *PGXSource) Capture(cp cursor.Checkpoint) (changes chan Change, err erro
 		return nil, err
 	}
 
-	p.log = logrus.WithFields(logrus.Fields{"From": "PGXSource"})
 	p.log.WithFields(logrus.Fields{
 		"SystemID":                  ident.SystemID,
 		"Timeline":                  ident.Timeline,
@@ -284,4 +283,144 @@ func (p *PGXSource) cleanup() {
 		p.reportLSN(ctx, false)
 		p.replConn.Close(ctx)
 	}
+}
+
+func (p *PGXSource) buildPublicationSQL() string {
+	pubName := pgx.Identifier{p.ReplSlot}.Sanitize()
+	if len(p.Tables) == 0 {
+		return fmt.Sprintf(sql.CreatePublication, pubName)
+	}
+	return fmt.Sprintf(sql.CreatePublicationForTables, pubName, p.quoteTables())
+}
+
+type TableIdent struct {
+	Schema string
+	Table  string
+}
+
+func (t TableIdent) Quoted() string {
+	return pgx.Identifier{t.Schema, t.Table}.Sanitize()
+}
+
+func ParseTableIdents(ss ...string) []TableIdent {
+	result := make([]TableIdent, len(ss))
+	for i, s := range ss {
+		parts := strings.SplitN(s, ".", 2)
+		if len(parts) == 2 {
+			result[i] = TableIdent{Schema: parts[0], Table: parts[1]}
+		} else {
+			result[i] = TableIdent{Schema: "public", Table: s}
+		}
+	}
+	return result
+}
+
+func (p *PGXSource) quoteTables() string {
+	quoted := make([]string, 0, len(p.Tables)+1)
+	quoted = append(quoted, TableIdent{Schema: decode.ExtensionSchema, Table: decode.ExtensionDDLLogs}.Quoted())
+	for _, t := range p.Tables {
+		quoted = append(quoted, t.Quoted())
+	}
+	return strings.Join(quoted, ", ")
+}
+
+type publicationAction int
+
+const (
+	publicationNoChange publicationAction = iota
+	publicationCreate
+	publicationRecreate
+	publicationAlter
+)
+
+func (a publicationAction) String() string {
+	switch a {
+	case publicationNoChange:
+		return "no_change"
+	case publicationCreate:
+		return "create"
+	case publicationRecreate:
+		return "recreate"
+	case publicationAlter:
+		return "alter"
+	default:
+		return "unknown"
+	}
+}
+
+func (p *PGXSource) getPublicationAction(ctx context.Context) (publicationAction, error) {
+	var existingAllTables bool
+	err := p.setupConn.QueryRow(ctx, sql.QueryPublication, p.ReplSlot).Scan(&existingAllTables)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return publicationCreate, nil
+	} else if err != nil {
+		return publicationNoChange, err
+	}
+
+	wantAllTables := len(p.Tables) == 0
+	if existingAllTables != wantAllTables {
+		return publicationRecreate, nil
+	}
+	if wantAllTables {
+		return publicationNoChange, nil
+	}
+
+	// Compare table lists
+	rows, err := p.setupConn.Query(ctx, sql.QueryPublicationTables, p.ReplSlot)
+	if err != nil {
+		return publicationNoChange, err
+	}
+	defer rows.Close()
+
+	existing := make(map[TableIdent]struct{})
+	for rows.Next() {
+		var t TableIdent
+		if err := rows.Scan(&t.Schema, &t.Table); err != nil {
+			return publicationNoChange, err
+		}
+		existing[t] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return publicationNoChange, err
+	}
+
+	// +1 for pgcapture.ddl_logs
+	if len(existing) != len(p.Tables)+1 {
+		return publicationAlter, nil
+	}
+	if _, ok := existing[TableIdent{Schema: decode.ExtensionSchema, Table: decode.ExtensionDDLLogs}]; !ok {
+		return publicationAlter, nil
+	}
+	for _, t := range p.Tables {
+		if _, ok := existing[t]; !ok {
+			return publicationAlter, nil
+		}
+	}
+	return publicationNoChange, nil
+}
+
+func (p *PGXSource) ensurePublication(ctx context.Context) error {
+	pubName := pgx.Identifier{p.ReplSlot}.Sanitize()
+	action, err := p.getPublicationAction(ctx)
+	if err != nil {
+		return err
+	}
+
+	p.log.Infof("ensuring publication: %s", action)
+	switch action {
+	case publicationNoChange:
+		// no-op
+	case publicationCreate:
+		_, err = p.setupConn.Exec(ctx, p.buildPublicationSQL())
+	case publicationRecreate:
+		if _, err = p.setupConn.Exec(ctx, fmt.Sprintf(sql.DropPublication, pubName)); err != nil {
+			return err
+		}
+		_, err = p.setupConn.Exec(ctx, p.buildPublicationSQL())
+	case publicationAlter:
+		_, err = p.setupConn.Exec(ctx, fmt.Sprintf(sql.AlterPublicationSetTable, pubName, p.quoteTables()))
+	default:
+		err = fmt.Errorf("unhandled publication action: %s", action)
+	}
+	return err
 }

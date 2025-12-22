@@ -21,6 +21,16 @@ var CreateLogicalSlot = `SELECT pg_create_logical_replication_slot($1, $2);`
 
 var CreatePublication = `CREATE PUBLICATION %s FOR ALL TABLES;`
 
+var CreatePublicationForTables = `CREATE PUBLICATION %s FOR TABLE %s;`
+
+var QueryPublication = `SELECT puballtables FROM pg_publication WHERE pubname = $1;`
+
+var QueryPublicationTables = `SELECT schemaname, tablename FROM pg_publication_tables WHERE pubname = $1;`
+
+var DropPublication = `DROP PUBLICATION %s;`
+
+var AlterPublicationSetTable = `ALTER PUBLICATION %s SET TABLE %s;`
+
 var InstallExtension = `CREATE EXTENSION IF NOT EXISTS pgcapture;`
 
 var ServerVersionNum = `SHOW server_version_num;`
