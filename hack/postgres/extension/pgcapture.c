@@ -338,6 +338,9 @@ extract_query_text(PlannedStmt *pstmt, const char *query, int query_location,
 				RawStmt    *rawstmt;
 				Query	   *viewParse;
 				RangeVar   *rv = view->view;
+#if PG_VERSION_NUM >= 190000
+				ObjectAddress temp_object;
+#endif
 
 				/* Explicit CREATE TEMP VIEW? */
 				if (rv->relpersistence == RELPERSISTENCE_TEMP)
@@ -355,7 +358,7 @@ extract_query_text(PlannedStmt *pstmt, const char *query, int query_location,
 				viewParse = parse_analyze_fixedparams(rawstmt, query, NULL, 0,
 													  NULL);
 
-				if (isQueryUsingTempRelation(viewParse))
+				if (query_uses_temp_object(viewParse, &temp_object))
 					return NULL;
 
 				break;

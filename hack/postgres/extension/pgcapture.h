@@ -7,6 +7,9 @@
 #ifndef PGCAPTURE_H
 #define PGCAPTURE_H
 
+#if PG_VERSION_NUM < 190000
+#define query_uses_temp_object(q, t) isQueryUsingTempRelation(q)
+#endif
 #if PG_VERSION_NUM < 150000
 #define parse_analyze_fixedparams(a,b,c,d,e) parse_analyze(a,b,c,d,e)
 #endif

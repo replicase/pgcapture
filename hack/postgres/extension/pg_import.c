@@ -7,7 +7,7 @@
 
 #include "postgres.h"
 
-#if PG_VERSION_NUM < 120000
+#if PG_VERSION_NUM < 120000 || PG_VERSION_NUM >= 190000
 #include "access/htup_details.h"
 #endif
 #if PG_VERSION_NUM >= 160000
