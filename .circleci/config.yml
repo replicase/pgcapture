@@ -1,5 +1,7 @@
 version: 2.1
 
+orbs:
+  codecov: codecov/codecov@5
 
 executors:
   default:
@@ -14,6 +16,7 @@ commands:
         default: 11
     steps:
       - run: PG_VERSION=<< parameters.version >> ./dockerbuild.sh test
+      - codecov/upload
 
 jobs:
   test-pg-11:

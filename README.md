@@ -3,8 +3,8 @@
 A scalable Netflix DBLog implementation for PostgreSQL
 
 ![circleci](https://circleci.com/gh/replicase/pgcapture.svg?style=shield)
-[![Maintainability](https://api.codeclimate.com/v1/badges/efd0f50a92233b34ae5e/maintainability)](https://codeclimate.com/github/rueian/pgcapture/maintainability)
-[![Test Coverage](https://api.codeclimate.com/v1/badges/efd0f50a92233b34ae5e/test_coverage)](https://codeclimate.com/github/rueian/pgcapture/test_coverage)
+[![Go Report Card](https://goreportcard.com/badge/github.com/replicase/pgcapture)](https://goreportcard.com/report/github.com/replicase/pgcapture)
+[![codecov](https://codecov.io/gh/replicase/pgcapture/graph/badge.svg?token=Bnp9uvlXj0)](https://codecov.io/gh/replicase/pgcapture)
 
 ![overview](./hack/images/overview.png)
 

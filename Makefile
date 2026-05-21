@@ -21,7 +21,7 @@ build:
 
 .PHONY: test
 test:
-	go test -v -race -p 1 -coverprofile=./c.out ./...
+	go test -v -race -p 1 -coverprofile=./coverage.txt ./...
 
 .PHONY: codegen
 codegen: bin/protoc-gen-go$(go_exe) bin/protoc-gen-go-grpc$(go_exe) bin/mockgen$(go_exe) proto generate
